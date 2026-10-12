@@ -1,0 +1,57 @@
+name: macOS UI preview
+
+# Builds both native apps on macOS and captures their windows in the light and dark themes, so interface
+# changes can be reviewed without a local Mac. Genome Canvas uses its bundled local backend; Omics Canvas
+# cannot reach the lab server from GitHub and shows its "server unavailable" state.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "mac-ui-*"
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: genome-canvas
+            dir: genome-canvas/macos/GenomeCanvasDesktop
+            bundle: Genome Canvas.app
+            binary: GenomeCanvasDesktop
+            snapshot: GENOME_CANVAS_SNAPSHOT_DIR
+          - app: omics-canvas
+            dir: desktop/OmicsCanvasDesktop
+            bundle: Omics Canvas.app
+            binary: OmicsCanvasDesktop
+            snapshot: OMICS_CANVAS_SNAPSHOT_DIR
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build native app
+        working-directory: ${{ matrix.dir }}
+        run: ./build.sh dist/preview
+      - name: Capture light and dark windows
+        working-directory: ${{ matrix.dir }}
+        shell: bash
+        run: |
+          shots="${RUNNER_TEMP}/shots"
+          mkdir -p "${shots}"
+          env "${{ matrix.snapshot }}=${shots}" \
+            "dist/preview/${{ matrix.bundle }}/Contents/MacOS/${{ matrix.binary }}" > "${shots}/app.log" 2>&1 &
+          for attempt in $(seq 1 60); do
+            [[ -f "${shots}/window-dark.png" ]] && break
+            sleep 2
+          done
+          cp "${HOME}/Library/Application Support/Genome Canvas/local-backend.log" "${shots}/" 2>/dev/null || true
+          ls -la "${shots}"
+          test -f "${shots}/window-light.png"
+          test -f "${shots}/window-dark.png"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-ui-preview-${{ matrix.app }}
+          path: ${{ runner.temp }}/shots

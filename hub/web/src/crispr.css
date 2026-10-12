@@ -1,0 +1,41 @@
+/* from QuertermousLab/athena src/components/CrisprExplorer.astro (scoped styles made global) */
+.cx { position: relative; min-height: calc(100vh - var(--nav-h)); display: flex; flex-direction: column; }
+  .cx-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--white); }
+  .cx-head .back { font-size: .9rem; color: var(--ink-2); text-decoration: none; }
+  .cx-head select { width: auto; min-width: 320px; font-weight: 600; }
+  .cx-facts { margin: 0; font-size: .85rem; color: var(--muted); }
+  .cx-source { flex-basis: 100%; margin: 0; font-size: .82rem; color: var(--ink-2); }
+  .cx-source a { color: var(--terra); }
+  .cx-body { flex: 1; display: grid; grid-template-columns: 380px minmax(0, 1fr); min-height: 0; }
+  .cx-list { border-right: 1px solid var(--line); background: var(--white); display: flex; flex-direction: column; min-height: 0; }
+  .cx-filter { padding: 12px 14px 6px; display: grid; gap: 8px; }
+  .cx-count { margin: 0; padding: 0 14px 6px; font-size: .8rem; color: var(--muted); }
+  .cx-table { overflow: auto; flex: 1; max-height: calc(100vh - 230px); }
+  .cx-table--short { max-height: 320px; }
+  .cx-table .table { font-size: .84rem; }
+  .cx-table .table td { padding: 7px 10px; }
+  .cx-table tbody tr { cursor: pointer; }
+  .cx-table tbody tr.on { background: var(--terra-tint); }
+  .cx-table tbody tr.sig td:first-child { box-shadow: inset 3px 0 0 var(--terra); }
+  .mono { font-family: var(--font-mono); font-size: .78rem; }
+  .cx-main { padding: 14px 18px 40px; display: grid; gap: 16px; align-content: start; }
+  .cx-panel { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+  .cx-panel-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .cx-panel-head h3 { font-size: 1.05rem; margin: 0; }
+  .cx-panel-head .muted { font-size: .8rem; }
+  .cx-find { margin-left: auto; width: 200px; padding: 5px 9px; font-size: .85rem; }
+  .cx-plot { position: relative; height: 340px; margin-top: 6px; }
+  .cx-plot canvas { display: block; }
+  .cx-tip { position: absolute; pointer-events: none; background: var(--tip-bg); color: var(--tip-text); font-size: .78rem; padding: 4px 8px; border-radius: 4px; max-width: 320px; }
+  .cx-detail { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+  .cx-detail h3 { font-size: 1.1rem; margin: 0 0 4px; }
+  .cx-detail h4 { font-size: .95rem; margin: 14px 0 6px; }
+  .cx-detail .table { font-size: .85rem; }
+  .cx-detail .table td { padding: 6px 10px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+  .cx-bars tbody tr { cursor: pointer; }
+  .cx-bars td.bar { position: relative; width: 45%; }
+  .cx-bars td.bar span { position: absolute; top: 30%; height: 40%; border-radius: 2px; }
+  .cx-bars td.bar::before { content: ''; position: absolute; left: 50%; top: 15%; bottom: 15%; border-left: 1px solid var(--line); }
+  .cx-msg { position: absolute; inset: 120px 0 auto; text-align: center; color: var(--ink-2); }
+  @media (max-width: 960px) { .cx-body { grid-template-columns: 1fr; } .cx-table { max-height: 320px; } }

@@ -86,9 +86,13 @@ class MacOSDesktopClientTests(unittest.TestCase):
 
     def test_release_notes_explain_gatekeeper_quarantine(self):
         notes = (MAC_APP / "RELEASE_NOTES.md").read_text(encoding="utf-8")
-        workflow = (ROOT / ".github" / "workflows" / "release-macos.yml").read_text(encoding="utf-8")
+        # the workflows and the combined release notes live at the root of the Omics Canvas repository
+        repository = ROOT.parent
+        workflow = (repository / ".github" / "workflows" / "release-macos.yml").read_text(encoding="utf-8")
+        release_notes = (repository / "RELEASE_NOTES.md").read_text(encoding="utf-8")
         self.assertIn('xattr -dr com.apple.quarantine "/Applications/Genome Canvas.app"', notes)
-        self.assertIn("--notes-file macos/GenomeCanvasDesktop/RELEASE_NOTES.md", workflow)
+        self.assertIn('xattr -dr com.apple.quarantine "/Applications/Genome Canvas.app"', release_notes)
+        self.assertIn("--notes-file RELEASE_NOTES.md", workflow)
 
     def test_build_script_targets_supported_mac_architectures(self):
         script = (MAC_APP / "build.sh").read_text(encoding="utf-8")

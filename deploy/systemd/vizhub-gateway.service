@@ -1,0 +1,17 @@
+[Unit]
+Description=Port 8892 gateway: visualization hub, Genome Canvas and JupyterLab
+Wants=network-online.target jupyter-lab.service genome-canvas.service vizhub-hub.service
+After=network-online.target jupyter-lab.service genome-canvas.service vizhub-hub.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/apache2 -f %h/baldar/vizhub/gateway/apache.conf -DFOREGROUND
+ExecReload=/usr/sbin/apache2 -f %h/baldar/vizhub/gateway/apache.conf -k graceful
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
+# genome-canvasctl (in genome-canvas/) still manages the gateway under its old name
+Alias=genome-canvas-gateway.service

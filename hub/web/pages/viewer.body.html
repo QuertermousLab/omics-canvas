@@ -1,0 +1,125 @@
+<div class="sv" data-sv data-kind="__KIND__">
+    <aside class="sv-side">
+      <div class="sv-head">
+        <a class="back" href="/hub/">← Visualization hub</a>
+        <select class="input" data-slide aria-label="Slide"></select>
+        <p class="muted sv-facts" data-facts></p>
+        <p class="sv-source" data-source hidden></p>
+      </div>
+
+      <details open>
+        <summary>Cell annotation</summary>
+        <select class="input" data-group aria-label="Annotation"></select>
+        <div class="legend-tools">
+          <button type="button" data-all>Show all</button>
+          <button type="button" data-none>Hide all</button>
+          <button type="button" data-color-group hidden>Color by annotation</button>
+        </div>
+        <ul class="legend" data-legend></ul>
+      </details>
+
+      <details open>
+        <summary data-feature-title>Gene expression</summary>
+        <label class="lbl assay-row" data-assay-row hidden>Assay <select class="input" data-assay aria-label="Assay"></select></label>
+        <div class="row">
+          <input class="input" type="search" list="sv-genes" placeholder="Gene symbol" data-gene aria-label="Gene" autocomplete="off" />
+          <datalist id="sv-genes"></datalist>
+        </div>
+        <label class="lbl">or numeric annotation
+          <select class="input" data-metric><option value="">—</option></select>
+        </label>
+        <div data-scale hidden>
+          <div class="scale-title"><strong data-scale-name></strong><button type="button" class="x" data-clear-value title="Back to annotation colors">×</button></div>
+          <div class="row2">
+            <label class="lbl">Values <select class="input" data-norm><option value="log">log-normalized</option><option value="raw">raw counts</option></select></label>
+            <label class="lbl">Colormap <select class="input" data-cmap><option>viridis</option><option>magma</option><option>inferno</option><option>plasma</option><option>cividis</option><option>turbo</option><option>reds</option><option>greens</option><option>rdbu</option></select></label>
+          </div>
+          <div class="motif" data-motif hidden>
+            <div class="motif-head"><b data-motif-name></b><span class="muted" data-motif-id></span></div>
+            <canvas class="motif-logo" data-motif-logo></canvas>
+          </div>
+          <canvas class="hist" width="560" height="90" data-hist></canvas>
+          <div class="gradient" data-gradient></div>
+          <div class="range">
+            <label>Min <input type="number" step="any" data-lo /></label>
+            <label>Max <input type="number" step="any" data-hi /></label>
+          </div>
+          <input type="range" min="0" max="1000" data-lo-slider aria-label="Minimum" />
+          <input type="range" min="0" max="1000" data-hi-slider aria-label="Maximum" />
+          <label class="lbl">Cells at or below min
+            <select class="input" data-below><option value="gray">show in gray</option><option value="hide">hide</option><option value="color">use colormap</option></select>
+          </label>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Regions</summary>
+        <p class="hint">Draw with the <b>▭</b> or <b>✎</b> tool above the <span data-surface>image</span>, then crop, save or export.</p>
+        <div data-selection hidden>
+          <p class="sel-count" data-sel-count></p>
+          <div class="btns">
+            <button type="button" class="btn btn--light btn--sm" data-crop>Crop to selection</button>
+            <button type="button" class="btn btn--light btn--sm" data-invert>Invert</button>
+            <button type="button" class="btn btn--light btn--sm" data-save>Save…</button>
+            <button type="button" class="btn btn--light btn--sm" data-clear>Clear</button>
+          </div>
+          <ul class="composition" data-composition></ul>
+        </div>
+        <ul class="regions" data-regions></ul>
+        <button type="button" class="btn btn--light btn--sm" data-export>Export cells (CSV)</button>
+      </details>
+
+      <details data-image-section>
+        <summary>Image</summary>
+        <label class="check"><input type="checkbox" data-show-image checked /> Show morphology image</label>
+        <div data-channels></div>
+      </details>
+
+      <details>
+        <summary>Display</summary>
+        <label class="lbl">Layout <select class="input" data-layout><option value="spatial">Spatial</option></select></label>
+        <label class="lbl" data-shape-row>Cells drawn as <select class="input" data-shape><option value="auto">auto (polygons when zoomed in)</option><option value="points">points</option><option value="polygons">segmentation polygons</option></select></label>
+        <label class="lbl">Point size <input type="range" min="0.2" max="4" step="0.1" value="1" data-size /></label>
+        <label class="lbl">Opacity <input type="range" min="0.1" max="1" step="0.05" value="0.9" data-opacity /></label>
+        <div class="lbl">Background
+          <div class="bg-row"><input type="color" value="#ffffff" data-bg aria-label="Background color" />
+            <label class="check"><input type="checkbox" checked data-bg-theme /> Follow theme</label></div>
+        </div>
+        <p class="hint">PNG exports are always transparent.</p>
+      </details>
+    </aside>
+
+    <div class="sv-main">
+      <div class="sv-toolbar">
+        <div class="tools" role="group" aria-label="Tool">
+          <button type="button" data-tool="pan" class="on" title="Pan and zoom">✥</button>
+          <button type="button" data-tool="rect" title="Rectangle selection">▭</button>
+          <button type="button" data-tool="lasso" title="Lasso selection">✎</button>
+        </div>
+        <button type="button" data-fit title="Fit to view">⤢ Fit</button>
+        <button type="button" data-shot title="Save image (PNG)">⬇ PNG</button>
+        <span class="status" data-status></span>
+      </div>
+      <div class="sv-canvas" data-canvas>
+        <div class="sv-msg" data-msg>Loading…</div>
+      </div>
+      <section class="atac" data-atac hidden>
+        <div class="atac-bar">
+          <strong>Chromatin accessibility</strong>
+          <input class="input" type="search" placeholder="Gene or chr:start-end" data-atac-locus aria-label="Gene or region" />
+          <div class="atac-nav" role="group" aria-label="Move and zoom">
+            <button type="button" data-atac-move="-0.5" title="Move left">◀</button>
+            <button type="button" data-atac-move="0.5" title="Move right">▶</button>
+            <button type="button" data-atac-zoom="0.5" title="Zoom in">＋</button>
+            <button type="button" data-atac-zoom="2" title="Zoom out">－</button>
+          </div>
+          <label class="check"><input type="checkbox" checked data-atac-shared /> Same scale</label>
+          <label class="lbl-inline" data-atac-peaks-row hidden>Peaks q &lt; <select data-atac-peakq><option value="5">1e-5</option><option value="10">1e-10</option><option value="20">1e-20</option></select></label>
+          <button type="button" class="btn btn--primary btn--sm" data-atac-color hidden>Color cells by this region</button>
+          <button type="button" class="atac-fold" data-atac-fold title="Hide the tracks">▾</button>
+        </div>
+        <p class="atac-info" data-atac-info>Type a gene above (or in Gene activity) to see accessibility around it. Drag over the tracks to mark a region.</p>
+        <div class="atac-plot" data-atac-plot><canvas data-atac-canvas></canvas><div class="atac-tip" data-atac-tip hidden></div></div>
+      </section>
+    </div>
+  </div>

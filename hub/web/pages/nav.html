@@ -1,0 +1,33 @@
+<svg class="icon-sprite" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<header class="hubnav">
+  <a class="hub-home" href="/hub/" title="Back to the Omics Canvas home page" aria-label="Omics Canvas home">
+    <img src="/hub/static/favicon.svg" alt="" width="18" height="18" /><span>Omics Canvas</span>
+  </a>
+  <strong class="hubnav__title" data-page-title></strong>
+  <div class="hubnav__actions">
+    <button type="button" class="ws-button" data-ws-button title="Your workspace (shared with Genome Canvas)">
+      <span class="ws-avatar"><svg class="icon"><use href="#i-layers"/></svg></span><b data-ws-name>Workspace</b><svg class="icon chevron"><use href="#i-chevron-down"/></svg>
+    </button>
+    <button type="button" class="btn btn--quiet theme-toggle" data-theme-toggle title="Switch theme" aria-label="Switch theme"><svg class="icon icon-moon"><use href="#i-moon"/></svg><svg class="icon icon-sun"><use href="#i-sun"/></svg></button>
+  </div>
+</header>
+<dialog class="ws-dialog" data-ws-dialog>
+  <form method="dialog" class="ws-card">
+    <div class="ws-head"><img src="/hub/static/favicon.svg" alt="" width="34" height="34" /><div><b>Choose your workspace</b><small>Datasets you add are kept in your workspace — the same one you use in Genome Canvas.</small></div></div>
+    <div class="ws-search"><input class="input" type="search" placeholder="Find a workspace" data-ws-q aria-label="Find a workspace" /></div>
+    <ul class="ws-list" data-ws-list><li class="muted">Loading…</li></ul>
+    <div class="ws-create"><input class="input" type="text" maxlength="48" placeholder="New workspace name" data-ws-new aria-label="New workspace name" /><button type="button" class="btn btn--light" data-ws-create><svg class="icon"><use href="#i-plus"/></svg>Create</button></div>
+    <p class="err ws-err" data-ws-err hidden></p>
+    <div class="ws-foot"><button type="submit" class="btn btn--quiet" data-ws-close>Close</button></div>
+  </form>
+</dialog>

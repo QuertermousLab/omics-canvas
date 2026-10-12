@@ -1,0 +1,120 @@
+/* Omics Canvas theme: Genome Canvas's Nord "Snow Storm" (light) and "Polar Night" (dark) tokens, fonts and
+   controls (genome-canvas/styles.css), so the hub, viewers and explorer match the genome browser.
+   The ATHENA viewer stylesheets use ATHENA's variable names; they are mapped onto these tokens below. */
+@font-face { font-family: "Manrope Variable"; src: url("fonts/manrope-latin-wght-normal.woff2") format("woff2-variations"), url("fonts/manrope-latin-wght-normal.woff2") format("woff2"); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: "Fraunces Variable"; src: url("fonts/fraunces-latin-wght-normal.woff2") format("woff2-variations"), url("fonts/fraunces-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "JetBrains Mono Variable"; src: url("fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2-variations"), url("fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; font-display: swap; }
+
+:root {
+  --bg: #e5e9f0; --surface: #f8f9fb; --surface-2: #eef1f5; --surface-3: #e5e9f0; --surface-hover: #e9edf2;
+  --border: #d8dee9; --border-strong: #c0c8d4;
+  --text: #2e3440; --text-2: #434c5e; --text-3: #69728a; --text-4: #9aa2b1;
+  --accent: #4c7a86; --accent-hover: #3f6873; --accent-soft: #e0ebee; --accent-soft-2: #cde0e5; --accent-text: #3a6570;
+  --accent-shadow: rgba(46, 52, 64, .18); --on-accent: #ffffff; --ring: rgba(76, 122, 134, .28);
+  --danger: #bf616a; --danger-soft: #f6e4e6; --danger-border: #ecc5c9; --success: #7a9a5e; --warning: #d4a94f;
+  --amber-soft: #f5ecd8; --amber-text: #8f6a1f; --orange-soft: #f6e5dc; --orange-text: #a55d3d; --green-soft: #e6eedd; --green-text: #5a7642;
+  --radius-sm: 7px; --radius: 9px; --radius-lg: 13px; --radius-xl: 18px;
+  --shadow: 0 4px 14px rgba(46, 52, 64, .08); --shadow-lg: 0 24px 70px rgba(46, 52, 64, .2);
+  --font: "Manrope Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --heading-font: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --canvas: #ffffff; --topbar-bg: #f8f9fb; --topbar-border: #d8dee9; --topbar-chip: #eceff4; --topbar-chip-border: #d8dee9;
+  --tip-bg: #2e3440; --tip-text: #eceff4;
+  /* data colors that read on both themes (Nord aurora) */
+  --down: #bf616a; --up: #5f8a6a; --ns: #c0c8d4;
+  color-scheme: light;
+
+  /* ATHENA names -> Genome Canvas tokens */
+  --terra: var(--accent); --terra-deep: var(--accent-hover); --terra-bright: var(--accent-hover); --terra-tint: var(--accent-soft);
+  --sage: var(--success); --olive: var(--green-text); --sage-tint: var(--green-soft);
+  --gold: var(--warning); --gold-deep: var(--amber-text); --gold-tint: var(--amber-soft);
+  --ink: var(--text); --ink-2: var(--text-2); --muted: var(--text-3); --line: var(--border);
+  --paper: var(--bg); --paper-2: var(--surface-2); --white: var(--surface);
+  --font-sans: var(--font); --font-serif: var(--heading-font); --font-mono: var(--mono);
+}
+html[data-theme="dark"] {
+  --bg: #242933; --surface: #2e3440; --surface-2: #323946; --surface-3: #3b4252; --surface-hover: #394050;
+  --border: #3b4252; --border-strong: #4c566a;
+  --text: #eceff4; --text-2: #d8dee9; --text-3: #9aa5b8; --text-4: #687286;
+  --accent: #88c0d0; --accent-hover: #9dcfdc; --accent-soft: rgba(136, 192, 208, .14); --accent-soft-2: rgba(136, 192, 208, .24); --accent-text: #8fd3e3;
+  --ring: rgba(136, 192, 208, .4); --on-accent: #242933; --accent-shadow: rgba(0, 0, 0, .25);
+  --danger-soft: rgba(191, 97, 106, .18); --danger-border: rgba(191, 97, 106, .45); --success: #a3be8c; --warning: #ebcb8b;
+  --amber-soft: rgba(235, 203, 139, .15); --amber-text: #ebcb8b; --orange-soft: rgba(208, 135, 112, .18); --orange-text: #e0a08a;
+  --green-soft: rgba(163, 190, 140, .16); --green-text: #b9d4a2;
+  --radius-sm: 8px; --radius: 10px; --radius-lg: 14px; --radius-xl: 20px;
+  --shadow: 0 6px 18px rgba(0, 0, 0, .25); --shadow-lg: 0 24px 70px rgba(0, 0, 0, .45);
+  --canvas: #2e3440; --topbar-bg: #2e3440; --topbar-border: #3b4252; --topbar-chip: #3b4252; --topbar-chip-border: #434c5e;
+  --tip-bg: #4c566a; --tip-text: #eceff4;
+  --down: #d08770; --up: #a3be8c; --ns: #4c566a;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-width: 320px; min-height: 100%; margin: 0; background: var(--bg); color: var(--text); }
+body { font: 400 13px/1.45 var(--font); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button, select { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a { color: var(--accent-text); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { color: var(--accent-hover); }
+h1, h2, h3, h4 { font-family: var(--heading-font); font-weight: 650; letter-spacing: -.01em; line-height: 1.15; margin: 0 0 .5em; color: var(--text); }
+h1 { font-size: 30px; } h2 { font-size: 21px; } h3 { font-size: 15px; } h4 { font-size: 13px; }
+p { margin: 0 0 1em; }
+code { border-radius: 4px; background: var(--surface-3); padding: 1px 5px; color: var(--text-2); font: 500 12px var(--mono); }
+::selection { background: var(--accent-soft-2); }
+.muted { color: var(--text-3); }
+.mono { font-family: var(--mono); font-size: .92em; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+
+/* buttons (Genome Canvas primary-button / secondary-button / quiet-button) */
+.btn { height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: var(--radius);
+  padding: 0 13px; font-size: 13px; font-weight: 550; line-height: 1; white-space: nowrap; text-decoration: none; cursor: pointer;
+  transition: background-color .12s, border-color .12s, color .12s, box-shadow .12s; }
+.btn--primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); box-shadow: 0 1px 2px var(--accent-shadow); }
+.btn--primary:hover { border-color: var(--accent-hover); background: var(--accent-hover); color: var(--on-accent); }
+.btn--primary:disabled { border-color: var(--border); background: var(--surface-3); color: var(--text-4); box-shadow: none; }
+.btn--light { border-color: var(--border-strong); background: var(--surface); color: var(--text-2); }
+.btn--light:hover { background: var(--surface-hover); color: var(--text); }
+.btn--light:disabled { opacity: .5; }
+.btn--danger { border-color: var(--danger-border); background: var(--surface); color: var(--danger); }
+.btn--danger:hover { background: var(--danger-soft); color: var(--danger); }
+.btn--quiet { background: transparent; color: var(--text-2); padding: 0 10px; }
+.btn--quiet:hover { background: var(--surface-hover); color: var(--text); }
+.btn--sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: var(--radius-sm); }
+.btn--xs { height: 24px; padding: 0 8px; font-size: 11.5px; border-radius: var(--radius-sm); }
+.icon-btn { width: 34px; height: 34px; display: inline-grid; place-items: center; border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--text-2); padding: 0; cursor: pointer; }
+.icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+.icon-btn.sm { width: 26px; height: 26px; border-radius: var(--radius-sm); }
+.icon-btn.ghost { border-color: transparent; background: transparent; }
+
+/* fields */
+.input, .field input, .field select { width: 100%; height: 34px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface);
+  color: var(--text); padding: 0 11px; outline: none; font-size: 13px; transition: border-color .12s, box-shadow .12s; }
+select.input { padding-right: 8px; }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.input::placeholder { color: var(--text-4); }
+.check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.check input, input[type=range], input[type=checkbox] { accent-color: var(--accent); }
+
+/* chips, pills, cards, tables, notices */
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 99px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-2); font-size: 11.5px; font-weight: 600; white-space: nowrap; text-decoration: none; }
+.chip--red, .chip--accent { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-soft-2); }
+.chip--ok { background: var(--green-soft); color: var(--green-text); border-color: transparent; }
+.chip--bad { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-border); }
+.chip--warn { background: var(--amber-soft); color: var(--amber-text); border-color: transparent; }
+.pill--ok { display: inline-flex; padding: 1px 8px; border-radius: 99px; background: var(--green-soft); color: var(--green-text); font-size: 11px; font-weight: 650; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.eyebrow { display: block; color: var(--text-3); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); font-weight: 700; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table tbody tr:hover { background: var(--surface-2); }
+.notice { border: 1px solid transparent; background: var(--amber-soft); color: var(--amber-text); border-radius: var(--radius); padding: 10px 12px; }
+.empty { text-align: center; color: var(--text-3); padding: 36px 0; }
+.err { color: var(--danger); }

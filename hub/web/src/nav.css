@@ -1,0 +1,50 @@
+/* Top bar shared by the hub, viewers and explorer (Genome Canvas .topbar) */
+:root { --nav-h: 56px; }
+/* inside the Omics Canvas desktop app the native window supplies the chrome */
+html.desktop-embedded .hubnav { display: none !important; }
+.hubnav { position: sticky; top: 0; z-index: 50; height: var(--nav-h); display: flex; align-items: center; gap: 18px; padding: 0 14px 0 14px;
+  border-bottom: 1px solid var(--topbar-border); background: var(--topbar-bg); color: var(--text); }
+/* the small button back to the hub home page (on the viewers; the brand itself on the hub page) */
+.hub-home { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 6px; border: 1px solid var(--border-strong);
+  border-radius: 99px; background: var(--surface); color: var(--text-2); font-size: 12px; font-weight: 600; text-decoration: none; flex: none; }
+.hub-home:hover { border-color: var(--accent); color: var(--accent-text); background: var(--accent-soft); }
+.hub-home img { display: block; border-radius: 4px; }
+.page-hub .hub-home { height: auto; padding: 0; border: 0; background: none; color: var(--text); gap: 9px; pointer-events: none; }
+.page-hub .hub-home img { width: 26px; height: 26px; }
+.page-hub .hub-home span { font-family: var(--heading-font); font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+.hubnav__title { font-family: var(--heading-font); font-size: 15px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
+.hubnav__actions { margin-left: auto; display: flex; align-items: center; gap: 4px; flex: none; }
+.ws-button { height: 34px; display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; border: 1px solid var(--topbar-chip-border); border-radius: 99px;
+  background: var(--topbar-chip); padding: 0 10px 0 4px; color: var(--text); font-size: 13px; }
+.ws-button:hover { background: var(--surface-hover); }
+.ws-button.unset { border-color: var(--accent); }
+.ws-avatar { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 99px; background: var(--accent-soft-2); color: var(--accent-text); }
+.ws-avatar .icon { width: 14px; height: 14px; }
+.ws-button b { max-width: 150px; overflow: hidden; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.ws-button .chevron { width: 14px; height: 14px; color: var(--text-3); }
+.theme-toggle .icon-sun { display: none; }
+html[data-theme="dark"] .theme-toggle .icon-sun { display: inline; }
+html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+.ws-dialog { border: 0; padding: 0; background: transparent; max-width: calc(100vw - 32px); }
+.ws-dialog::backdrop { background: rgba(36, 41, 51, .45); backdrop-filter: blur(4px); }
+.ws-card { width: min(520px, 100vw - 32px); display: grid; gap: 12px; padding: 20px 22px 14px; border: 1px solid var(--border); border-radius: var(--radius-xl);
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); }
+.ws-head { display: flex; gap: 12px; align-items: center; }
+.ws-head b { display: block; font-family: var(--heading-font); font-size: 18px; font-weight: 650; }
+.ws-head small { color: var(--text-3); font-size: 12.5px; }
+.ws-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.ws-list button { width: 100%; height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); color: var(--text); text-align: left; font-weight: 550; }
+.ws-list button:hover { border-color: var(--accent); }
+.ws-list button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.ws-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-list small { margin-left: auto; color: var(--text-4); font-size: 10.5px; }
+.ws-create { display: flex; gap: 8px; }
+.ws-foot { display: flex; justify-content: flex-end; }
+.ws-err { margin: 0; }
+@media (max-width: 760px) {
+  .hubnav { padding: 0 10px; gap: 10px; }
+  .hubnav__title { display: none; }
+}
+html.desktop-embedded { --nav-h: 0px !important; }

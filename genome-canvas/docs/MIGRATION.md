@@ -9,7 +9,7 @@ mounts the same paths.
 Install Python 3.8+ and clone the repository:
 
 ```bash
-git clone https://github.com/QuertermousLab/genome-canvas.git /opt/genome-canvas
+git clone https://github.com/QuertermousLab/omics-canvas.git /opt/omics-canvas && ln -s /opt/omics-canvas/genome-canvas /opt/genome-canvas
 cd /opt/genome-canvas
 cp genomecanvas.config.example.json genomecanvas.config.json
 ```

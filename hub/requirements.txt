@@ -1,0 +1,19 @@
+# Omics Canvas hub backend and converters (Python 3.12): uv venv --python /usr/bin/python3.12 hub/venv
+#   VIRTUAL_ENV=hub/venv uv pip install -r hub/requirements.txt
+fastapi
+uvicorn[standard]
+anndata
+mudata
+scanpy
+igraph
+leidenalg
+h5py
+numpy
+pandas
+scipy
+pyarrow
+tifffile
+imagecodecs
+zarr>=3
+pillow
+rds2py

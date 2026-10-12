@@ -1,0 +1,25 @@
+{
+  "host": "127.0.0.1",
+  "port": 8893,
+  "publicUrl": "http://171.65.68.140:8892",
+  "roots": [
+    {
+      "label": "Shared NFS",
+      "path": "/nfs"
+    }
+  ],
+  "rscript": [
+    "/home/quanyiz/miniconda3/envs/sceptre/bin/Rscript",
+    "Rscript"
+  ],
+  "maxJobs": 8,
+  "services": [
+    {
+      "id": "genome-canvas",
+      "name": "Genome Canvas",
+      "url": "/genome-canvas/",
+      "health": "http://127.0.0.1:8000/api/health"
+    }
+  ],
+  "fragmentWorkers": 8
+}

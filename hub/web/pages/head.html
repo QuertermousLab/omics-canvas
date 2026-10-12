@@ -1,0 +1,20 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#f8f9fb" />
+<script>
+  // Genome Canvas's theme, applied before the stylesheet paints: a saved choice wins, else the OS (same key, same origin).
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem("genome-canvas:theme"); } catch (e) { /* storage disabled */ }
+    var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    // Omics Canvas desktop app: ?desktop=1 once, then for the whole tab
+    try {
+      if (new URLSearchParams(location.search).get("desktop") === "1") sessionStorage.setItem("vizhub-desktop", "1");
+      if (sessionStorage.getItem("vizhub-desktop") === "1") document.documentElement.classList.add("desktop-embedded");
+    } catch (e) { /* storage disabled */ }
+  })();
+</script>
+<link rel="icon" href="/hub/static/favicon.svg" type="image/svg+xml" />
+<link rel="preload" href="/hub/static/fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />

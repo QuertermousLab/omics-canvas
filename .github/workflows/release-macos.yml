@@ -1,0 +1,122 @@
+name: Release macOS apps
+
+# A v* tag builds and releases both Mac apps for Apple Silicon and Intel:
+#   Genome Canvas (genome-canvas/macos/GenomeCanvasDesktop) and Omics Canvas (desktop/OmicsCanvasDesktop).
+# The asset names stay fixed so .../releases/latest/download/<asset> links keep working.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Create draft release
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          versions="$(python3 -c 'import plistlib
+          g = plistlib.load(open("genome-canvas/macos/GenomeCanvasDesktop/Resources/Info.plist", "rb"))["CFBundleShortVersionString"]
+          o = plistlib.load(open("desktop/OmicsCanvasDesktop/Resources/Info.plist", "rb"))["CFBundleShortVersionString"]
+          print(f"Omics Canvas {o} · Genome Canvas {g}")')"
+          # Release notes are versioned with the apps; update the file before tagging.
+          gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || \
+            gh release create "${tag}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --verify-tag \
+              --draft \
+              --title "${versions}" \
+              --notes-file RELEASE_NOTES.md
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: genome-canvas
+            dir: genome-canvas/macos/GenomeCanvasDesktop
+            bundle: Genome Canvas.app
+            binary: GenomeCanvasDesktop
+            asset: GenomeCanvasDesktop
+            runner: macos-15
+            architecture: arm64
+          - app: genome-canvas
+            dir: genome-canvas/macos/GenomeCanvasDesktop
+            bundle: Genome Canvas.app
+            binary: GenomeCanvasDesktop
+            asset: GenomeCanvasDesktop
+            runner: macos-15-intel
+            architecture: x86_64
+          - app: omics-canvas
+            dir: desktop/OmicsCanvasDesktop
+            bundle: Omics Canvas.app
+            binary: OmicsCanvasDesktop
+            asset: OmicsCanvasDesktop
+            runner: macos-15
+            architecture: arm64
+          - app: omics-canvas
+            dir: desktop/OmicsCanvasDesktop
+            bundle: Omics Canvas.app
+            binary: OmicsCanvasDesktop
+            asset: OmicsCanvasDesktop
+            runner: macos-15-intel
+            architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build native app
+        working-directory: ${{ matrix.dir }}
+        run: ./build.sh "dist/${{ matrix.architecture }}"
+      - name: Verify and name archive
+        working-directory: ${{ matrix.dir }}
+        shell: bash
+        run: |
+          app="dist/${{ matrix.architecture }}/${{ matrix.bundle }}"
+          binary="${app}/Contents/MacOS/${{ matrix.binary }}"
+          test "$(lipo -archs "${binary}")" = "${{ matrix.architecture }}"
+          if [[ "${{ matrix.app }}" == "genome-canvas" ]]; then
+            test -f "${app}/Contents/Resources/LocalBackend/server.py"
+            test -f "${app}/Contents/Resources/LocalBackend/vendor/igv.min.js"
+            test -f "${app}/Contents/Resources/LocalBackend/resource_cache.py"
+            test -f "${app}/Contents/Resources/LocalBackend/canvas-theme.mjs"
+            test -f "${app}/Contents/Resources/LocalBackend/reference-resources.mjs"
+            test -f "${app}/Contents/Resources/LocalBackend/vendor/fonts/manrope-latin-wght-normal.woff2"
+          else
+            test -f "${app}/Contents/Resources/Fonts/Manrope-Variable.ttf"
+          fi
+          codesign --verify --deep --strict "${app}"
+          mv "dist/${{ matrix.architecture }}/${{ matrix.asset }}-macOS.zip" "${{ matrix.asset }}-macOS-${{ matrix.architecture }}.zip"
+          shasum -a 256 "${{ matrix.asset }}-macOS-${{ matrix.architecture }}.zip"
+      - name: Upload release asset
+        working-directory: ${{ matrix.dir }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            "${{ matrix.asset }}-macOS-${{ matrix.architecture }}.zip" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publish release
+        run: |
+          gh release edit "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft=false \
+            --latest

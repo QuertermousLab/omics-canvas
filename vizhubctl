@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Manage the Omics Canvas services (systemd user units).
+set -uo pipefail
+
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+units=(vizhub-hub.service genome-canvas.service vizhub-gateway.service)
+public="${VIZHUB_PUBLIC_URL:-http://171.65.68.140:8892}"
+
+usage() {
+  cat <<'EOF'
+Omics Canvas services on THOR
+
+Usage: ./vizhubctl <command>
+
+  status            services, health checks and public URLs
+  start | stop | restart [hub|canvas|gateway]   (default: all three; JupyterLab is never touched)
+  logs [hub|canvas|gateway]                      follow systemd logs (default: hub)
+  access                                         follow the port-8892 access and error logs
+  install                                        (re)link the systemd units from deploy/systemd and enable them
+  build                                          rebuild the web pages (hub/web -> hub/static)
+EOF
+}
+
+unit_for() {
+  case "${1:-}" in
+    hub) echo vizhub-hub.service ;;
+    canvas|genome-canvas) echo genome-canvas.service ;;
+    gateway) echo vizhub-gateway.service ;;
+    "") echo "${units[@]}" ;;
+    *) echo "unknown service: $1" >&2; exit 2 ;;
+  esac
+}
+
+check() {
+  local name="$1" url="$2" code
+  code="$(curl -s -o /dev/null -m 4 -w '%{http_code}' "$url")"
+  if [[ "$code" =~ ^(2|3) ]]; then printf '  %-26s ok    %s\n' "$name" "$url"; else printf '  %-26s FAIL  %s (HTTP %s)\n' "$name" "$url" "$code"; fi
+}
+
+status() {
+  echo "Services"
+  for u in "${units[@]}" jupyter-lab.service; do
+    printf '  %-26s %s\n' "$u" "$(systemctl --user is-active "$u" 2>/dev/null)"
+  done
+  echo "Health"
+  check "hub backend" http://127.0.0.1:8893/hub/api/health
+  check "Genome Canvas backend" http://127.0.0.1:8000/api/health
+  check "JupyterLab backend" http://127.0.0.1:8891/api
+  check "gateway: hub" http://127.0.0.1:8892/hub/
+  check "gateway: Genome Canvas" http://127.0.0.1:8892/genome-canvas/api/health
+  check "gateway: JupyterLab" http://127.0.0.1:8892/lab
+  echo "Open"
+  echo "  $public/hub/   (also $public/)"
+  echo "  $public/genome-canvas/   $public/spatial/   $public/single-cell/   $public/crispr/   $public/lab"
+}
+
+install_units() {
+  local d="$HOME/.config/systemd/user"
+  mkdir -p "$d/jupyter-lab.service.d"
+  for u in "${units[@]}"; do ln -sfn "$dir/deploy/systemd/$u" "$d/$u"; done
+  ln -sfn "$dir/deploy/systemd/jupyter-lab.service.d/vizhub-gateway.conf" "$d/jupyter-lab.service.d/vizhub-gateway.conf"
+  systemctl --user daemon-reload
+  systemctl --user enable "${units[@]}"
+  # Alias=genome-canvas-gateway.service: point at the unit name, not the file, so systemd sees one unit
+  ln -sfn vizhub-gateway.service "$d/genome-canvas-gateway.service"
+  systemctl --user daemon-reload
+}
+
+cmd="${1:-status}"
+case "$cmd" in
+  status) status ;;
+  start|stop|restart) systemctl --user "$cmd" $(unit_for "${2:-}"); sleep 2; status ;;
+  logs) journalctl --user -f -u "$(unit_for "${2:-hub}")" ;;
+  access) tail -F "$dir/gateway/logs/access.log" "$dir/gateway/logs/error.log" ;;
+  install) install_units ;;
+  build) cd "$dir/hub/web" && npm install --no-audit --no-fund && npm run build ;;
+  -h|--help|help) usage ;;
+  *) usage; exit 2 ;;
+esac

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  genome-canvas:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: genome-canvas
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: genome-canvas/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  omics-canvas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile the hub backend and converters
+        run: python -m py_compile hub/server.py hub/converters/*.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: hub/web/package-lock.json
+      - name: Build and type-check the web pages
+        working-directory: hub/web
+        run: |
+          npm ci
+          npm run build
+          npx tsc -p .

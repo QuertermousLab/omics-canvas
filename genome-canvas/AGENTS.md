@@ -26,22 +26,27 @@ the web app: plain HTML, CSS and ES modules.
 
 ## Where it runs
 
-- **Repository:** https://github.com/QuertermousLab/genome-canvas, branch `main`.
+- **Repository:** https://github.com/QuertermousLab/omics-canvas (renamed from `genome-canvas`
+  on 2026-10-12; GitHub redirects the old URL), branch `main`. Genome Canvas is the `genome-canvas/`
+  folder; the repository root also holds the Omics Canvas hub and its Mac app (see `../AGENTS.md`).
+  CI and release workflows are in the root `.github/workflows/`.
 - **Production server ("thor"):** `quanyiz@171.65.68.140`. It serves
-  `http://171.65.68.140:8892/genome-canvas/` from `~/baldar/IGV`, which is the
-  shared NFS directory `/nfs/baldar/quanyiz/IGV`. That directory **is a git checkout of `main`**
-  and is the live deployment: any file changed there is served immediately.
-- Backend: user systemd unit `genome-canvas.service` (127.0.0.1:8000). Gateway:
-  `genome-canvas-gateway.service` (Apache on 0.0.0.0:8892, `/genome-canvas/` →
-  backend, everything else → JupyterLab on 8891). Manage with
-  `./genome-canvasctl start|stop|restart|status|logs|access` on thor.
+  `http://171.65.68.140:8892/genome-canvas/` from `~/baldar/vizhub/genome-canvas`
+  (`/nfs/baldar/quanyiz/vizhub` is the repository checkout and the live deployment; the old path
+  `~/baldar/IGV` is a symlink to this folder). Any file changed there is served immediately.
+- Backend: user systemd unit `genome-canvas.service` (127.0.0.1:8000), unit file in
+  `../deploy/systemd/`. Gateway: `vizhub-gateway.service` (alias `genome-canvas-gateway.service`;
+  Apache on 0.0.0.0:8892 with `../gateway/apache.conf`: `/genome-canvas/` → backend, `/hub/`,
+  `/spatial/`, `/single-cell/`, `/crispr/` → Omics Canvas, everything else → JupyterLab on 8891).
+  Manage with `../vizhubctl status|restart canvas|logs canvas` (or `./genome-canvasctl`).
 - Lab config `genomecanvas.config.json` is **not** in git (data roots, dbSNP
-  path `dbSnpHg38`, 1000 Genomes LD panel `ldReferenceHg19`). Runtime state lives in
-  `.genomecanvas/` (workspaces.sqlite3, sessions = share links, profiles =
-  Favorites, apache logs) and must never be deleted or committed.
+  path `dbSnpHg38`, 1000 Genomes LD panel `ldReferenceHg19`). Its `./data` root pins
+  `"id": "8b314e678286"` (the id of the old `~/baldar/IGV/data` path) so share links made before
+  the move keep working — never drop it. Runtime state lives in `.genomecanvas/` (workspaces.sqlite3,
+  sessions = share links, profiles = Favorites) and must never be deleted or committed.
 - Other lab machines (e.g. cvmed-loki) see the same NFS directory but have **no
   SSH key for thor** and cannot reach port 8892. Give the user commands to run on
-  thor. Thor's Apache logs are readable from NFS at `.genomecanvas/apache/access.log`.
+  thor. Gateway logs are in `../gateway/logs/`.
 - Temporary deployment while thor is down (see README "Running Temporarily on
   Another Server"): `./start.sh --host 127.0.0.1 --port 8000` plus an SSH tunnel.
   Stop it before thor resumes, because both would write the same SQLite database.
@@ -53,10 +58,9 @@ the web app: plain HTML, CSS and ES modules.
    when they are ready to go live.
 2. Commit identity for this repo: `Genome Canvas Contributors
    <genome-canvas@users.noreply.github.com>` (set in the repo config; do not use a
-   personal email). The NFS directory needs `core.fileMode false` (files are 0777 on NFS) and
-   `safe.directory /nfs/baldar/quanyiz/IGV` (the directory is owned by another
-   account). Set these on each new machine.
-3. Run `npm test` (Python unittest + Node test runner, offline). CI runs the same
+   personal email). The NFS checkout (repository root `/nfs/baldar/quanyiz/vizhub`) needs
+   `core.fileMode false` (files are 0777 on NFS); set it on each new machine.
+3. Run `npm test` in `genome-canvas/` (Python unittest + Node test runner, offline). CI runs the same
    suite on Python 3.8 / Node 20, so keep Python syntax 3.8-compatible.
 4. Push `main`; the NFS checkout on thor needs `git pull` (or work directly in it
    for live fixes). **Restart the backend on thor after any `server.py` change**
@@ -200,3 +204,6 @@ The current macOS release is **1.5.2**. Check
   - `node_modules/`: only needed for `npm run vendor:update`.
   - Apache logs in `.genomecanvas/apache/`: truncate them rather than delete them; Apache keeps them open.
   - `data/.claude/`.
+- **2026-10-12, 1.6.0:** the repository became Omics Canvas (Genome Canvas moved to
+  `genome-canvas/`, history kept); transparent PNG export; pinned data-root ids; link to the
+  Omics Canvas home page on the lab server. Released together with Omics Canvas 1.0.0.

@@ -1,0 +1,12 @@
+# Omics Canvas: local state, environments and build output (Genome Canvas has its own genome-canvas/.gitignore)
+/state/
+/hub/venv/
+/hub/static/
+/hub/config.json
+/hub/web/node_modules/
+/gateway/logs/
+/gateway/run/
+/desktop/*/dist/
+__pycache__/
+*.py[cod]
+.DS_Store
