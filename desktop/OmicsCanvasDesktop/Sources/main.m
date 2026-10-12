@@ -1319,6 +1319,20 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     [self setStatus:@"Server unavailable" state:@"error"];
     self.statusLabel.toolTip = [error.localizedDescription stringByAppendingString:@" — from outside Stanford, connect the VPN."];
     self.progressBar.hidden = YES;
+    // a themed explanation instead of an empty white page
+    BOOL dark = GCAppearanceIsDark(NSApp.effectiveAppearance);
+    NSString *retry = [self pageURL:[NSString stringWithFormat:@"/%@/", TVViewerForKind(self.kind)[@"path"]]].absoluteString ?: @"";
+    NSString *server = [self serverRoot].absoluteString ?: @"";
+    NSString *html = [NSString stringWithFormat:
+        @"<!doctype html><meta charset=utf-8><style>html,body{margin:0;height:100%%;background:%@;color:%@;font:14px -apple-system,sans-serif}"
+        "main{height:100%%;display:grid;place-content:center;text-align:center;gap:6px;padding:24px}h1{font:600 19px Georgia,serif;margin:0 0 4px}"
+        "p{margin:0;color:%@;max-width:440px}code{font:12px ui-monospace,monospace}a{color:%@;font-weight:600}</style>"
+        "<main><h1>The Omics Canvas server is not reachable</h1><p>Could not connect to <code>%@</code>.</p>"
+        "<p>From outside Stanford, connect the VPN first. Use <b>Server…</b> in the sidebar for another address.</p>"
+        "<p style='margin-top:10px'><a href='%@'>Try again</a></p></main>",
+        dark ? @"#242933" : @"#e5e9f0", dark ? @"#eceff4" : @"#2e3440", dark ? @"#9aa5b8" : @"#69728a", dark ? @"#88c0d0" : @"#4c7a86",
+        server, retry];
+    [self.webView loadHTMLString:html baseURL:nil];
     [self scheduleSnapshotCaptureIfRequested];  // preview builds (CI) cannot reach the lab server: capture the window anyway
 }
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView { [self setStatus:@"Page process stopped" state:@"error"]; }
