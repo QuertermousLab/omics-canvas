@@ -1302,6 +1302,7 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     self.progressBar.hidden = YES;
+    if (![webView.URL.scheme isEqualToString:@"http"] && ![webView.URL.scheme isEqualToString:@"https"]) return;  // the local "not reachable" page
     NSString *title = webView.title ?: @"";
     NSRange suffix = [title rangeOfString:@" · Omics Canvas"];
     if (suffix.location != NSNotFound) title = [title substringToIndex:suffix.location];
