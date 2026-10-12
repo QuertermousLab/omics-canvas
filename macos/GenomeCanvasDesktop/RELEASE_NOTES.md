@@ -1,5 +1,11 @@
 Native Genome Canvas Desktop builds for Apple Silicon and Intel Macs.
 
+## What's new in 1.6.0
+
+- Export PNG now has a transparent background (the light canvas palette is kept), so figures drop onto slides and posters of any color
+- Genome Canvas now lives in the [Omics Canvas](https://github.com/QuertermousLab/omics-canvas) repository, next to the new Omics Canvas app for spatial, single-cell and CRISPR data; on the lab server the web page links back to the Omics Canvas home page
+- Data roots can pin their id in the server configuration, so share links keep working when a data folder moves
+
 ## What's new in 1.5.2
 
 - Export PNG is about five times faster on dense views (for example a 2 Mb region with a Hi-C heatmap: 3.5 s → 0.7 s), with identical output

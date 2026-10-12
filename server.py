@@ -159,7 +159,9 @@ def load_settings():
         if LOCAL_MODE and path == Path("/"):
             label = "This Mac"
 
-        root_id = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:12]
+        # An "id" in the config pins the root's id, so share links keep working after the folder moves.
+        pinned = item.get("id") if isinstance(item, dict) else None
+        root_id = str(pinned) if pinned else hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:12]
         roots[root_id] = {"path": path, "label": str(label)}
 
     if not roots:

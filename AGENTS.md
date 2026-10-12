@@ -89,8 +89,10 @@ the web app: plain HTML, CSS and ES modules.
 - **Fonts:** Manrope (UI), Fraunces (headings), JetBrains Mono (loci, code) in
   both themes and in the Mac app.
 - **Layout:** classic: top bar, left track library, canvas toolbar row.
-- **PNG export is always white/light** regardless of theme
-  (`exportPNG` switches to `LIGHT_CANVAS` around `toSVG`).
+- **PNG export uses the light palette on a transparent background** regardless of theme
+  (`exportPNG` switches to `LIGHT_CANVAS` around `toSVG`; `transparentBackground` turns the SVG backdrop and
+  full-width white track clears into `fill="none"`, keeping small label halos). Changed from a white
+  background at the user's request on 2026-10-12.
 - **Logo:** `public/favicon.svg` (signal peak + gene row on a teal tile);
   `macos/.../GenomeCanvas-1024.png` is rendered from it.
 - The user approved publishing the lab's internal paths and server address in the public repo.
@@ -134,7 +136,7 @@ vectors during export:
 from 3.5 s to 0.7 s with pixel-identical output (`tests/test_hic_heatmap.mjs`
 covers it). Other rules:
 - Export swaps the canvas palette to `LIGHT_CANVAS` only around `toSVG` and
-  restores it without a repaint, since the screen is not redrawn.
+  restores it without a repaint, since the screen is not redrawn. The PNG background is transparent.
 - The button is disabled while an export runs.
 
 To profile export, use the Playwright setup below. In `addInitScript`, wrap

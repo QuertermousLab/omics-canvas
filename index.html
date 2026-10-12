@@ -18,14 +18,14 @@
     })();
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261007.4">
+  <link rel="stylesheet" href="styles.css?v=20261012.1">
   <!-- Start the large engine download and the module graph in parallel with
        the stylesheet. Keep these hrefs identical to the import specifiers in
        app.js (including ?v=) so the preloaded responses are reused. -->
   <link rel="preload" href="vendor/fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/igv.min.js?v=20261005-reference-cache" as="script">
-  <link rel="modulepreload" href="app.js?v=20261008.1">
+  <link rel="modulepreload" href="app.js?v=20261012.1">
   <link rel="modulepreload" href="track-colors.mjs?v=20260821.4">
   <link rel="modulepreload" href="signal-style.mjs?v=20261007.2">
   <link rel="modulepreload" href="annotation-style.mjs?v=20260821.3">
@@ -109,6 +109,11 @@
         <button class="icon-button ghost rail-toggle" id="rail-toggle" type="button" aria-label="Toggle track panel" aria-controls="track-rail" aria-expanded="true" title="Toggle track panel"><svg class="icon"><use href="#i-panel"/></svg></button>
         <img class="brand-mark" src="favicon.svg" alt="" width="26" height="26">
         <strong class="brand-name" id="app-name">Genome Canvas</strong>
+        <a class="hub-home-button" id="hub-home" href="/hub/" title="Back to the Omics Canvas home page" hidden><img src="/hub/static/favicon.svg" alt="" width="16" height="16">Omics Canvas</a>
+        <script>
+          // Served through THOR's port-8892 gateway (not in the Mac app or This Mac mode): link back to the hub.
+          if (location.pathname.indexOf("/genome-canvas/") === 0 && !document.documentElement.classList.contains("desktop-embedded")) document.getElementById("hub-home").hidden = false;
+        </script>
       </div>
 
       <section class="browser-toolbar" aria-label="Genome navigation">
@@ -401,6 +406,6 @@
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
   <script defer src="vendor/igv.min.js?v=20261005-reference-cache"></script>
-  <script type="module" src="app.js?v=20261008.1"></script>
+  <script type="module" src="app.js?v=20261012.1"></script>
 </body>
 </html>

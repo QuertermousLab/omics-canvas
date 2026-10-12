@@ -2178,6 +2178,19 @@ function svgRootSize(svgText) {
 
 let exportInProgress = false;
 
+// PNG exports have a transparent background: the SVG's backdrop and the full-width white rectangles IGV
+// clears each track with become fill="none". Small white boxes (label halos, the track-name box) stay, so
+// names remain readable where they cross features.
+function transparentBackground(svgText, width) {
+  const white = /fill="(?:white|#fff|#ffffff|rgb\(\s*255,\s*255,\s*255\s*\))"/i;
+  return svgText.replace(/<rect\b[^>]*>/g, (tag) => {
+    if (!white.test(tag)) return tag;
+    const w = tag.match(/\bwidth="([\d.]+)(%?)"/);
+    const full = /id="svg_output_backdrop"/.test(tag) || (w && (w[2] === "%" || Number(w[1]) >= width * 0.5));
+    return full ? tag.replace(white, 'fill="none"') : tag;
+  });
+}
+
 async function exportPNG() {
   if (!state.browser || exportInProgress) return;
   exportInProgress = true;
@@ -2187,8 +2200,9 @@ async function exportPNG() {
   // Let the status and disabled button paint before the synchronous SVG render.
   await new Promise((resolve) => window.requestAnimationFrame(() => window.setTimeout(resolve, 0)));
   try {
-    // Exported figures always use the light (publication) canvas palette. The
-    // export renders into its own SVG context, so the screen needs no repaint.
+    // Exported figures always use the light (publication) canvas palette on a
+    // transparent background. The export renders into its own SVG context, so
+    // the screen needs no repaint.
     let svgText;
     const screenPalette = canvasTheme();
     setCanvasTheme(LIGHT_CANVAS);
@@ -2198,6 +2212,7 @@ async function exportPNG() {
       setCanvasTheme(screenPalette);
     }
     const { width, height } = svgRootSize(svgText);
+    svgText = transparentBackground(svgText, width);
     const scale = Math.min(2, 8192 / Math.max(width, height));
     const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
     const objectURL = URL.createObjectURL(blob);
@@ -2210,8 +2225,6 @@ async function exportPNG() {
     canvas.width = Math.max(1, Math.round(width * scale));
     canvas.height = Math.max(1, Math.round(height * scale));
     const context = canvas.getContext("2d");
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     URL.revokeObjectURL(objectURL);
 

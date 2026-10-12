@@ -175,6 +175,10 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .topbar-brand { grid-area: brand; display: flex; align-items: center; gap: 9px; min-width: 0; }
 .brand-mark { display: block; }
 .brand-name { color: var(--topbar-text); font-family: var(--heading-font); font-size: 15px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
+/* Link back to the Omics Canvas (only when served through THOR's gateway) */
+.hub-home-button { display: inline-flex; align-items: center; gap: 6px; height: 26px; margin-left: 4px; padding: 0 9px 0 5px; border: 1px solid var(--border-strong); border-radius: 99px; background: var(--surface); color: var(--text-2); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.hub-home-button:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.hub-home-button img { display: block; border-radius: 4px; }
 .topbar .quiet-button, .topbar .icon-button.ghost { color: var(--topbar-muted); }
 .topbar .quiet-button:hover, .topbar .icon-button.ghost:hover { background: var(--topbar-hover); color: var(--topbar-text); }
 .browser-toolbar { grid-area: nav; display: flex; align-items: center; gap: 8px; min-width: 0; }

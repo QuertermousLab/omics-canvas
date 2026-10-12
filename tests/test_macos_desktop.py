@@ -12,7 +12,7 @@ class MacOSDesktopClientTests(unittest.TestCase):
         with (MAC_APP / "Resources" / "Info.plist").open("rb") as stream:
             info = plistlib.load(stream)
         self.assertEqual(info["CFBundleIdentifier"], "org.genomecanvas.desktop")
-        self.assertEqual(info["CFBundleShortVersionString"], "1.5.2")
+        self.assertEqual(info["CFBundleShortVersionString"], "1.6.0")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["NSAppTransportSecurity"]["NSAllowsArbitraryLoadsInWebContent"])
         self.assertNotIn("NSAllowsArbitraryLoads", info["NSAppTransportSecurity"])
