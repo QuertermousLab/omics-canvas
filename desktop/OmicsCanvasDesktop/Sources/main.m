@@ -287,6 +287,8 @@ static NSDictionary<NSString *, NSString *> *TVViewerForKind(NSString *kind) {
     return TVViewers().firstObject;
 }
 
+static NSString *const TVGenomeCanvasBundleID = @"org.genomecanvas.desktop";
+
 static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     for (NSDictionary<NSString *, NSString *> *viewer in TVViewers()) {
         NSString *prefix = [NSString stringWithFormat:@"/%@/", viewer[@"path"]];
@@ -1358,7 +1360,10 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     if (!url) return;
     NSURL *root = [self serverRoot];
     BOOL sameServer = root && [url.host isEqualToString:root.host] && ((url.port == nil && root.port == nil) || [url.port isEqual:root.port]);
-    if (sameServer && [url.path hasPrefix:@"/genome-canvas/"] && ![url.path hasPrefix:@"/genome-canvas/api/"]) {
+    // NSURL.path drops the trailing slash ("/genome-canvas/?locus=…" -> "/genome-canvas"); the components keep it
+    NSString *path = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:YES].path ?: @"";
+    BOOL canvasPage = [path isEqualToString:@"/genome-canvas"] || ([path hasPrefix:@"/genome-canvas/"] && ![path hasPrefix:@"/genome-canvas/api/"]);
+    if (sameServer && canvasPage) {
         NSURLComponents *link = [NSURLComponents componentsWithString:@"genomecanvas://open"];
         NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray array];
         for (NSURLQueryItem *item in [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO].queryItems ?: @[]) {
@@ -1373,12 +1378,43 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
             [items addObject:item];
         }
         link.queryItems = items.count ? items : nil;
-        if (link.URL && [[NSWorkspace sharedWorkspace] URLForApplicationToOpenURL:link.URL]) {
-            [[NSWorkspace sharedWorkspace] openURL:link.URL];
+        NSURL *app = [self genomeCanvasApp];
+        if (link.URL && app) {
+            // sent to that app directly: Launch Services may not have registered the scheme of a freshly copied app yet
+            NSWorkspaceOpenConfiguration *configuration = [NSWorkspaceOpenConfiguration configuration];
+            configuration.activates = YES;
+            [[NSWorkspace sharedWorkspace] openURLs:@[link.URL] withApplicationAtURL:app configuration:configuration
+                                  completionHandler:^(NSRunningApplication *running, NSError *error) {
+                if (!error) return;
+                dispatch_async(dispatch_get_main_queue(), ^{ [[NSWorkspace sharedWorkspace] openURL:url]; });
+            }];
             return;
+        }
+        if ([[NSWorkspace sharedWorkspace] URLForApplicationWithBundleIdentifier:TVGenomeCanvasBundleID]) {
+            [self setStatus:@"Update Genome Canvas.app to 1.7 to open links in it" state:@"ready"];
         }
     }
     [[NSWorkspace sharedWorkspace] openURL:url];
+}
+
+// Genome Canvas.app (1.7 or later: it declares genomecanvas:// links), or nil
+- (NSURL *)genomeCanvasApp {
+    NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
+    NSMutableArray<NSURL *> *candidates = [NSMutableArray array];
+    NSURL *handler = [workspace URLForApplicationToOpenURL:[NSURL URLWithString:@"genomecanvas://open"]];
+    if (handler) [candidates addObject:handler];
+    NSURL *byId = [workspace URLForApplicationWithBundleIdentifier:TVGenomeCanvasBundleID];
+    if (byId) [candidates addObject:byId];
+    for (NSString *dir in @[@"/Applications", [NSHomeDirectory() stringByAppendingPathComponent:@"Applications"]]) {
+        [candidates addObject:[NSURL fileURLWithPath:[dir stringByAppendingPathComponent:@"Genome Canvas.app"]]];
+    }
+    for (NSURL *candidate in candidates) {
+        NSDictionary *info = [NSBundle bundleWithURL:candidate].infoDictionary;
+        for (NSDictionary *type in info[@"CFBundleURLTypes"] ?: @[]) {
+            if ([type[@"CFBundleURLSchemes"] containsObject:@"genomecanvas"]) return candidate;
+        }
+    }
+    return nil;
 }
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {

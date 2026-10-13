@@ -1,5 +1,11 @@
-Native Mac apps for Apple Silicon and Intel Macs: **Genome Canvas 1.7.0** (genome browser) and
-**Omics Canvas 1.1.0** (spatial, single-cell and CRISPR viewers).
+Native Mac apps for Apple Silicon and Intel Macs: **Omics Canvas 1.1.1** (spatial, single-cell and CRISPR viewers)
+and **Genome Canvas 1.7.0** (genome browser).
+
+## Omics Canvas 1.1.1
+
+- Fixed: links to Genome Canvas (CRISPR explorer: enhancer and gene buttons) opened the browser even with
+  Genome Canvas.app installed. They now open in Genome Canvas.app (1.7.0 or later), also right after it was copied
+  to Applications; with an older Genome Canvas.app they still open in the browser and the status line says to update it
 
 ## Omics Canvas 1.1.0
 
