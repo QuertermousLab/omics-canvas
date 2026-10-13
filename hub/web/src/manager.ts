@@ -12,9 +12,13 @@ interface Dataset {
   bytes?: number; screenKind?: string; stats?: Record<string, number>;
   /** made of samples of other datasets (nothing copied) */
   combined?: boolean; description?: string;
+  /** combined datasets that hold all of this one's samples: it is listed inside them */
+  inCombined?: string[];
+  /** a project folder whose samples were edited here (project.json unchanged): the folder's own samples */
+  edited?: boolean; folderSlides?: Dataset['slides'];
 }
-/** one sample of a combined dataset: a slide of one of the workspace's datasets */
-interface Pick { dataset: string; slide: string; title: string }
+/** one sample of a combined or edited dataset: a slide of one of the workspace's datasets; `id` = its current id */
+interface Pick { dataset: string; slide: string; title: string; id?: string }
 interface Job {
   id: string; datasetId: string; title: string; source: string; out: string; type: string; kind?: Kind; status: string;
   progress: number; message: string; created: number; started?: number; finished?: number; url?: string; log?: string[];
@@ -88,6 +92,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
       <section class="card mgr__list">
         <div class="mgr__bar"><h2>Datasets</h2>
           ${kind !== 'crispr' ? '<button type="button" class="btn btn--light btn--sm" data-m-combine title="One dataset made of samples of your datasets — time points, conditions, sections"><svg class="icon"><use href="#i-layers"/></svg>Combine datasets</button>' : ''}
+          <label class="check small muted" data-m-inside-wrap hidden><input type="checkbox" data-m-inside /> <span data-m-inside-label></span></label>
           <input class="input" type="search" placeholder="Filter" data-m-q aria-label="Filter datasets" /></div>
         <div class="table-wrap"><table class="table ds" data-m-table></table></div>
       </section>
@@ -99,8 +104,9 @@ export function mountManager(root: HTMLElement, kind: Kind) {
           <div><span class="eyebrow">Samples, in this order</span><ol class="combine__picked" data-m-picked></ol></div>
           <div><span class="eyebrow">Add samples from your ${P.noun}</span><input class="input" type="search" placeholder="Filter" data-m-cq aria-label="Filter samples" />
             <ul class="combine__pool" data-m-pool></ul></div>
+          <p class="small muted" data-m-cnote hidden>The folder's <span class="mono">project.json</span> is not changed: the samples are edited here, and <b>Restore the folder's samples</b> undoes it.</p>
           <p class="err ws-err" data-m-cerr hidden></p>
-          <div class="ws-foot"><button type="button" class="btn btn--quiet" data-m-ccancel>Cancel</button><button type="submit" class="btn btn--primary" data-m-csave>Create</button></div>
+          <div class="ws-foot"><button type="button" class="btn btn--quiet combine__restore" data-m-crestore hidden>Restore the folder's samples</button><button type="button" class="btn btn--quiet" data-m-ccancel>Cancel</button><button type="submit" class="btn btn--primary" data-m-csave>Create</button></div>
         </form>
       </dialog>
       <section class="mgr__jobs" data-m-jobs-block hidden>
@@ -146,25 +152,34 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     }
     return [d.combined ? `combined: ${d.slides.length} sample${d.slides.length === 1 ? '' : 's'}` : '',
       d.nCells ? `${d.nCells.toLocaleString()} cells` : '', d.nGenes ? `${d.nGenes.toLocaleString()} genes` : '',
-      d.slides.length > 1 && !d.combined ? `${d.slides.length} slides` : '', d.technology ?? '', d.species ?? '', d.bytes && d.layout !== 'project' ? fmtBytes(d.bytes) : '']
+      d.slides.length > 1 && !d.combined ? `${d.slides.length} samples${d.edited ? ' (edited)' : ''}` : '', d.technology ?? '', d.species ?? '', d.bytes && d.layout !== 'project' ? fmtBytes(d.bytes) : '']
       .filter(Boolean).join(' · ');
   };
 
   function renderDatasets() {
     const q = $<HTMLInputElement>('q').value.trim().toLowerCase();
-    const shown = datasets.filter((d) => !q || `${d.title} ${d.id} ${d.source} ${d.technology ?? ''} ${d.species ?? ''}`.toLowerCase().includes(q));
+    // datasets inside a combined one are listed under it (shown on their own with the switch, e.g. to rename them)
+    const inside = datasets.filter((d) => d.inCombined?.length);
+    $('inside-wrap').hidden = !inside.length;
+    $('inside-label').textContent = `Show the ${inside.length} dataset${inside.length === 1 ? '' : 's'} inside combined ones`;
+    const showInside = $<HTMLInputElement>('inside').checked;
+    const titleOf = new Map(datasets.map((d) => [d.id, d.title]));
+    const shown = datasets.filter((d) => (showInside || !d.inCombined?.length)
+      && (!q || `${d.title} ${d.id} ${d.source} ${d.technology ?? ''} ${d.species ?? ''} ${d.slides.map((sl) => sl.title).join(' ')}`.toLowerCase().includes(q)));
     if (!datasets.length) {
       $('table').innerHTML = `<tbody><tr><td class="empty">No ${P.noun} in your workspace yet — <a href="#add">add one below</a>.</td></tr></tbody>`;
       return;
     }
     $('table').innerHTML = `<thead><tr><th>Dataset</th><th>Link</th><th>Source</th><th></th></tr></thead><tbody>${shown.map((d) => `
       <tr data-id="${esc(d.id)}">
-        <td class="ds__title"><a href="${esc(d.url)}">${esc(d.title)}</a><div class="small muted">${esc(facts(d))}</div></td>
+        <td class="ds__title"><a href="${esc(d.url)}">${esc(d.title)}</a>${d.inCombined?.length ? ` <span class="chip">in ${esc(d.inCombined.map((c) => titleOf.get(c) ?? c).join(', '))}</span>` : ''}
+          <div class="small muted">${esc(facts(d))}</div>
+          ${d.combined || d.slides.length > 1 ? `<ol class="ds__samples small">${d.slides.map((sl) => `<li>${esc(sl.title)}${sl.fromTitle && sl.fromTitle !== sl.title ? ` <span class="muted">· ${esc(sl.fromTitle)}</span>` : ''}</li>`).join('')}</ol>` : ''}</td>
         <td class="nowrap"><a class="mono small" href="${esc(d.url)}">${esc(d.url)}</a>
           <button type="button" class="icon-btn sm ghost" data-act="copy" title="Copy the full link" aria-label="Copy link"><svg class="icon"><use href="#i-copy"/></svg></button></td>
         <td class="ds__src"><span class="mono small" title="${esc(d.source)}">${esc(d.source)}</span><div class="small muted">added ${fmtAgo(d.added)}</div></td>
         <td class="nowrap ds__acts"><a class="btn btn--primary btn--sm" href="${esc(d.url)}">Open</a>
-          ${d.combined ? '<button type="button" class="btn btn--quiet btn--sm" data-act="samples">Edit samples</button>' : ''}
+          ${d.combined || d.layout === 'project' ? '<button type="button" class="btn btn--quiet btn--sm" data-act="samples">Edit samples</button>' : ''}
           <button type="button" class="btn btn--quiet btn--sm" data-act="rename">Rename</button>
           <button type="button" class="btn btn--quiet btn--sm" data-act="remove">Remove</button></td>
       </tr>`).join('') || '<tr><td colspan="4" class="empty">Nothing matches the filter.</td></tr>'}</tbody>`;
@@ -189,7 +204,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     if (btn.dataset.act === 'samples') openCombine(d);
     if (btn.dataset.act === 'remove') {
       const usedBy = datasets.filter((x) => x.combined && x.id !== d.id && x.slides.some((sl) => sl.fromDataset === d.id));
-      if (!confirm(`Remove “${d.title}” from your workspace?\n\nIts link ${d.url} stops working. Source data is never deleted.${d.combined ? '\nThe datasets it combines are kept.' : ''}${usedBy.length ? `\nIts files stay for ${usedBy.map((x) => `“${x.title}”`).join(', ')}, which combines it.` : ''}`)) return;
+      if (!confirm(`Remove “${d.title}” from your workspace?\n\nIts link ${d.url} stops working. Source data is never deleted.${d.combined ? '\nThe datasets it combines are kept and show in the list again.' : ''}${usedBy.length ? `\nIts files stay for ${usedBy.map((x) => `“${x.title}”`).join(', ')}, which combines it.` : ''}`)) return;
       const generated = !d.combined && (/\.vizhub\/?$/.test(d.root) || d.root.includes('/vizhub/state/converted/'));
       const files = generated && confirm(`Also delete the converted viewer files?\n\n${d.root}\n\nOK = delete them · Cancel = keep them (adding the source again then needs no conversion).`);
       try {
@@ -201,6 +216,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     }
   });
   $<HTMLInputElement>('q').oninput = renderDatasets;
+  $<HTMLInputElement>('inside').onchange = renderDatasets;
 
   // ---------------------------------------------------------------- combined datasets
   let editing: Dataset | null = null;
@@ -211,12 +227,13 @@ export function mountManager(root: HTMLElement, kind: Kind) {
 
   function openCombine(d: Dataset | null) {
     editing = d;
-    picks = d ? d.slides.map((sl) => ({ dataset: sl.fromDataset!, slide: sl.fromSlide!, title: sl.title })) : [];
+    picks = d ? d.slides.map((sl) => ({ dataset: sl.fromDataset ?? d.id, slide: sl.fromSlide ?? sl.id, title: sl.title, id: sl.id })) : [];
     const f = cform();
     f.reset();
     (f.elements.namedItem('title') as HTMLInputElement).value = d?.title ?? '';
     (f.elements.namedItem('description') as HTMLTextAreaElement).value = d?.description ?? '';
     $('ctitle').textContent = d ? `Samples of “${d.title}”` : 'Combine datasets';
+    $('crestore').hidden = !d?.edited;
     $('csave').textContent = d ? 'Save' : 'Create';
     $('cerr').hidden = true;
     renderCombine();
@@ -226,32 +243,36 @@ export function mountManager(root: HTMLElement, kind: Kind) {
   function renderCombine() {
     const byId = new Map(datasets.map((d) => [d.id, d]));
     $('picked').innerHTML = picks.length ? picks.map((p, i) => {
-      const d = byId.get(p.dataset), sl = d?.slides.find((x) => x.id === p.slide);
+      const d = byId.get(p.dataset), sl = d && [...d.slides, ...(d.folderSlides ?? [])].find((x) => (x.fromSlide ?? x.id) === p.slide || x.id === p.slide);
       return `<li data-i="${i}"><input class="input" value="${esc(p.title)}" data-k="title" aria-label="Sample name" />
-        <span class="small muted combine__from" title="${esc(d ? sampleName(d, sl!) : p.dataset)}">${esc(d ? sampleName(d, sl!) : `${p.dataset} (removed)`)}</span>
+        <span class="small muted combine__from" title="${esc(d && sl ? sampleName(d, sl) : p.dataset)}">${esc(d && sl ? sampleName(d, sl) : `${p.dataset} (removed)`)}</span>
         <button type="button" class="icon-btn sm ghost" data-k="up" title="Move up" aria-label="Move up" ${i ? '' : 'disabled'}><svg class="icon"><use href="#i-up"/></svg></button>
         <button type="button" class="icon-btn sm ghost combine__down" data-k="down" title="Move down" aria-label="Move down" ${i < picks.length - 1 ? '' : 'disabled'}><svg class="icon"><use href="#i-up"/></svg></button>
         <button type="button" class="btn btn--quiet btn--xs" data-k="drop">Remove</button></li>`;
     }).join('') : '<li class="muted small">Add two or more samples below.</li>';
     const q = $<HTMLInputElement>('cq').value.trim().toLowerCase();
     const chosen = new Set(picks.map((p) => `${p.dataset}/${p.slide}`));
-    const pool = datasets.filter((d) => !d.combined && d.id !== editing?.id)
-      .flatMap((d) => d.slides.map((sl) => ({ d, sl })))
+    // other datasets' samples; an edited project also offers its folder's own samples back
+    const own = editing && !editing.combined ? (editing.folderSlides ?? editing.slides).map((sl) => ({ d: editing!, sl })) : [];
+    const pool = [...own, ...datasets.filter((d) => !d.combined && d.id !== editing?.id)
+      .flatMap((d) => d.slides.map((sl) => ({ d, sl })))]
       .filter(({ d, sl }) => !q || `${d.title} ${sl.title} ${d.technology ?? ''}`.toLowerCase().includes(q));
     $('pool').innerHTML = pool.map(({ d, sl }) => {
       const on = chosen.has(`${d.id}/${sl.id}`);
       return `<li><button type="button" data-ds="${esc(d.id)}" data-sl="${esc(sl.id)}" ${on ? 'disabled' : ''}>
         <svg class="icon"><use href="#i-plus"/></svg><span>${esc(sampleName(d, sl))}</span>
-        <small>${esc([sl.nCells ?? (d.slides.length === 1 ? d.nCells : null) ? `${(sl.nCells ?? d.nCells)!.toLocaleString()} cells` : '', d.technology ?? ''].filter(Boolean).join(' · '))}${on ? ' · added' : ''}</small></button></li>`;
+        <small>${esc([sl.nCells ?? (d.slides.length === 1 ? d.nCells : null) ? `${(sl.nCells ?? d.nCells)!.toLocaleString()} cells` : '', d.technology ?? '',
+          d.inCombined?.some((c) => c !== editing?.id) ? `in ${d.inCombined.filter((c) => c !== editing?.id).map((c) => datasets.find((x) => x.id === c)?.title ?? c).join(', ')}` : ''].filter(Boolean).join(' · '))}${on ? ' · added' : ''}</small></button></li>`;
     }).join('') || `<li class="muted small">${datasets.some((d) => !d.combined) ? 'Nothing matches the filter.' : `Add ${P.noun} first.`}</li>`;
     $<HTMLButtonElement>('csave').disabled = picks.length < (editing ? 1 : 2);
+    $('cnote').hidden = !editing || !!editing.combined;
   }
 
   $('cq').addEventListener('input', renderCombine);
   $('pool').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-ds]');
     if (!b) return;
-    const d = datasets.find((x) => x.id === b.dataset.ds)!, sl = d.slides.find((x) => x.id === b.dataset.sl)!;
+    const d = datasets.find((x) => x.id === b.dataset.ds)!, sl = [...(d.folderSlides ?? []), ...d.slides].find((x) => x.id === b.dataset.sl)!;
     picks.push({ dataset: d.id, slide: sl.id, title: d.slides.length > 1 ? sl.title : d.title });
     renderCombine();
   });
@@ -269,6 +290,15 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     renderCombine();
   });
   $('ccancel').onclick = () => cdlg().close();
+  $('crestore').onclick = async () => {
+    if (!editing || !confirm(`Show the samples of the folder again (${(editing.folderSlides ?? []).map((x) => x.title).join(', ')})? Your changes to the samples are dropped.`)) return;
+    try {
+      const d = await api<Dataset>(`/hub/api/datasets/${editing.id}/restore`, { method: 'POST' });
+      cdlg().close();
+      toast(`Restored the samples of <a href="${esc(d.url)}">${esc(d.title)}</a>`, 5000);
+      loadDatasets();
+    } catch (err) { $('cerr').textContent = (err as Error).message; $('cerr').hidden = false; }
+  };
   $('combine')?.addEventListener('click', () => openCombine(null));
   $('cform').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -571,6 +601,14 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     if (!ws) return;
     jobs = [];
     await Promise.all([loadDatasets().catch((e) => { $('table').innerHTML = `<tbody><tr><td class="empty err">${esc(e.message)}</td></tr></tbody>`; }), loadJobs().catch(() => {})]);
+    // ?combine=1 / ?edit=<dataset>: open the samples dialog (the Mac app's "Combine Datasets…" / "Edit Samples…")
+    if (kind !== 'crispr' && (params.has('combine') || params.has('edit'))) {
+      const d = datasets.find((x) => x.id === params.get('edit'));
+      if (params.has('combine') || d) openCombine(d ?? null);
+      params.delete('combine');
+      params.delete('edit');
+      history.replaceState(null, '', `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`);
+    }
     if (!browsed) {
       browsed = true;
       const want = params.get('path');

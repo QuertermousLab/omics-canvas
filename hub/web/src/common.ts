@@ -144,7 +144,16 @@ export function initChrome(navId: string) {
       setWorkspace(w);
       return w;
     },
-    async datasets(kind: string) { await loadWorkspace(); return current ? api(`/hub/api/datasets?kind=${encodeURIComponent(kind)}`) : []; },
+    // the app's sidebar list: as the dataset page, without those shown inside a combined dataset
+    async datasets(kind: string) {
+      await loadWorkspace();
+      if (!current) return [];
+      const list = await api<{ inCombined?: string[] }[]>(`/hub/api/datasets?kind=${encodeURIComponent(kind)}`);
+      return list.filter((d) => !d.inCombined?.length);
+    },
+    // sidebar context menu of the Mac app (the Datasets page offers the same)
+    renameDataset: (id: string, title: string) => api(`/hub/api/datasets/${encodeURIComponent(id)}`, { method: 'PATCH', body: { title } }),
+    removeDataset: (id: string) => api(`/hub/api/datasets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     state: () => ({ page: navId, path: location.pathname + location.search, title: document.title, workspace: current }),
   };
   postToDesktop({ type: 'page', page: navId, path: location.pathname + location.search });

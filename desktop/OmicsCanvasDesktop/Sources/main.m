@@ -422,7 +422,7 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 
 #pragma mark - Application
 
-@interface TVAppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, NSTableViewDataSource, NSTableViewDelegate>
+@interface TVAppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate>
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, copy) NSArray<TVViewerCard *> *cards;
@@ -449,6 +449,10 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 @property(nonatomic, copy) NSString *kind;
 @property(nonatomic, copy) NSString *currentPath;
 @property(nonatomic) BOOL updatingSelection;
+/** sidebar rows: {dataset} for each dataset, followed by {dataset, sample} rows when its samples are shown */
+@property(nonatomic, copy) NSArray<NSDictionary *> *datasetRows;
+@property(nonatomic, strong) NSMutableSet<NSString *> *expandedDatasets;
+@property(nonatomic, strong) GCButton *combineButton;
 @property(nonatomic) BOOL snapshotScheduled;
 @property(nonatomic) BOOL showingErrorPage;
 @end
@@ -545,11 +549,14 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     self.datasetCountLabel.textColor = GCText3Color();
     GCButton *manageButton = [self iconButton:@"plus.rectangle.on.folder" tip:@"Add and manage datasets" action:@selector(manageDatasets:)];
     GCButton *refreshButton = [self iconButton:@"arrow.clockwise" tip:@"Refresh the list" action:@selector(refreshDatasets:)];
+    self.combineButton = [self iconButton:@"square.stack.3d.up" tip:@"Combine datasets: samples of several datasets as one" action:@selector(combineDatasets:)];
     manageButton.fixedHeight = 26;
     refreshButton.fixedHeight = 26;
+    self.combineButton.fixedHeight = 26;
+    self.combineButton.hidden = [self.kind isEqualToString:@"crispr"];
     NSView *headingSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
     [headingSpacer setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
-    NSStackView *datasetsHeading = [NSStackView stackViewWithViews:@[datasetsLabel, self.datasetCountLabel, headingSpacer, manageButton, refreshButton]];
+    NSStackView *datasetsHeading = [NSStackView stackViewWithViews:@[datasetsLabel, self.datasetCountLabel, headingSpacer, self.combineButton, manageButton, refreshButton]];
     datasetsHeading.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     datasetsHeading.alignment = NSLayoutAttributeCenterY;
     datasetsHeading.spacing = 6;
@@ -566,6 +573,10 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     self.datasetTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleRegular;
     self.datasetTable.delegate = self;
     self.datasetTable.dataSource = self;
+    self.datasetTable.menu = [[NSMenu alloc] initWithTitle:@"Dataset"];
+    self.datasetTable.menu.delegate = self;
+    self.expandedDatasets = [NSMutableSet set];
+    self.datasetRows = @[];
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
     scroll.documentView = self.datasetTable;
@@ -852,7 +863,8 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     self.kind = viewer[@"kind"];
     [[NSUserDefaults standardUserDefaults] setObject:self.kind forKey:TVViewerDefaultsKey];
     [self selectCardForKind:self.kind];
-    if (changed) { self.datasets = @[]; [self.datasetTable reloadData]; }
+    self.combineButton.hidden = [self.kind isEqualToString:@"crispr"];
+    if (changed) { self.datasets = @[]; [self rebuildDatasetRows]; }
     [self loadPage:[NSString stringWithFormat:@"/%@/", viewer[@"path"]]];
 }
 
@@ -949,7 +961,7 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     [self callDesktopMethod:@"datasets" arguments:@[kind] completion:^(id result) {
         if (![kind isEqualToString:self.kind]) return;
         self.datasets = [result isKindOfClass:[NSArray class]] ? result : @[];
-        [self.datasetTable reloadData];
+        [self rebuildDatasetRows];
         self.datasetCountLabel.stringValue = self.datasets.count ? [NSString stringWithFormat:@"%lu", (unsigned long)self.datasets.count] : @"";
         self.emptyLabel.hidden = self.datasets.count > 0;
         [self selectRowForCurrentPath];
@@ -978,8 +990,9 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
             self.kind = viewer[@"kind"];
             [[NSUserDefaults standardUserDefaults] setObject:self.kind forKey:TVViewerDefaultsKey];
             [self selectCardForKind:self.kind];
+            self.combineButton.hidden = [self.kind isEqualToString:@"crispr"];
             self.datasets = @[];
-            [self.datasetTable reloadData];
+            [self rebuildDatasetRows];
         }
         [self refreshWorkspaces];
         [self refreshDatasets:nil];
@@ -1000,26 +1013,73 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
         NSDictionary *stats = [dataset[@"stats"] isKindOfClass:[NSDictionary class]] ? dataset[@"stats"] : @{};
         if ([stats[@"targets"] isKindOfClass:[NSNumber class]]) [parts addObject:[NSString stringWithFormat:@"%@ targets", [formatter stringFromNumber:stats[@"targets"]]]];
         if ([stats[@"tests"] isKindOfClass:[NSNumber class]]) [parts addObject:[NSString stringWithFormat:@"%@ tests", [formatter stringFromNumber:stats[@"tests"]]]];
-    } else if ([dataset[@"nCells"] isKindOfClass:[NSNumber class]]) {
-        [parts addObject:[NSString stringWithFormat:@"%@ cells", [formatter stringFromNumber:dataset[@"nCells"]]]];
+    } else {
+        // combined datasets and projects: their samples (time points, sections, ...)
+        NSArray *slides = [dataset[@"slides"] isKindOfClass:[NSArray class]] ? dataset[@"slides"] : @[];
+        if (slides.count > 1) [parts addObject:[NSString stringWithFormat:@"%lu samples", (unsigned long)slides.count]];
+        if ([dataset[@"nCells"] isKindOfClass:[NSNumber class]]) [parts addObject:[NSString stringWithFormat:@"%@ cells", [formatter stringFromNumber:dataset[@"nCells"]]]];
     }
     for (NSString *key in @[@"technology", @"species"]) if ([dataset[key] isKindOfClass:[NSString class]] && [dataset[key] length]) [parts addObject:dataset[key]];
     return [parts componentsJoinedByString:@" · "];
 }
 
+static NSArray *TVSamples(NSDictionary *dataset) {
+    return [dataset[@"slides"] isKindOfClass:[NSArray class]] ? dataset[@"slides"] : @[];
+}
+
+/** The dataset open in the window (by URL prefix) and its ?s= sample, if any. */
+- (NSDictionary *)currentDataset:(NSString **)sampleId {
+    for (NSDictionary *dataset in self.datasets) {
+        NSString *url = dataset[@"url"];
+        if (![url isKindOfClass:[NSString class]] || !url.length || ![self.currentPath hasPrefix:url]) continue;
+        if (sampleId) {
+            NSURLComponents *components = [NSURLComponents componentsWithString:[@"http://x" stringByAppendingString:self.currentPath]];
+            for (NSURLQueryItem *item in components.queryItems ?: @[]) if ([item.name isEqualToString:@"s"]) *sampleId = item.value;
+        }
+        return dataset;
+    }
+    return nil;
+}
+
+/** Datasets with several samples (combined datasets, projects) are groups: their samples are listed under them. */
+- (void)rebuildDatasetRows {
+    NSDictionary *open = [self currentDataset:NULL];
+    if (open && TVSamples(open).count > 1 && [open[@"id"] isKindOfClass:[NSString class]]) [self.expandedDatasets addObject:open[@"id"]];
+    NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
+    for (NSDictionary *dataset in self.datasets) {
+        [rows addObject:@{@"dataset": dataset}];
+        NSArray *samples = TVSamples(dataset);
+        if (samples.count > 1 && [self.expandedDatasets containsObject:dataset[@"id"] ?: @""]) {
+            for (NSDictionary *sample in samples) if ([sample isKindOfClass:[NSDictionary class]]) [rows addObject:@{@"dataset": dataset, @"sample": sample}];
+        }
+    }
+    self.datasetRows = rows;
+    [self.datasetTable reloadData];
+    [self selectRowForCurrentPath];
+}
+
 - (void)selectRowForCurrentPath {
     self.updatingSelection = YES;
+    NSString *sampleId = nil;
+    NSDictionary *open = [self currentDataset:&sampleId];
     NSInteger match = -1;
-    for (NSUInteger i = 0; i < self.datasets.count; i++) {
-        NSString *url = self.datasets[i][@"url"];
-        if ([url isKindOfClass:[NSString class]] && url.length && [self.currentPath hasPrefix:url]) { match = (NSInteger)i; break; }
+    for (NSUInteger i = 0; open && i < self.datasetRows.count; i++) {
+        NSDictionary *row = self.datasetRows[i];
+        if (row[@"dataset"] != open) continue;
+        if (match < 0) match = (NSInteger)i;  // the group, unless its open sample is listed
+        NSDictionary *sample = row[@"sample"];
+        if (sample && ([sample[@"id"] isEqual:sampleId] || (!sampleId && sample == TVSamples(open).firstObject))) { match = (NSInteger)i; break; }
     }
     if (match >= 0) [self.datasetTable selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)match] byExtendingSelection:NO];
     else [self.datasetTable deselectAll:nil];
     self.updatingSelection = NO;
 }
 
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView { return (NSInteger)self.datasets.count; }
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView { return (NSInteger)self.datasetRows.count; }
+
+- (CGFloat)tableView:(NSTableView *)tableView heightOfRow:(NSInteger)row {
+    return row < (NSInteger)self.datasetRows.count && self.datasetRows[(NSUInteger)row][@"sample"] ? 28 : 46;
+}
 
 - (NSTableRowView *)tableView:(NSTableView *)tableView rowViewForRow:(NSInteger)row {
     TVRowView *rowView = [tableView makeViewWithIdentifier:@"DatasetRow" owner:self];
@@ -1030,11 +1090,57 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     return rowView;
 }
 
+- (NSTableCellView *)sampleCell {
+    NSTableCellView *cell = [self.datasetTable makeViewWithIdentifier:@"SampleCell" owner:self];
+    if (cell) return cell;
+    cell = [[NSTableCellView alloc] initWithFrame:NSZeroRect];
+    cell.identifier = @"SampleCell";
+    GCFillView *rule = [[GCFillView alloc] initWithFrame:NSZeroRect];  // follows the light / dark theme
+    rule.translatesAutoresizingMaskIntoConstraints = NO;
+    rule.fillColor = GCBorderStrongColor();
+    rule.cornerRadius = 1;
+    NSTextField *name = [NSTextField labelWithString:@""];
+    name.translatesAutoresizingMaskIntoConstraints = NO;
+    name.font = GCUIFont(12.5, 500);
+    name.textColor = GCText2Color();
+    name.lineBreakMode = NSLineBreakByTruncatingTail;
+    name.identifier = @"SampleName";
+    [name setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [cell addSubview:rule];
+    [cell addSubview:name];
+    [NSLayoutConstraint activateConstraints:@[
+        [rule.leadingAnchor constraintEqualToAnchor:cell.leadingAnchor constant:16],
+        [rule.widthAnchor constraintEqualToConstant:2],
+        [rule.topAnchor constraintEqualToAnchor:cell.topAnchor constant:2],
+        [rule.bottomAnchor constraintEqualToAnchor:cell.bottomAnchor constant:-2],
+        [name.leadingAnchor constraintEqualToAnchor:rule.trailingAnchor constant:10],
+        [name.trailingAnchor constraintLessThanOrEqualToAnchor:cell.trailingAnchor constant:-8],
+        [name.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor],
+    ]];
+    return cell;
+}
+
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+    NSDictionary *entry = self.datasetRows[(NSUInteger)row];
+    NSDictionary *dataset = entry[@"dataset"];
+    NSDictionary *sample = entry[@"sample"];
+    if (sample) {
+        NSTableCellView *cell = [self sampleCell];
+        NSTextField *nameField = (NSTextField *)GCFindView(cell, @"SampleName");
+        nameField.stringValue = [sample[@"title"] isKindOfClass:[NSString class]] ? sample[@"title"] : @"Sample";
+        nameField.toolTip = [sample[@"description"] isKindOfClass:[NSString class]] ? sample[@"description"] : nameField.stringValue;
+        return cell;
+    }
     NSTableCellView *cell = [tableView makeViewWithIdentifier:@"DatasetCell" owner:self];
     if (!cell) {
         cell = [[NSTableCellView alloc] initWithFrame:NSZeroRect];
         cell.identifier = @"DatasetCell";
+        NSButton *disclosure = [NSButton buttonWithImage:[NSImage imageWithSystemSymbolName:@"chevron.right" accessibilityDescription:@"Show samples"] target:self action:@selector(toggleSamples:)];
+        disclosure.translatesAutoresizingMaskIntoConstraints = NO;
+        disclosure.bordered = NO;
+        disclosure.imageScaling = NSImageScaleProportionallyDown;
+        disclosure.contentTintColor = GCText3Color();
+        disclosure.identifier = @"DatasetDisclosure";
         NSTextField *name = [NSTextField labelWithString:@""];
         name.translatesAutoresizingMaskIntoConstraints = NO;
         name.font = GCUIFont(13, 600);
@@ -1051,30 +1157,145 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
         [facts setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
         [cell addSubview:name];
         [cell addSubview:facts];
+        [cell addSubview:disclosure];
         [NSLayoutConstraint activateConstraints:@[
             [name.leadingAnchor constraintEqualToAnchor:cell.leadingAnchor constant:10],
-            [name.trailingAnchor constraintLessThanOrEqualToAnchor:cell.trailingAnchor constant:-8],
+            [name.trailingAnchor constraintLessThanOrEqualToAnchor:disclosure.leadingAnchor constant:-4],
             [name.topAnchor constraintEqualToAnchor:cell.topAnchor constant:6],
             [facts.leadingAnchor constraintEqualToAnchor:name.leadingAnchor],
-            [facts.trailingAnchor constraintLessThanOrEqualToAnchor:cell.trailingAnchor constant:-8],
+            [facts.trailingAnchor constraintLessThanOrEqualToAnchor:disclosure.leadingAnchor constant:-4],
             [facts.topAnchor constraintEqualToAnchor:name.bottomAnchor constant:1],
+            [disclosure.trailingAnchor constraintEqualToAnchor:cell.trailingAnchor constant:-6],
+            [disclosure.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor],
+            [disclosure.widthAnchor constraintEqualToConstant:22],
+            [disclosure.heightAnchor constraintEqualToConstant:22],
         ]];
     }
-    NSDictionary *dataset = self.datasets[(NSUInteger)row];
     NSTextField *nameField = (NSTextField *)GCFindView(cell, @"DatasetName");
     NSTextField *factsField = (NSTextField *)GCFindView(cell, @"DatasetFacts");
+    NSButton *disclosure = (NSButton *)GCFindView(cell, @"DatasetDisclosure");
     nameField.stringValue = [dataset[@"title"] isKindOfClass:[NSString class]] ? dataset[@"title"] : @"Dataset";
     nameField.toolTip = nameField.stringValue;
     factsField.stringValue = [self factsForDataset:dataset];
+    BOOL group = TVSamples(dataset).count > 1;
+    BOOL open = group && [self.expandedDatasets containsObject:dataset[@"id"] ?: @""];
+    disclosure.hidden = !group;
+    disclosure.image = [NSImage imageWithSystemSymbolName:open ? @"chevron.down" : @"chevron.right" accessibilityDescription:open ? @"Hide samples" : @"Show samples"];
+    disclosure.toolTip = open ? @"Hide the samples" : @"Show the samples";
     return cell;
+}
+
+- (void)toggleSamples:(NSButton *)sender {
+    NSInteger row = [self.datasetTable rowForView:sender];
+    if (row < 0 || row >= (NSInteger)self.datasetRows.count) return;
+    NSString *datasetId = self.datasetRows[(NSUInteger)row][@"dataset"][@"id"];
+    if (![datasetId isKindOfClass:[NSString class]]) return;
+    if ([self.expandedDatasets containsObject:datasetId]) [self.expandedDatasets removeObject:datasetId];
+    else [self.expandedDatasets addObject:datasetId];
+    [self rebuildDatasetRows];
 }
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
     if (self.updatingSelection) return;
     NSInteger row = self.datasetTable.selectedRow;
-    if (row < 0 || row >= (NSInteger)self.datasets.count) return;
-    NSString *url = self.datasets[(NSUInteger)row][@"url"];
-    if ([url isKindOfClass:[NSString class]] && url.length && ![self.currentPath hasPrefix:url]) [self loadPage:url];
+    if (row < 0 || row >= (NSInteger)self.datasetRows.count) return;
+    NSString *url = [self urlForRow:self.datasetRows[(NSUInteger)row]];
+    if (url.length && ![self.currentPath isEqualToString:url] && !(!self.datasetRows[(NSUInteger)row][@"sample"] && [self.currentPath hasPrefix:url])) [self loadPage:url];
+}
+
+/** A dataset row opens the dataset; a sample row opens that sample (?s=). */
+- (NSString *)urlForRow:(NSDictionary *)entry {
+    NSString *url = entry[@"dataset"][@"url"];
+    if (![url isKindOfClass:[NSString class]]) return nil;
+    NSString *sampleId = entry[@"sample"][@"id"];
+    if (![sampleId isKindOfClass:[NSString class]]) return url;
+    NSURLComponents *components = [NSURLComponents componentsWithString:url];
+    components.queryItems = @[[NSURLQueryItem queryItemWithName:@"s" value:sampleId]];
+    return components.string;
+}
+
+#pragma mark Dataset management (right-click a dataset; the Datasets page offers the same)
+
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    [menu removeAllItems];
+    NSInteger row = self.datasetTable.clickedRow;
+    BOOL viewer = ![self.kind isEqualToString:@"crispr"];
+    if (row >= 0 && row < (NSInteger)self.datasetRows.count) {
+        NSDictionary *entry = self.datasetRows[(NSUInteger)row];
+        NSDictionary *dataset = entry[@"dataset"];
+        NSMenuItem *open = [menu addItemWithTitle:entry[@"sample"] ? @"Open Sample" : @"Open" action:@selector(openDatasetRow:) keyEquivalent:@""];
+        open.representedObject = entry;
+        open.target = self;
+        if (entry[@"sample"]) return;
+        [menu addItem:[NSMenuItem separatorItem]];
+        if (viewer && ([dataset[@"combined"] boolValue] || [dataset[@"layout"] isEqual:@"project"])) {
+            [menu addItemWithTitle:@"Edit Samples…" action:@selector(editSamples:) keyEquivalent:@""].representedObject = dataset;
+        }
+        [menu addItemWithTitle:@"Rename…" action:@selector(renameDataset:) keyEquivalent:@""].representedObject = dataset;
+        [menu addItemWithTitle:@"Remove…" action:@selector(removeDataset:) keyEquivalent:@""].representedObject = dataset;
+        [menu addItem:[NSMenuItem separatorItem]];
+    }
+    if (viewer) [menu addItemWithTitle:@"Combine Datasets…" action:@selector(combineDatasets:) keyEquivalent:@""];
+    [menu addItemWithTitle:@"Add and Manage Datasets" action:@selector(manageDatasets:) keyEquivalent:@""];
+    for (NSMenuItem *item in menu.itemArray) if (!item.isSeparatorItem) item.target = self;
+}
+
+- (void)openDatasetRow:(NSMenuItem *)sender { NSString *url = [self urlForRow:sender.representedObject]; if (url.length) [self loadPage:url]; }
+
+- (NSString *)viewerPagePath { return [NSString stringWithFormat:@"/%@/", TVViewerForKind(self.kind)[@"path"]]; }
+
+/** The Datasets page opens its samples dialog: ?combine=1 or ?edit=<dataset>. */
+- (void)combineDatasets:(id)sender { [self loadPage:[[self viewerPagePath] stringByAppendingString:@"?combine=1"]]; }
+- (void)editSamples:(NSMenuItem *)sender {
+    NSString *datasetId = sender.representedObject[@"id"];
+    if (![datasetId isKindOfClass:[NSString class]]) return;
+    NSURLComponents *components = [NSURLComponents componentsWithString:[self viewerPagePath]];
+    components.queryItems = @[[NSURLQueryItem queryItemWithName:@"edit" value:datasetId]];
+    [self loadPage:components.string];
+}
+
+/** After a change: the list, and the page if it shows the changed dataset or the Datasets page. */
+- (void)datasetChanged:(NSDictionary *)dataset removed:(BOOL)removed {
+    [self refreshDatasets:nil];
+    NSString *url = dataset[@"url"];
+    BOOL showing = [url isKindOfClass:[NSString class]] && [self.currentPath hasPrefix:url];
+    BOOL datasetsPage = [[self.currentPath componentsSeparatedByString:@"?"].firstObject isEqualToString:[self viewerPagePath]];
+    if (removed && showing) [self showViewer:self.kind];
+    else if (showing || datasetsPage) [self.webView reload];
+}
+
+- (void)renameDataset:(NSMenuItem *)sender {
+    NSDictionary *dataset = sender.representedObject;
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Rename Dataset";
+    alert.informativeText = @"The name shown in the lists and the viewer; the link stays the same.";
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    field.stringValue = [dataset[@"title"] isKindOfClass:[NSString class]] ? dataset[@"title"] : @"";
+    alert.accessoryView = field;
+    [alert addButtonWithTitle:@"Rename"];
+    [alert addButtonWithTitle:@"Cancel"];
+    alert.window.initialFirstResponder = field;
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
+        NSString *title = [field.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (response != NSAlertFirstButtonReturn || !title.length || [title isEqualToString:dataset[@"title"]]) return;
+        [self callDesktopMethod:@"renameDataset" arguments:@[dataset[@"id"], title] completion:^(id result) { [self datasetChanged:dataset removed:NO]; }];
+    }];
+}
+
+- (void)removeDataset:(NSMenuItem *)sender {
+    NSDictionary *dataset = sender.representedObject;
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.alertStyle = NSAlertStyleWarning;
+    alert.messageText = [NSString stringWithFormat:@"Remove “%@” from your workspace?", dataset[@"title"]];
+    alert.informativeText = [dataset[@"combined"] boolValue]
+        ? @"Its link stops working. The datasets it combines are kept and listed on their own again."
+        : @"Its link stops working. Source data and converted files are kept (delete converted files on the Datasets page).";
+    [alert addButtonWithTitle:@"Remove"];
+    [alert addButtonWithTitle:@"Cancel"];
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
+        if (response != NSAlertFirstButtonReturn) return;
+        [self callDesktopMethod:@"removeDataset" arguments:@[dataset[@"id"]] completion:^(id result) { [self datasetChanged:dataset removed:YES]; }];
+    }];
 }
 
 #pragma mark Appearance (System / Light / Dark), as in Genome Canvas Desktop
@@ -1134,6 +1355,18 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     if (!directory.length || self.snapshotScheduled) return;
     self.snapshotScheduled = YES;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        // CI cannot reach the lab server: OMICS_CANVAS_SNAPSHOT_DATASETS (a JSON list as /hub/api/datasets returns,
+        // and "currentPath") fills the sidebar so the dataset list can be reviewed
+        NSString *fixture = [NSProcessInfo processInfo].environment[@"OMICS_CANVAS_SNAPSHOT_DATASETS"];
+        NSData *data = fixture.length ? [NSData dataWithContentsOfFile:fixture] : nil;
+        NSDictionary *sample = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        if ([sample isKindOfClass:[NSDictionary class]] && [sample[@"datasets"] isKindOfClass:[NSArray class]]) {
+            self.datasets = sample[@"datasets"];
+            self.currentPath = [sample[@"currentPath"] isKindOfClass:[NSString class]] ? sample[@"currentPath"] : @"";
+            self.emptyLabel.hidden = YES;
+            self.datasetCountLabel.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)self.datasets.count];
+            [self rebuildDatasetRows];
+        }
         [self captureThemes:@[@"light", @"dark"] directory:directory];
     });
 }

@@ -1,0 +1,13 @@
+{
+ "currentPath": "/spatial/example-time-course/?s=week-8",
+ "datasets": [
+  {"id": "example-time-course", "kind": "spatial", "title": "Example time course", "url": "/spatial/example-time-course/", "layout": "project", "combined": true,
+   "nCells": 48210, "technology": "Xenium", "species": "Mouse",
+   "slides": [{"id": "week-0", "title": "Week 0"}, {"id": "week-8", "title": "Week 8"}, {"id": "week-16", "title": "Week 16"}]},
+  {"id": "example-sections", "kind": "spatial", "title": "Example fresh and fixed sections", "url": "/spatial/example-sections/", "layout": "project",
+   "nCells": 101120, "technology": "Xenium", "species": "Mouse",
+   "slides": [{"id": "fresh", "title": "Fresh frozen"}, {"id": "fixed", "title": "Fixed"}]},
+  {"id": "example-visium", "kind": "spatial", "title": "Example Visium section", "url": "/spatial/example-visium/", "layout": "slide",
+   "nCells": 2987, "technology": "Visium", "species": "Human", "slides": [{"id": "main", "title": "Example Visium section"}]}
+ ]
+}

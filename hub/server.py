@@ -201,7 +201,12 @@ def register_folder(root: Path, owner, *, title=None, source=None, job=None, id_
     with lock:
         existing = next((d for d in registry['datasets'] if d['root'] == str(root) and d.get('owner') == owner['id']), None)
         if existing:
-            existing.update(folder_facts(root, info), updated=int(time.time()))
+            facts = folder_facts(root, info)
+            if existing.get('descriptionEdited'):
+                facts.pop('description', None)
+            if existing.get('edited'):  # its samples were edited here: keep their totals
+                facts.pop('nCells', None)
+            existing.update(facts, updated=int(time.time()))
             if title:
                 existing['title'] = title
             if job:
@@ -549,11 +554,32 @@ def inspect(path: str, request: Request):
 
 # ---------- datasets
 
+def combined_into():
+    """dataset id -> [combined dataset ids] for datasets all of whose samples are in a combined dataset of the same
+    workspace. Those are shown inside it, not on their own (their links still open)."""
+    used = {}
+    for c in registry['datasets']:
+        if c.get('combined') or c.get('edited'):
+            for sl in c['slides']:
+                if sl.get('fromDataset') == c['id']:
+                    continue  # an edited project's own sample
+                used.setdefault((c.get('owner'), sl.get('fromDataset')), {}).setdefault(sl.get('fromSlide'), set()).add(c['id'])
+    out = {}
+    for d in registry['datasets']:
+        got = used.get((d.get('owner'), d['id']))
+        if not d.get('combined') and got and all(s['id'] in got for s in d['slides']):
+            out[d['id']] = sorted(set().union(*got.values()))
+    return out
+
+
 @app.get('/hub/api/datasets')
 def list_datasets(request: Request, kind: str = ''):
-    """The datasets of the caller's workspace (all viewers, or one)."""
+    """The datasets of the caller's workspace (all viewers, or one); `inCombined` marks those shown inside a
+    combined dataset."""
     ws = workspace_of(request)
-    return [public(d) for d in sorted(registry['datasets'], key=lambda d: -d.get('added', 0))
+    inside = combined_into()
+    return [{**public(d), **({'inCombined': inside[d['id']]} if d['id'] in inside else {})}
+            for d in sorted(registry['datasets'], key=lambda d: -d.get('added', 0))
             if own(d, ws) and (not kind or d['kind'] == kind)]
 
 
@@ -562,7 +588,10 @@ def summary(request: Request):
     """Dataset counts per viewer: the caller's and everyone's (hub cards)."""
     ws = workspace_of(request, required=False)
     out = {k: {'mine': 0, 'all': 0} for k in KIND_PATH}
+    inside = combined_into()
     for d in registry['datasets']:
+        if d['id'] in inside:
+            continue
         out[d['kind']]['all'] += 1
         out[d['kind']]['mine'] += own(d, ws)
     running = sum(1 for j in jobs.values() if j['status'] in ('queued', 'running') and ws and j.get('owner') == ws['id'])
@@ -605,7 +634,9 @@ def slide_dir(d, s):
 
 
 def combined_slides(items, ws, kind):
-    """[{dataset, slide, title}] (the caller's datasets of this viewer) -> slides of a combined dataset."""
+    """[{dataset, slide, title, id?}] (the caller's datasets of this viewer) -> slides of a combined dataset, or the
+    edited samples of a project (its own samples are {dataset: itself, slide}; `folderSlides` keeps the folder's).
+    `id` keeps an existing sample's id (its ?s= link) through renames."""
     if not isinstance(items, list) or len(items) < 1:
         raise HTTPException(400, 'Pick at least one sample')
     out, taken = [], set()
@@ -614,24 +645,32 @@ def combined_slides(items, ws, kind):
         require_owner(src, ws)
         if src['kind'] != kind or src['layout'] == 'screen':
             raise HTTPException(400, f'“{src["title"]}” is not a {KIND_PATH[kind]} dataset')
-        s = next((x for x in src['slides'] if x['id'] == it.get('slide')), None) or (src['slides'][0] if len(src['slides']) == 1 and not it.get('slide') else None)
+        pool = src['slides'] + [x for x in src.get('folderSlides') or [] if x['id'] not in {y['id'] for y in src['slides']}]
+        s = next((x for x in pool if x['id'] == it.get('slide')), None) or (src['slides'][0] if len(src['slides']) == 1 and not it.get('slide') else None)
         if not s:
             raise HTTPException(400, f'“{src["title"]}” has no sample {it.get("slide")!r}')
-        folder = slide_dir(src, s)
+        if s.get('fromDataset') and s.get('fromDataset') != src['id']:  # a sample of a combined / edited dataset: its origin
+            src = registry_get(s['fromDataset']) or src
+        folder = slide_dir(src, s) if not s.get('root') else Path(s['root'])
         if not (folder / 'slide.json').is_file():
             raise HTTPException(400, f'{folder} has no slide.json')
         title = (str(it.get('title') or '').strip() or (s['title'] if len(src['slides']) > 1 else src['title']))[:120]
-        sid, k = slugify(title), 2
+        want = slugify(it.get('id') or title)
+        sid, k = want, 2
         while sid in taken:
-            sid, k = f'{slugify(title)}-{k}', k + 1
+            sid, k = f'{want}-{k}', k + 1
         taken.add(sid)
         try:
             m = json.loads((folder / 'slide.json').read_text())
         except Exception:
             m = {}
-        out.append(dict(id=sid, title=title, dir=sid, root=str(folder), fromDataset=src['id'], fromTitle=src['title'], fromSlide=s['id'],
+        out.append(dict(id=sid, title=title, dir=sid, root=str(folder), fromDataset=src['id'], fromTitle=src['title'], fromSlide=s.get('fromSlide') or s['id'],
                         nCells=m.get('nCells'), technology=m.get('technology'), species=m.get('species')))
     return out
+
+
+def registry_get(id_):
+    return next((d for d in registry['datasets'] if d['id'] == id_), None)
 
 
 def combined_facts(slides):
@@ -667,14 +706,47 @@ async def edit_dataset(id_: str, request: Request):
     body = await request.json()
     d = dataset(id_)
     require_owner(d, workspace_of(request))
-    slides = combined_slides(body['slides'], workspace_of(request), d['kind']) if d.get('combined') and 'slides' in body else None
+    editable = d.get('combined') or d['layout'] == 'project'
+    if 'slides' in body and not editable:
+        raise HTTPException(400, 'Only datasets with several samples can be edited this way; use Combine datasets')
+    slides = combined_slides(body['slides'], workspace_of(request), d['kind']) if 'slides' in body else None
     with lock:
         for k, n in (('title', 300), ('description', 2000)):
             if k in body:
+                if k == 'description' and d['layout'] == 'project' and not d.get('combined'):
+                    try:  # edited unless it is project.json's own text
+                        folder = json.loads((Path(d['root']) / 'project.json').read_text()).get('description') or ''
+                    except Exception:
+                        folder = ''
+                    d['descriptionEdited'] = str(body[k])[:n] != folder
+                    if not d['descriptionEdited']:
+                        d.pop('descriptionEdited')
                 d[k] = str(body[k])[:n]
         if slides is not None:
+            if not d.get('combined'):
+                # a project folder: its project.json is not changed; the folder's own samples stay restorable
+                d.setdefault('folderSlides', [dict(x) for x in d['slides']])
+                d['edited'] = True
             d['slides'] = slides
-            d.update(combined_facts(slides))
+            facts = combined_facts(slides)
+            if not d.get('combined'):
+                facts.pop('source')
+            d.update(facts)
+        save_registry()
+    return public(d)
+
+
+@app.post('/hub/api/datasets/{id_}/restore')
+def restore_samples(id_: str, request: Request):
+    """An edited project dataset: back to the samples of its folder's project.json."""
+    d = dataset(id_)
+    require_owner(d, workspace_of(request))
+    if not d.get('folderSlides'):
+        raise HTTPException(400, 'This dataset has its folder\'s samples')
+    with lock:
+        d['slides'] = d.pop('folderSlides')
+        d.pop('edited', None)
+        d.update(folder_facts(Path(d['root']), detect.inspect_folder(Path(d['root']))))
         save_registry()
     return public(d)
 
@@ -761,8 +833,11 @@ def projects(kind: str, request: Request, include: str = ''):
     """Viewer picker: the caller's datasets of this viewer, plus `include` (a dataset opened by its link)."""
     ws = workspace_of(request, required=False)
     out = []
+    inside = combined_into()
     for d in sorted(registry['datasets'], key=lambda d: d['title'].lower()):
         if d['kind'] != kind or not (own(d, ws) or d['id'] == include):
+            continue
+        if d['id'] in inside and d['id'] != include:  # picked from its combined dataset instead
             continue
         base = f'/hub/api/data/{d["id"]}'
         extra = {}
@@ -779,6 +854,8 @@ def projects(kind: str, request: Request, include: str = ''):
                 extra = {k: pj[k] for k in ('description', 'citation', 'sourceUrl', 'technology', 'species', 'tissue', 'panel', 'doi') if k in pj}
             except Exception:
                 extra = {}
+            if d.get('description'):  # edited in the hub (starts as project.json's)
+                extra['description'] = d['description']
         out.append({**extra, 'id': d['id'], 'title': d['title'], 'url': view_url(d), 'base': base, 'mine': own(d, ws),
                     'ownerName': d.get('ownerName'),
                     'technology': extra.get('technology') or d.get('technology'), 'species': extra.get('species') or d.get('species'),
@@ -848,12 +925,13 @@ def data(id_: str, rest: str, request: Request):
     rel = posixpath.normpath(rest)
     if rel.startswith(('..', '/')) or '/../' in rel:
         raise HTTPException(400, 'bad path')
-    if d.get('combined'):  # /<sample id>/<file> -> that sample's own folder
-        sid, _, rest_ = rel.partition('/')
-        sl = next((x for x in d['slides'] if x['id'] == sid), None)
-        if not sl:
-            raise HTTPException(404, f'no sample {sid}')
+    # /<sample id>/<file> of a sample with its own folder (combined or edited datasets) -> that folder
+    sid, _, rest_ = rel.partition('/')
+    sl = next((x for x in d['slides'] if x.get('root') and x['id'] == sid), None)
+    if sl:
         p = Path(sl['root']) / rest_
+    elif d.get('combined'):
+        raise HTTPException(404, f'no sample {sid}')
     else:
         p = Path(d['root']) / rel
     if not p.is_file():

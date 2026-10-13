@@ -40,7 +40,8 @@ jobs:
         run: |
           shots="${RUNNER_TEMP}/shots"
           mkdir -p "${shots}"
-          env "${{ matrix.snapshot }}=${shots}" \
+          # Omics Canvas: example datasets in the sidebar (CI cannot reach the lab server)
+          env "${{ matrix.snapshot }}=${shots}" OMICS_CANVAS_SNAPSHOT_DATASETS="${PWD}/preview/sidebar-datasets.json" \
             "dist/preview/${{ matrix.bundle }}/Contents/MacOS/${{ matrix.binary }}" > "${shots}/app.log" 2>&1 &
           for attempt in $(seq 1 60); do
             [[ -f "${shots}/window-dark.png" ]] && break

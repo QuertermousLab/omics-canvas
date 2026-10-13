@@ -123,3 +123,6 @@
 .combine__pool small { margin-left: auto; color: var(--text-4); font-size: 10.5px; white-space: nowrap; }
 .combine .ws-foot { gap: 8px; }
 .combine [data-m-cq] { margin-top: 6px; }
+.ds__samples { margin: 4px 0 0; padding-left: 18px; color: var(--text-2); }
+.ds__samples li { margin: 1px 0; }
+.combine__restore { margin-right: auto; }

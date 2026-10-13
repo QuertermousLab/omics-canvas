@@ -1,5 +1,14 @@
-Native Mac apps for Apple Silicon and Intel Macs: **Genome Canvas 1.7.1** (genome browser) and
-**Omics Canvas 1.1.1** (spatial, single-cell and CRISPR viewers).
+Native Mac apps for Apple Silicon and Intel Macs: **Omics Canvas 1.2.0** (spatial, single-cell and CRISPR viewers)
+and **Genome Canvas 1.7.1** (genome browser).
+
+## Omics Canvas 1.2.0
+
+- **Combined datasets**: put samples of several datasets — time points, conditions, sections — into one dataset with
+  one link and a sample picker (sidebar ⧉ button or right-click → **Combine Datasets…**). Nothing is copied
+- The sidebar lists combined datasets and multi-sample projects as groups: click the arrow to show their samples,
+  click a sample to open it. Datasets that went into a combined one are listed inside it, not on their own
+- Right-click a dataset: **Edit Samples…** (add, remove, reorder and rename samples, also of existing projects such as
+  Mouse Xenium 5K — the folder is not changed and the samples can be restored), **Rename…**, **Remove…**
 
 ## Genome Canvas 1.7.1
 
