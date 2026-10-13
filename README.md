@@ -85,6 +85,11 @@ folder; the page only offers what that viewer reads and points to the right one 
   Raw integer counts are used when present (`layers["counts"]`, `raw.X`, `X`); otherwise values are shown as stored.
   A UMAP (+ Leiden clusters if there is no annotation) is computed when a single-cell dataset has no embedding.
   Selecting a source again reuses a finished conversion unless the source changed.
+- **Combine datasets** (spatial and single-cell pages): pick samples from your datasets — single sections or slides of
+  multi-sample projects — order and name them, and they become one dataset with one link and a sample picker, like
+  *Mouse SMC atherosclerosis timecourse* or *Mouse Xenium 5K*. Nothing is copied: the samples are read from their own
+  folders (`/hub/api/data/<combined>/<sample>/…`); **Edit samples** changes them later. Removing a combined dataset keeps
+  the datasets it combines, and their converted files are not deleted while a combined dataset uses them.
 - Removing a dataset only unregisters it; the hub can also delete the `.vizhub` folder it generated (not while another
   workspace still uses it), never source data.
 

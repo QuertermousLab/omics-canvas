@@ -7,9 +7,14 @@ import { api, chooseWorkspace, esc, fmtAgo, fmtBytes, fmtDuration, loadWorkspace
 export type Kind = 'spatial' | 'singlecell' | 'crispr';
 interface Dataset {
   id: string; kind: Kind; title: string; root: string; source: string; layout: string; url: string; publicUrl: string;
-  slides: { id: string; title: string }[]; added: number; nCells?: number; nGenes?: number; technology?: string; species?: string;
+  slides: { id: string; title: string; fromDataset?: string; fromSlide?: string; fromTitle?: string; nCells?: number }[];
+  added: number; nCells?: number; nGenes?: number; technology?: string; species?: string;
   bytes?: number; screenKind?: string; stats?: Record<string, number>;
+  /** made of samples of other datasets (nothing copied) */
+  combined?: boolean; description?: string;
 }
+/** one sample of a combined dataset: a slide of one of the workspace's datasets */
+interface Pick { dataset: string; slide: string; title: string }
 interface Job {
   id: string; datasetId: string; title: string; source: string; out: string; type: string; kind?: Kind; status: string;
   progress: number; message: string; created: number; started?: number; finished?: number; url?: string; log?: string[];
@@ -81,9 +86,23 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     </div>
     <div data-m-body hidden>
       <section class="card mgr__list">
-        <div class="mgr__bar"><h2>Datasets</h2><input class="input" type="search" placeholder="Filter" data-m-q aria-label="Filter datasets" /></div>
+        <div class="mgr__bar"><h2>Datasets</h2>
+          ${kind !== 'crispr' ? '<button type="button" class="btn btn--light btn--sm" data-m-combine title="One dataset made of samples of your datasets — time points, conditions, sections"><svg class="icon"><use href="#i-layers"/></svg>Combine datasets</button>' : ''}
+          <input class="input" type="search" placeholder="Filter" data-m-q aria-label="Filter datasets" /></div>
         <div class="table-wrap"><table class="table ds" data-m-table></table></div>
       </section>
+      <dialog class="ws-dialog" data-m-cdialog>
+        <form method="dialog" class="ws-card combine" data-m-cform>
+          <div class="ws-head"><div><b data-m-ctitle>Combine datasets</b><small>One link with a sample picker, like a time course or several sections. The samples stay where they are; nothing is copied.</small></div></div>
+          <label class="lbl">Name <input class="input" name="title" required maxlength="300" placeholder="e.g. Mouse SMC atherosclerosis time course" /></label>
+          <label class="lbl">Description <textarea class="input" name="description" rows="2" maxlength="2000" placeholder="optional: what the samples are"></textarea></label>
+          <div><span class="eyebrow">Samples, in this order</span><ol class="combine__picked" data-m-picked></ol></div>
+          <div><span class="eyebrow">Add samples from your ${P.noun}</span><input class="input" type="search" placeholder="Filter" data-m-cq aria-label="Filter samples" />
+            <ul class="combine__pool" data-m-pool></ul></div>
+          <p class="err ws-err" data-m-cerr hidden></p>
+          <div class="ws-foot"><button type="button" class="btn btn--quiet" data-m-ccancel>Cancel</button><button type="submit" class="btn btn--primary" data-m-csave>Create</button></div>
+        </form>
+      </dialog>
       <section class="mgr__jobs" data-m-jobs-block hidden>
         <div class="mgr__bar"><h2>Conversions</h2><span class="muted small">Run on THOR — you can close this page. At most 8 run at once (the rest queue); an interrupted one continues from its last finished step.</span>
           <button type="button" class="btn btn--quiet btn--sm mgr__right" data-m-clear>Clear finished</button></div>
@@ -125,8 +144,9 @@ export function mountManager(root: HTMLElement, kind: Kind) {
         s.tests != null ? `${s.tests.toLocaleString()} tests` : '', s.genes != null ? `${s.genes.toLocaleString()} readout genes` : '',
         s.significant != null ? `${s.significant.toLocaleString()} significant` : '', d.species ?? ''].filter(Boolean).join(' · ');
     }
-    return [d.nCells ? `${d.nCells.toLocaleString()} cells` : '', d.nGenes ? `${d.nGenes.toLocaleString()} genes` : '',
-      d.slides.length > 1 ? `${d.slides.length} slides` : '', d.technology ?? '', d.species ?? '', d.bytes && d.layout !== 'project' ? fmtBytes(d.bytes) : '']
+    return [d.combined ? `combined: ${d.slides.length} sample${d.slides.length === 1 ? '' : 's'}` : '',
+      d.nCells ? `${d.nCells.toLocaleString()} cells` : '', d.nGenes ? `${d.nGenes.toLocaleString()} genes` : '',
+      d.slides.length > 1 && !d.combined ? `${d.slides.length} slides` : '', d.technology ?? '', d.species ?? '', d.bytes && d.layout !== 'project' ? fmtBytes(d.bytes) : '']
       .filter(Boolean).join(' · ');
   };
 
@@ -144,6 +164,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
           <button type="button" class="icon-btn sm ghost" data-act="copy" title="Copy the full link" aria-label="Copy link"><svg class="icon"><use href="#i-copy"/></svg></button></td>
         <td class="ds__src"><span class="mono small" title="${esc(d.source)}">${esc(d.source)}</span><div class="small muted">added ${fmtAgo(d.added)}</div></td>
         <td class="nowrap ds__acts"><a class="btn btn--primary btn--sm" href="${esc(d.url)}">Open</a>
+          ${d.combined ? '<button type="button" class="btn btn--quiet btn--sm" data-act="samples">Edit samples</button>' : ''}
           <button type="button" class="btn btn--quiet btn--sm" data-act="rename">Rename</button>
           <button type="button" class="btn btn--quiet btn--sm" data-act="remove">Remove</button></td>
       </tr>`).join('') || '<tr><td colspan="4" class="empty">Nothing matches the filter.</td></tr>'}</tbody>`;
@@ -165,9 +186,11 @@ export function mountManager(root: HTMLElement, kind: Kind) {
       const title = prompt('Dataset name', d.title)?.trim();
       if (title && title !== d.title) { await api(`/hub/api/datasets/${d.id}`, { method: 'PATCH', body: { title } }).catch((err) => toast(esc(err.message))); loadDatasets(); }
     }
+    if (btn.dataset.act === 'samples') openCombine(d);
     if (btn.dataset.act === 'remove') {
-      if (!confirm(`Remove “${d.title}” from your workspace?\n\nIts link ${d.url} stops working. Source data is never deleted.`)) return;
-      const generated = /\.vizhub\/?$/.test(d.root) || d.root.includes('/vizhub/state/converted/');
+      const usedBy = datasets.filter((x) => x.combined && x.id !== d.id && x.slides.some((sl) => sl.fromDataset === d.id));
+      if (!confirm(`Remove “${d.title}” from your workspace?\n\nIts link ${d.url} stops working. Source data is never deleted.${d.combined ? '\nThe datasets it combines are kept.' : ''}${usedBy.length ? `\nIts files stay for ${usedBy.map((x) => `“${x.title}”`).join(', ')}, which combines it.` : ''}`)) return;
+      const generated = !d.combined && (/\.vizhub\/?$/.test(d.root) || d.root.includes('/vizhub/state/converted/'));
       const files = generated && confirm(`Also delete the converted viewer files?\n\n${d.root}\n\nOK = delete them · Cancel = keep them (adding the source again then needs no conversion).`);
       try {
         const r = await api<{ deletedFolder: string | null; keptFor: string[] }>(`/hub/api/datasets/${d.id}${files ? '?files=1' : ''}`, { method: 'DELETE' });
@@ -178,6 +201,89 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     }
   });
   $<HTMLInputElement>('q').oninput = renderDatasets;
+
+  // ---------------------------------------------------------------- combined datasets
+  let editing: Dataset | null = null;
+  let picks: Pick[] = [];
+  const cdlg = () => $<HTMLDialogElement>('cdialog');
+  const cform = () => $<HTMLFormElement>('cform');
+  const sampleName = (d: Dataset, sl: Dataset['slides'][number]) => (d.slides.length > 1 ? `${d.title} · ${sl.title}` : d.title);
+
+  function openCombine(d: Dataset | null) {
+    editing = d;
+    picks = d ? d.slides.map((sl) => ({ dataset: sl.fromDataset!, slide: sl.fromSlide!, title: sl.title })) : [];
+    const f = cform();
+    f.reset();
+    (f.elements.namedItem('title') as HTMLInputElement).value = d?.title ?? '';
+    (f.elements.namedItem('description') as HTMLTextAreaElement).value = d?.description ?? '';
+    $('ctitle').textContent = d ? `Samples of “${d.title}”` : 'Combine datasets';
+    $('csave').textContent = d ? 'Save' : 'Create';
+    $('cerr').hidden = true;
+    renderCombine();
+    cdlg().showModal();
+  }
+
+  function renderCombine() {
+    const byId = new Map(datasets.map((d) => [d.id, d]));
+    $('picked').innerHTML = picks.length ? picks.map((p, i) => {
+      const d = byId.get(p.dataset), sl = d?.slides.find((x) => x.id === p.slide);
+      return `<li data-i="${i}"><input class="input" value="${esc(p.title)}" data-k="title" aria-label="Sample name" />
+        <span class="small muted combine__from" title="${esc(d ? sampleName(d, sl!) : p.dataset)}">${esc(d ? sampleName(d, sl!) : `${p.dataset} (removed)`)}</span>
+        <button type="button" class="icon-btn sm ghost" data-k="up" title="Move up" aria-label="Move up" ${i ? '' : 'disabled'}><svg class="icon"><use href="#i-up"/></svg></button>
+        <button type="button" class="icon-btn sm ghost combine__down" data-k="down" title="Move down" aria-label="Move down" ${i < picks.length - 1 ? '' : 'disabled'}><svg class="icon"><use href="#i-up"/></svg></button>
+        <button type="button" class="btn btn--quiet btn--xs" data-k="drop">Remove</button></li>`;
+    }).join('') : '<li class="muted small">Add two or more samples below.</li>';
+    const q = $<HTMLInputElement>('cq').value.trim().toLowerCase();
+    const chosen = new Set(picks.map((p) => `${p.dataset}/${p.slide}`));
+    const pool = datasets.filter((d) => !d.combined && d.id !== editing?.id)
+      .flatMap((d) => d.slides.map((sl) => ({ d, sl })))
+      .filter(({ d, sl }) => !q || `${d.title} ${sl.title} ${d.technology ?? ''}`.toLowerCase().includes(q));
+    $('pool').innerHTML = pool.map(({ d, sl }) => {
+      const on = chosen.has(`${d.id}/${sl.id}`);
+      return `<li><button type="button" data-ds="${esc(d.id)}" data-sl="${esc(sl.id)}" ${on ? 'disabled' : ''}>
+        <svg class="icon"><use href="#i-plus"/></svg><span>${esc(sampleName(d, sl))}</span>
+        <small>${esc([sl.nCells ?? (d.slides.length === 1 ? d.nCells : null) ? `${(sl.nCells ?? d.nCells)!.toLocaleString()} cells` : '', d.technology ?? ''].filter(Boolean).join(' · '))}${on ? ' · added' : ''}</small></button></li>`;
+    }).join('') || `<li class="muted small">${datasets.some((d) => !d.combined) ? 'Nothing matches the filter.' : `Add ${P.noun} first.`}</li>`;
+    $<HTMLButtonElement>('csave').disabled = picks.length < (editing ? 1 : 2);
+  }
+
+  $('cq').addEventListener('input', renderCombine);
+  $('pool').addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-ds]');
+    if (!b) return;
+    const d = datasets.find((x) => x.id === b.dataset.ds)!, sl = d.slides.find((x) => x.id === b.dataset.sl)!;
+    picks.push({ dataset: d.id, slide: sl.id, title: d.slides.length > 1 ? sl.title : d.title });
+    renderCombine();
+  });
+  $('picked').addEventListener('input', (e) => {
+    const el = e.target as HTMLInputElement, li = el.closest<HTMLElement>('[data-i]');
+    if (li && el.dataset.k === 'title') picks[+li.dataset.i!].title = el.value;
+  });
+  $('picked').addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('button[data-k]'), li = b?.closest<HTMLElement>('[data-i]');
+    if (!b || !li) return;
+    const i = +li.dataset.i!;
+    if (b.dataset.k === 'drop') picks.splice(i, 1);
+    if (b.dataset.k === 'up' && i > 0) [picks[i - 1], picks[i]] = [picks[i], picks[i - 1]];
+    if (b.dataset.k === 'down' && i < picks.length - 1) [picks[i + 1], picks[i]] = [picks[i], picks[i + 1]];
+    renderCombine();
+  });
+  $('ccancel').onclick = () => cdlg().close();
+  $('combine')?.addEventListener('click', () => openCombine(null));
+  $('cform').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(cform());
+    const body = { kind, title: String(f.get('title') ?? '').trim(), description: String(f.get('description') ?? '').trim(), slides: picks };
+    try {
+      const d = await api<Dataset>(editing ? `/hub/api/datasets/${editing.id}` : '/hub/api/combined', { method: editing ? 'PATCH' : 'POST', body });
+      cdlg().close();
+      toast(`${editing ? 'Saved' : 'Created'} <a href="${esc(d.url)}">${esc(d.title)}</a> · ${d.slides.length} samples`, 6000);
+      loadDatasets();
+    } catch (err) {
+      $('cerr').textContent = (err as Error).message;
+      $('cerr').hidden = false;
+    }
+  });
 
   // ---------------------------------------------------------------- jobs
   function renderJobs() {

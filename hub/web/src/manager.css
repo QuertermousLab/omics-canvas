@@ -102,3 +102,24 @@
   .ds th:nth-child(2), .ds td:nth-child(2), .ds th:nth-child(3), .ds td:nth-child(3) { display: none; }
   .mgr__bar .input { width: 100%; }
 }
+
+/* combine datasets dialog (styles of the workspace dialog, nav.css) */
+.combine { width: min(640px, 100vw - 32px); max-height: calc(100vh - 48px); overflow: auto; }
+.combine .lbl { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.combine textarea.input { height: auto; padding: 8px 11px; resize: vertical; }
+.combine__picked { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; counter-reset: sample; }
+.combine__picked li { display: grid; grid-template-columns: 22px minmax(140px, 1fr) minmax(0, 1fr) auto auto auto; align-items: center; gap: 6px; }
+.combine__picked li[data-i]::before { counter-increment: sample; content: counter(sample); color: var(--text-4); font: 600 11px var(--mono); text-align: right; }
+.combine__picked li.muted { display: block; }
+.combine__picked .input { height: 30px; }
+.combine__from { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combine__down .icon { transform: rotate(180deg); }
+.combine__pool { list-style: none; margin: 6px 0 0; padding: 0; max-height: 240px; overflow: auto; display: grid; gap: 4px; }
+.combine__pool button { width: 100%; min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface-2); color: var(--text); text-align: left; font-weight: 550; }
+.combine__pool button:hover:not(:disabled) { border-color: var(--accent); }
+.combine__pool button:disabled { opacity: .55; cursor: default; }
+.combine__pool button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combine__pool small { margin-left: auto; color: var(--text-4); font-size: 10.5px; white-space: nowrap; }
+.combine .ws-foot { gap: 8px; }
+.combine [data-m-cq] { margin-top: 6px; }

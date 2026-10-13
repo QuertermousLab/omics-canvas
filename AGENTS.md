@@ -24,6 +24,8 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
   their checkpoints, but the step in progress is redone. Web-only changes need no restart (`./vizhubctl build`).
 - Datasets and jobs belong to a Genome Canvas workspace (`owner`); never list, rename or delete another
   workspace's datasets. Removing a dataset deletes files only in folders the hub generated (`*.vizhub/`).
+- Combined datasets (`combined: true`, `root: "combined:<id>"`) exist only in `state/registry.json`: each slide has its
+  own `root` (a slide folder of another dataset). Use `slide_dir()` for slide folders, never `root / dir`.
 - Never delete or overwrite source data on `/nfs`; conversions write to `<source>.vizhub/` next to it.
 - Data colors in the viewers are data: change the interface theme tokens (`hub/web/src/theme.css`,
   Genome Canvas's Nord palette), not dataset colors.

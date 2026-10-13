@@ -597,15 +597,84 @@ async def add_dataset(request: Request):
     return {'job': job_public(start_job(src, info, body, ws))}
 
 
+# ---------- combined datasets: several samples (slides of the workspace's datasets) shown as one project
+
+def slide_dir(d, s):
+    """The folder of one slide: its own root in a combined dataset, else under the dataset's root."""
+    return Path(s['root']) if s.get('root') else Path(d['root']) / s['dir']
+
+
+def combined_slides(items, ws, kind):
+    """[{dataset, slide, title}] (the caller's datasets of this viewer) -> slides of a combined dataset."""
+    if not isinstance(items, list) or len(items) < 1:
+        raise HTTPException(400, 'Pick at least one sample')
+    out, taken = [], set()
+    for it in items[:200]:
+        src = dataset(str(it.get('dataset', '')))
+        require_owner(src, ws)
+        if src['kind'] != kind or src['layout'] == 'screen':
+            raise HTTPException(400, f'“{src["title"]}” is not a {KIND_PATH[kind]} dataset')
+        s = next((x for x in src['slides'] if x['id'] == it.get('slide')), None) or (src['slides'][0] if len(src['slides']) == 1 and not it.get('slide') else None)
+        if not s:
+            raise HTTPException(400, f'“{src["title"]}” has no sample {it.get("slide")!r}')
+        folder = slide_dir(src, s)
+        if not (folder / 'slide.json').is_file():
+            raise HTTPException(400, f'{folder} has no slide.json')
+        title = (str(it.get('title') or '').strip() or (s['title'] if len(src['slides']) > 1 else src['title']))[:120]
+        sid, k = slugify(title), 2
+        while sid in taken:
+            sid, k = f'{slugify(title)}-{k}', k + 1
+        taken.add(sid)
+        try:
+            m = json.loads((folder / 'slide.json').read_text())
+        except Exception:
+            m = {}
+        out.append(dict(id=sid, title=title, dir=sid, root=str(folder), fromDataset=src['id'], fromTitle=src['title'], fromSlide=s['id'],
+                        nCells=m.get('nCells'), technology=m.get('technology'), species=m.get('species')))
+    return out
+
+
+def combined_facts(slides):
+    uniq = lambda k: ', '.join(dict.fromkeys(str(s[k]) for s in slides if s.get(k)))
+    return dict(nCells=sum(s.get('nCells') or 0 for s in slides), technology=uniq('technology') or None, species=uniq('species') or None,
+                source='Combined: ' + ', '.join(dict.fromkeys(s['fromTitle'] for s in slides)))
+
+
+@app.post('/hub/api/combined')
+async def add_combined(request: Request):
+    """A new dataset made of samples of the caller's datasets (e.g. time points, sections); nothing is copied."""
+    ws = workspace_of(request)
+    body = await request.json()
+    kind = body.get('kind')
+    if kind not in ('spatial', 'singlecell'):
+        raise HTTPException(400, 'Combined datasets are for the spatial and single-cell viewers')
+    title = str(body.get('title') or '').strip()[:300]
+    if not title:
+        raise HTTPException(400, 'Give the combined dataset a name')
+    slides = combined_slides(body.get('slides'), ws, kind)
+    with lock:
+        did = unique_id(title, f'{title}-{KIND_PATH[kind]}')
+        d = dict(id=did, kind=kind, title=title, description=str(body.get('description') or '')[:2000], root=f'combined:{did}',
+                 layout='project', combined=True, slides=slides, added=int(time.time()), job=None,
+                 owner=ws['id'], ownerName=ws['name'], **combined_facts(slides))
+        registry['datasets'].append(d)
+        save_registry()
+    return public(d)
+
+
 @app.patch('/hub/api/datasets/{id_}')
 async def edit_dataset(id_: str, request: Request):
     body = await request.json()
     d = dataset(id_)
     require_owner(d, workspace_of(request))
+    slides = combined_slides(body['slides'], workspace_of(request), d['kind']) if d.get('combined') and 'slides' in body else None
     with lock:
-        for k in ('title', 'description'):
+        for k, n in (('title', 300), ('description', 2000)):
             if k in body:
-                d[k] = str(body[k])[:300]
+                d[k] = str(body[k])[:n]
+        if slides is not None:
+            d['slides'] = slides
+            d.update(combined_facts(slides))
         save_registry()
     return public(d)
 
@@ -615,8 +684,12 @@ def remove_dataset(id_: str, request: Request, files: bool = False):
     d = dataset(id_)
     require_owner(d, workspace_of(request))
     removed = None
+    if d.get('combined'):
+        files = False  # it only points at other datasets' files
     root = Path(d['root'])
-    others = [x for x in registry['datasets'] if x['root'] == d['root'] and x['id'] != id_]
+    # other datasets showing these files: the same folder in another workspace, or a combined dataset's sample
+    others = [x for x in registry['datasets'] if x['id'] != id_ and (x['root'] == d['root'] or any(
+        sl.get('root') and (Path(sl['root']) == root or root in Path(sl['root']).parents) for sl in x['slides']))]
     if files and others:
         files = False  # another workspace still shows these files: only unregister
     if files:
@@ -698,6 +771,8 @@ def projects(kind: str, request: Request, include: str = ''):
                 extra = json.loads((Path(d['root']) / 'project.json').read_text())
             except Exception:
                 extra = {}
+        elif d.get('combined'):
+            extra = {'description': d['description']} if d.get('description') else {}
         elif d['layout'] == 'project':
             try:
                 pj = json.loads((Path(d['root']) / 'project.json').read_text())
@@ -707,7 +782,8 @@ def projects(kind: str, request: Request, include: str = ''):
         out.append({**extra, 'id': d['id'], 'title': d['title'], 'url': view_url(d), 'base': base, 'mine': own(d, ws),
                     'ownerName': d.get('ownerName'),
                     'technology': extra.get('technology') or d.get('technology'), 'species': extra.get('species') or d.get('species'),
-                    'slides': [dict(id=s['id'], title=s['title'], base=f'{base}/{s["dir"]}'.rstrip('/')) for s in d['slides']],
+                    'slides': [dict(id=s['id'], title=s['title'], base=f'{base}/{s["dir"]}'.rstrip('/'),
+                                    **({'description': f'from {s["fromTitle"]}'} if s.get('fromTitle') else {})) for s in d['slides']],
                     'downloads': []})
     return out
 
@@ -772,7 +848,14 @@ def data(id_: str, rest: str, request: Request):
     rel = posixpath.normpath(rest)
     if rel.startswith(('..', '/')) or '/../' in rel:
         raise HTTPException(400, 'bad path')
-    p = Path(d['root']) / rel
+    if d.get('combined'):  # /<sample id>/<file> -> that sample's own folder
+        sid, _, rest_ = rel.partition('/')
+        sl = next((x for x in d['slides'] if x['id'] == sid), None)
+        if not sl:
+            raise HTTPException(404, f'no sample {sid}')
+        p = Path(sl['root']) / rest_
+    else:
+        p = Path(d['root']) / rel
     if not p.is_file():
         raise HTTPException(404, f'{rel} not found')
     size = p.stat().st_size
