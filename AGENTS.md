@@ -38,4 +38,7 @@ download links use `releases/latest/download/`). Before tagging: bump `CFBundleS
 `CFBundleVersion` in both `Resources/Info.plist` files (Genome Canvas's version is also asserted in
 `genome-canvas/tests/test_macos_desktop.py`), and update `RELEASE_NOTES.md` (root, the release text) and
 `genome-canvas/macos/GenomeCanvasDesktop/RELEASE_NOTES.md`. Push a `mac-ui-*` branch to get window
-screenshots of both apps (`macos-preview.yml`) before releasing interface changes.
+screenshots of both apps (`macos-preview.yml`) before releasing interface changes; it also starts Genome Canvas
+from a `genomecanvas://` link (`link/` screenshots). The apps only compile on macOS: push the branch before tagging
+any change to `main.m`. Note `NSURL.path` drops a trailing slash (match `NSURLComponents.path`), and a link that
+launches an app arrives in `application:openURLs:` before `applicationDidFinishLaunching:`.
