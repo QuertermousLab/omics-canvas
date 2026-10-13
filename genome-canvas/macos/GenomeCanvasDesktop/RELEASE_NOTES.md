@@ -1,5 +1,10 @@
 Native Genome Canvas Desktop builds for Apple Silicon and Intel Macs.
 
+## What's new in 1.7.0
+
+- Opens views from `genomecanvas://open?locus=…&genome=…&highlight=…&track=name|url` links (the same parameters work on the web page): the Omics Canvas app and CRISPR explorer use them to show an enhancer with its enhancer–gene loops. When a canvas is already open the app jumps there in place and keeps the loaded tracks
+- Linked BEDPE tracks are drawn as arcs whose height follows the score
+
 ## What's new in 1.6.0
 
 - Export PNG now has a transparent background (the light canvas palette is kept), so figures drop onto slides and posters of any color

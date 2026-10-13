@@ -1,22 +1,22 @@
-Native Mac apps for Apple Silicon and Intel Macs: **Genome Canvas 1.6.0** (genome browser) and the new
-**Omics Canvas 1.0.0** (spatial, single-cell and CRISPR viewers). The repository is now
-[QuertermousLab/omics-canvas](https://github.com/QuertermousLab/omics-canvas) (formerly genome-canvas).
+Native Mac apps for Apple Silicon and Intel Macs: **Genome Canvas 1.7.0** (genome browser) and
+**Omics Canvas 1.1.0** (spatial, single-cell and CRISPR viewers).
 
-## Omics Canvas 1.0.0 (new)
+## Omics Canvas 1.1.0
 
-- One window for the lab server's **spatial viewer, single-cell viewer and CRISPR screen explorer**: switch
-  viewers in the sidebar (⌘1 / ⌘2 / ⌘3), pick your workspace (the same as Genome Canvas), open your datasets,
-  and add or convert new ones (⌘O)
-- Multiome and scATAC: choose the assay (RNA, peaks, gene activity, chromVAR), chromatin accessibility tracks,
-  chromVAR motif logos
-- Export PNG with a transparent background (⇧⌘E); light and dark themes follow macOS (⇧⌘T to switch)
-- Connects to `http://171.65.68.140:8892` (from outside Stanford, connect the VPN first); **Connect to Server…** (⌘,) for another address
+- **Tissue images** in the spatial viewer: H&E, IHC and other stains (and grey scans) under the spots, with black /
+  white / gamma and opacity controls. Read from Seurat Visium objects, SpatialExperiment, h5ad `uns["spatial"]`,
+  **Space Ranger output folders** (new: select `outs/` or a Visium HD bin folder) and post-Xenium H&E aligned in
+  Xenium Explorer
+- Seurat Visium (VisiumV2) spots are no longer transposed — convert such datasets again to fix older conversions
+- CRISPR explorer → Genome Canvas: enhancer and gene links open the region, highlight the element and add the
+  screen's enhancer → gene loops (significant and all tested links). In the app they open in **Genome Canvas.app**
+  when it is installed, otherwise in the browser
 
-## Genome Canvas 1.6.0
+## Genome Canvas 1.7.0
 
-- Export PNG now has a transparent background (the light canvas palette is kept)
-- On the lab server the web page links back to the Omics Canvas home page
-- Data roots can pin their id, so share links keep working when a data folder moves
+- Opens views from links: `genomecanvas://open?locus=…&genome=…&highlight=…&track=…` (and the same parameters on the
+  web page); when a canvas is already open it jumps there in place and keeps your tracks
+- Linked BEDPE tracks draw enhancer–gene loops with arc height from the score
 
 ## Download
 
