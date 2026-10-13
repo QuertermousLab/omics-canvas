@@ -29,8 +29,9 @@ def make_handler(hub, canvas):
                 extra = {'X-Forwarded-Prefix': '/genome-canvas'}
             length = int(self.headers.get('Content-Length') or 0)
             body = self.rfile.read(length) if length else None
-            headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP and k.lower() != 'host'}
-            headers.update(extra, Host=target.netloc)
+            # the original Host, as apache.conf's ProxyPreserveHost On (Genome Canvas checks Origin against it)
+            headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
+            headers.update(extra)
             conn = http.client.HTTPConnection(target.hostname, target.port, timeout=600)
             try:
                 conn.request(self.command, path, body=body, headers=headers)
