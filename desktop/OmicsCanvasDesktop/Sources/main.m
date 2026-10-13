@@ -1367,7 +1367,8 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
             NSRange bar = [item.value rangeOfString:@"|" options:NSBackwardsSearch];
             if ([item.name isEqualToString:@"track"] && bar.location != NSNotFound && bar.location + 1 < item.value.length && [item.value characterAtIndex:bar.location + 1] == '/') {
                 NSURL *absolute = [NSURL URLWithString:[item.value substringFromIndex:bar.location + 1] relativeToURL:url];
-                item = [NSURLQueryItem queryItemWithName:@"track" value:[NSString stringWithFormat:@"%@|%@", [item.value substringToIndex:bar.location], absolute.absoluteString]];
+                [items addObject:[NSURLQueryItem queryItemWithName:@"track" value:[NSString stringWithFormat:@"%@|%@", [item.value substringToIndex:bar.location], absolute.absoluteString]]];
+                continue;
             }
             [items addObject:item];
         }
