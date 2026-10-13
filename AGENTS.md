@@ -32,6 +32,13 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
 - Commit identity (repo config): `Genome Canvas Contributors <genome-canvas@users.noreply.github.com>`.
   CI (`.github/workflows/ci.yml`) runs Genome Canvas's `npm test` and builds/type-checks the hub.
 
+## Documentation
+
+[docs/TUTORIAL.md](docs/TUTORIAL.md) is the user guide; its screenshots (`docs/images/`) show **public data only**
+(the repository is public). Web shots: a temporary workspace on THOR with public datasets, headless Chromium. Mac app
+shots: `.github/workflows/docs-screenshots.yml` (push a `docs-shots-*` branch) runs a test server on the macOS runner
+with public 10x data (`gateway/dev_gateway.py` stands in for Apache) and uploads them as an artifact.
+
 ## Releases
 
 A `v*` tag builds both Mac apps for arm64 and x86_64 (`.github/workflows/release-macos.yml`) and publishes

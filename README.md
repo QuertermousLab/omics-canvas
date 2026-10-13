@@ -18,6 +18,9 @@ Downloads (Apple Silicon / Intel): [Genome Canvas](https://github.com/Quertermou
 ([Intel](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/OmicsCanvasDesktop-macOS-x86_64.zip)).
 The apps are ad-hoc signed: after unzipping, run `xattr -dr com.apple.quarantine "/Applications/<App>.app"` once.
 
+**How to use it: [docs/TUTORIAL.md](docs/TUTORIAL.md)** — all four modules, data management and the Mac apps, with
+screenshots.
+
 ## Lab server deployment (THOR)
 
 One address for everything: **http://171.65.68.140:8892/** (redirects to `/hub/`). The checkout
