@@ -91,18 +91,18 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     <div data-m-body hidden>
       <section class="card mgr__list">
         <div class="mgr__bar"><h2>Datasets</h2>
-          ${kind !== 'crispr' ? '<button type="button" class="btn btn--light btn--sm" data-m-combine title="One dataset made of samples of your datasets — time points, conditions, sections"><svg class="icon"><use href="#i-layers"/></svg>Combine datasets</button>' : ''}
+          <button type="button" class="btn btn--light btn--sm" data-m-combine title="${kind === 'crispr' ? 'One dataset made of several of your screens' : 'One dataset made of samples of your datasets — time points, conditions, sections'}"><svg class="icon"><use href="#i-layers"/></svg>Combine ${kind === 'crispr' ? 'screens' : 'datasets'}</button>
           <label class="check small muted" data-m-inside-wrap hidden><input type="checkbox" data-m-inside /> <span data-m-inside-label></span></label>
           <input class="input" type="search" placeholder="Filter" data-m-q aria-label="Filter datasets" /></div>
         <div class="table-wrap"><table class="table ds" data-m-table></table></div>
       </section>
       <dialog class="ws-dialog" data-m-cdialog>
         <form method="dialog" class="ws-card combine" data-m-cform>
-          <div class="ws-head"><div><b data-m-ctitle>Combine datasets</b><small>One link with a sample picker, like a time course or several sections. The samples stay where they are; nothing is copied.</small></div></div>
+          <div class="ws-head"><div><b data-m-ctitle>Combine datasets</b><small>${kind === 'crispr' ? 'One link with a screen picker, e.g. the screens of one study.' : 'One link with a sample picker, like a time course or several sections.'} The ${kind === 'crispr' ? 'screens' : 'samples'} stay where they are; nothing is copied.</small></div></div>
           <label class="lbl">Name <input class="input" name="title" required maxlength="300" placeholder="e.g. Mouse SMC atherosclerosis time course" /></label>
           <label class="lbl">Description <textarea class="input" name="description" rows="2" maxlength="2000" placeholder="optional: what the samples are"></textarea></label>
-          <div><span class="eyebrow">Samples, in this order</span><ol class="combine__picked" data-m-picked></ol></div>
-          <div><span class="eyebrow">Add samples from your ${P.noun}</span><input class="input" type="search" placeholder="Filter" data-m-cq aria-label="Filter samples" />
+          <div><span class="eyebrow">${kind === 'crispr' ? 'Screens' : 'Samples'}, in this order</span><ol class="combine__picked" data-m-picked></ol></div>
+          <div><span class="eyebrow">Add ${kind === 'crispr' ? 'screens' : `samples from your ${P.noun}`}</span><input class="input" type="search" placeholder="Filter" data-m-cq aria-label="Filter samples" />
             <ul class="combine__pool" data-m-pool></ul></div>
           <p class="small muted" data-m-cnote hidden>The folder's <span class="mono">project.json</span> is not changed: the samples are edited here, and <b>Restore the folder's samples</b> undoes it.</p>
           <p class="err ws-err" data-m-cerr hidden></p>
@@ -144,6 +144,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
 
   // ---------------------------------------------------------------- datasets
   const facts = (d: Dataset) => {
+    if (d.kind === 'crispr' && d.combined) return `combined: ${d.slides.length} screen${d.slides.length === 1 ? '' : 's'}${d.species ? ` · ${d.species}` : ''}`;
     if (d.kind === 'crispr') {
       const s = d.stats ?? {};
       return [d.screenKind === 'enhancer' ? 'Enhancer screen' : 'Perturb-seq', s.targets != null ? `${s.targets.toLocaleString()} targets` : '',
@@ -223,7 +224,9 @@ export function mountManager(root: HTMLElement, kind: Kind) {
   let picks: Pick[] = [];
   const cdlg = () => $<HTMLDialogElement>('cdialog');
   const cform = () => $<HTMLFormElement>('cform');
-  const sampleName = (d: Dataset, sl: Dataset['slides'][number]) => (d.slides.length > 1 ? `${d.title} · ${sl.title}` : d.title);
+  /** a dataset's samples; a CRISPR screen is one sample ("screen") */
+  const samplesOf = (d: Dataset): Dataset['slides'] => (d.slides.length ? d.slides : d.layout === 'screen' ? [{ id: 'screen', title: d.title }] : []);
+  const sampleName = (d: Dataset, sl: Dataset['slides'][number]) => (samplesOf(d).length > 1 ? `${d.title} · ${sl.title}` : d.title);
 
   function openCombine(d: Dataset | null) {
     editing = d;
@@ -232,7 +235,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     f.reset();
     (f.elements.namedItem('title') as HTMLInputElement).value = d?.title ?? '';
     (f.elements.namedItem('description') as HTMLTextAreaElement).value = d?.description ?? '';
-    $('ctitle').textContent = d ? `Samples of “${d.title}”` : 'Combine datasets';
+    $('ctitle').textContent = d ? `${kind === 'crispr' ? 'Screens' : 'Samples'} of “${d.title}”` : kind === 'crispr' ? 'Combine screens' : 'Combine datasets';
     $('crestore').hidden = !d?.edited;
     $('csave').textContent = d ? 'Save' : 'Create';
     $('cerr').hidden = true;
@@ -243,19 +246,19 @@ export function mountManager(root: HTMLElement, kind: Kind) {
   function renderCombine() {
     const byId = new Map(datasets.map((d) => [d.id, d]));
     $('picked').innerHTML = picks.length ? picks.map((p, i) => {
-      const d = byId.get(p.dataset), sl = d && [...d.slides, ...(d.folderSlides ?? [])].find((x) => (x.fromSlide ?? x.id) === p.slide || x.id === p.slide);
+      const d = byId.get(p.dataset), sl = d && [...samplesOf(d), ...(d.folderSlides ?? [])].find((x) => (x.fromSlide ?? x.id) === p.slide || x.id === p.slide);
       return `<li data-i="${i}"><input class="input" value="${esc(p.title)}" data-k="title" aria-label="Sample name" />
         <span class="small muted combine__from" title="${esc(d && sl ? sampleName(d, sl) : p.dataset)}">${esc(d && sl ? sampleName(d, sl) : `${p.dataset} (removed)`)}</span>
         <button type="button" class="icon-btn sm ghost" data-k="up" title="Move up" aria-label="Move up" ${i ? '' : 'disabled'}><svg class="icon"><use href="#i-up"/></svg></button>
         <button type="button" class="icon-btn sm ghost combine__down" data-k="down" title="Move down" aria-label="Move down" ${i < picks.length - 1 ? '' : 'disabled'}><svg class="icon"><use href="#i-up"/></svg></button>
         <button type="button" class="btn btn--quiet btn--xs" data-k="drop">Remove</button></li>`;
-    }).join('') : '<li class="muted small">Add two or more samples below.</li>';
+    }).join('') : `<li class="muted small">Add two or more ${kind === 'crispr' ? 'screens' : 'samples'} below.</li>`;
     const q = $<HTMLInputElement>('cq').value.trim().toLowerCase();
     const chosen = new Set(picks.map((p) => `${p.dataset}/${p.slide}`));
     // other datasets' samples; an edited project also offers its folder's own samples back
     const own = editing && !editing.combined ? (editing.folderSlides ?? editing.slides).map((sl) => ({ d: editing!, sl })) : [];
     const pool = [...own, ...datasets.filter((d) => !d.combined && d.id !== editing?.id)
-      .flatMap((d) => d.slides.map((sl) => ({ d, sl })))]
+      .flatMap((d) => samplesOf(d).map((sl) => ({ d, sl })))]
       .filter(({ d, sl }) => !q || `${d.title} ${sl.title} ${d.technology ?? ''}`.toLowerCase().includes(q));
     $('pool').innerHTML = pool.map(({ d, sl }) => {
       const on = chosen.has(`${d.id}/${sl.id}`);
@@ -272,8 +275,8 @@ export function mountManager(root: HTMLElement, kind: Kind) {
   $('pool').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-ds]');
     if (!b) return;
-    const d = datasets.find((x) => x.id === b.dataset.ds)!, sl = [...(d.folderSlides ?? []), ...d.slides].find((x) => x.id === b.dataset.sl)!;
-    picks.push({ dataset: d.id, slide: sl.id, title: d.slides.length > 1 ? sl.title : d.title });
+    const d = datasets.find((x) => x.id === b.dataset.ds)!, sl = [...(d.folderSlides ?? []), ...samplesOf(d)].find((x) => x.id === b.dataset.sl)!;
+    picks.push({ dataset: d.id, slide: sl.id, title: samplesOf(d).length > 1 ? sl.title : d.title });
     renderCombine();
   });
   $('picked').addEventListener('input', (e) => {
@@ -602,7 +605,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     jobs = [];
     await Promise.all([loadDatasets().catch((e) => { $('table').innerHTML = `<tbody><tr><td class="empty err">${esc(e.message)}</td></tr></tbody>`; }), loadJobs().catch(() => {})]);
     // ?combine=1 / ?edit=<dataset>: open the samples dialog (the Mac app's "Combine Datasets…" / "Edit Samples…")
-    if (kind !== 'crispr' && (params.has('combine') || params.has('edit'))) {
+    if (params.has('combine') || params.has('edit')) {
       const d = datasets.find((x) => x.id === params.get('edit'));
       if (params.has('combine') || d) openCombine(d ?? null);
       params.delete('combine');

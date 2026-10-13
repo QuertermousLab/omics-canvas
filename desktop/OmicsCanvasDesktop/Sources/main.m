@@ -549,11 +549,10 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     self.datasetCountLabel.textColor = GCText3Color();
     GCButton *manageButton = [self iconButton:@"plus.rectangle.on.folder" tip:@"Add and manage datasets" action:@selector(manageDatasets:)];
     GCButton *refreshButton = [self iconButton:@"arrow.clockwise" tip:@"Refresh the list" action:@selector(refreshDatasets:)];
-    self.combineButton = [self iconButton:@"square.stack.3d.up" tip:@"Combine datasets: samples of several datasets as one" action:@selector(combineDatasets:)];
+    self.combineButton = [self iconButton:@"square.stack.3d.up" tip:@"Combine datasets (or CRISPR screens) into one" action:@selector(combineDatasets:)];
     manageButton.fixedHeight = 26;
     refreshButton.fixedHeight = 26;
     self.combineButton.fixedHeight = 26;
-    self.combineButton.hidden = [self.kind isEqualToString:@"crispr"];
     NSView *headingSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
     [headingSpacer setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
     NSStackView *datasetsHeading = [NSStackView stackViewWithViews:@[datasetsLabel, self.datasetCountLabel, headingSpacer, self.combineButton, manageButton, refreshButton]];
@@ -863,7 +862,6 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     self.kind = viewer[@"kind"];
     [[NSUserDefaults standardUserDefaults] setObject:self.kind forKey:TVViewerDefaultsKey];
     [self selectCardForKind:self.kind];
-    self.combineButton.hidden = [self.kind isEqualToString:@"crispr"];
     if (changed) { self.datasets = @[]; [self rebuildDatasetRows]; }
     [self loadPage:[NSString stringWithFormat:@"/%@/", viewer[@"path"]]];
 }
@@ -990,8 +988,7 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
             self.kind = viewer[@"kind"];
             [[NSUserDefaults standardUserDefaults] setObject:self.kind forKey:TVViewerDefaultsKey];
             [self selectCardForKind:self.kind];
-            self.combineButton.hidden = [self.kind isEqualToString:@"crispr"];
-            self.datasets = @[];
+                    self.datasets = @[];
             [self rebuildDatasetRows];
         }
         [self refreshWorkspaces];
@@ -1008,15 +1005,17 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
     NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
     formatter.numberStyle = NSNumberFormatterDecimalStyle;
-    if ([dataset[@"kind"] isEqual:@"crispr"]) {
+    NSArray *samples = [dataset[@"slides"] isKindOfClass:[NSArray class]] ? dataset[@"slides"] : @[];
+    if ([dataset[@"kind"] isEqual:@"crispr"] && [dataset[@"combined"] boolValue]) {
+        [parts addObject:[NSString stringWithFormat:@"%lu screen%@", (unsigned long)samples.count, samples.count == 1 ? @"" : @"s"]];
+    } else if ([dataset[@"kind"] isEqual:@"crispr"]) {
         [parts addObject:[dataset[@"screenKind"] isEqual:@"enhancer"] ? @"Enhancer screen" : @"Perturb-seq"];
         NSDictionary *stats = [dataset[@"stats"] isKindOfClass:[NSDictionary class]] ? dataset[@"stats"] : @{};
         if ([stats[@"targets"] isKindOfClass:[NSNumber class]]) [parts addObject:[NSString stringWithFormat:@"%@ targets", [formatter stringFromNumber:stats[@"targets"]]]];
         if ([stats[@"tests"] isKindOfClass:[NSNumber class]]) [parts addObject:[NSString stringWithFormat:@"%@ tests", [formatter stringFromNumber:stats[@"tests"]]]];
     } else {
         // combined datasets and projects: their samples (time points, sections, ...)
-        NSArray *slides = [dataset[@"slides"] isKindOfClass:[NSArray class]] ? dataset[@"slides"] : @[];
-        if (slides.count > 1) [parts addObject:[NSString stringWithFormat:@"%lu samples", (unsigned long)slides.count]];
+        if (samples.count > 1) [parts addObject:[NSString stringWithFormat:@"%lu samples", (unsigned long)samples.count]];
         if ([dataset[@"nCells"] isKindOfClass:[NSNumber class]]) [parts addObject:[NSString stringWithFormat:@"%@ cells", [formatter stringFromNumber:dataset[@"nCells"]]]];
     }
     for (NSString *key in @[@"technology", @"species"]) if ([dataset[key] isKindOfClass:[NSString class]] && [dataset[key] length]) [parts addObject:dataset[key]];
@@ -1219,7 +1218,6 @@ static NSArray *TVSamples(NSDictionary *dataset) {
 - (void)menuNeedsUpdate:(NSMenu *)menu {
     [menu removeAllItems];
     NSInteger row = self.datasetTable.clickedRow;
-    BOOL viewer = ![self.kind isEqualToString:@"crispr"];
     if (row >= 0 && row < (NSInteger)self.datasetRows.count) {
         NSDictionary *entry = self.datasetRows[(NSUInteger)row];
         NSDictionary *dataset = entry[@"dataset"];
@@ -1228,14 +1226,14 @@ static NSArray *TVSamples(NSDictionary *dataset) {
         open.target = self;
         if (entry[@"sample"]) return;
         [menu addItem:[NSMenuItem separatorItem]];
-        if (viewer && ([dataset[@"combined"] boolValue] || [dataset[@"layout"] isEqual:@"project"])) {
+        if ([dataset[@"combined"] boolValue] || [dataset[@"layout"] isEqual:@"project"]) {
             [menu addItemWithTitle:@"Edit Samples…" action:@selector(editSamples:) keyEquivalent:@""].representedObject = dataset;
         }
         [menu addItemWithTitle:@"Rename…" action:@selector(renameDataset:) keyEquivalent:@""].representedObject = dataset;
         [menu addItemWithTitle:@"Remove…" action:@selector(removeDataset:) keyEquivalent:@""].representedObject = dataset;
         [menu addItem:[NSMenuItem separatorItem]];
     }
-    if (viewer) [menu addItemWithTitle:@"Combine Datasets…" action:@selector(combineDatasets:) keyEquivalent:@""];
+    [menu addItemWithTitle:[self.kind isEqualToString:@"crispr"] ? @"Combine Screens…" : @"Combine Datasets…" action:@selector(combineDatasets:) keyEquivalent:@""];
     [menu addItemWithTitle:@"Add and Manage Datasets" action:@selector(manageDatasets:) keyEquivalent:@""];
     for (NSMenuItem *item in menu.itemArray) if (!item.isSeparatorItem) item.target = self;
 }

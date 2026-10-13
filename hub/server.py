@@ -567,7 +567,7 @@ def combined_into():
     out = {}
     for d in registry['datasets']:
         got = used.get((d.get('owner'), d['id']))
-        if not d.get('combined') and got and all(s['id'] in got for s in d['slides']):
+        if not d.get('combined') and got and all(s['id'] in got for s in samples_of(d)):
             out[d['id']] = sorted(set().union(*got.values()))
     return out
 
@@ -628,6 +628,11 @@ async def add_dataset(request: Request):
 
 # ---------- combined datasets: several samples (slides of the workspace's datasets) shown as one project
 
+def samples_of(d):
+    """A dataset's samples: its slides, or the screen itself for a CRISPR screen (id "screen")."""
+    return d['slides'] or ([dict(id='screen', title=d['title'], dir='')] if d['layout'] == 'screen' else [])
+
+
 def slide_dir(d, s):
     """The folder of one slide: its own root in a combined dataset, else under the dataset's root."""
     return Path(s['root']) if s.get('root') else Path(d['root']) / s['dir']
@@ -643,29 +648,32 @@ def combined_slides(items, ws, kind):
     for it in items[:200]:
         src = dataset(str(it.get('dataset', '')))
         require_owner(src, ws)
-        if src['kind'] != kind or src['layout'] == 'screen':
+        if src['kind'] != kind:
             raise HTTPException(400, f'“{src["title"]}” is not a {KIND_PATH[kind]} dataset')
-        pool = src['slides'] + [x for x in src.get('folderSlides') or [] if x['id'] not in {y['id'] for y in src['slides']}]
-        s = next((x for x in pool if x['id'] == it.get('slide')), None) or (src['slides'][0] if len(src['slides']) == 1 and not it.get('slide') else None)
+        pool = samples_of(src) + [x for x in src.get('folderSlides') or [] if x['id'] not in {y['id'] for y in src['slides']}]
+        s = next((x for x in pool if x['id'] == it.get('slide')), None) or (pool[0] if len(pool) == 1 and not it.get('slide') else None)
         if not s:
             raise HTTPException(400, f'“{src["title"]}” has no sample {it.get("slide")!r}')
         if s.get('fromDataset') and s.get('fromDataset') != src['id']:  # a sample of a combined / edited dataset: its origin
             src = registry_get(s['fromDataset']) or src
         folder = slide_dir(src, s) if not s.get('root') else Path(s['root'])
-        if not (folder / 'slide.json').is_file():
-            raise HTTPException(400, f'{folder} has no slide.json')
-        title = (str(it.get('title') or '').strip() or (s['title'] if len(src['slides']) > 1 else src['title']))[:120]
+        marker = 'project.json' if kind == 'crispr' else 'slide.json'
+        if not (folder / marker).is_file():
+            raise HTTPException(400, f'{folder} has no {marker}')
+        title = (str(it.get('title') or '').strip() or (s['title'] if len(samples_of(src)) > 1 else src['title']))[:120]
         want = slugify(it.get('id') or title)
         sid, k = want, 2
         while sid in taken:
             sid, k = f'{want}-{k}', k + 1
         taken.add(sid)
         try:
-            m = json.loads((folder / 'slide.json').read_text())
+            m = json.loads((folder / marker).read_text())
         except Exception:
             m = {}
+        extra = dict(screenKind=m.get('kind'), species=m.get('species')) if kind == 'crispr' else \
+            dict(nCells=m.get('nCells'), technology=m.get('technology'), species=m.get('species'))
         out.append(dict(id=sid, title=title, dir=sid, root=str(folder), fromDataset=src['id'], fromTitle=src['title'], fromSlide=s.get('fromSlide') or s['id'],
-                        nCells=m.get('nCells'), technology=m.get('technology'), species=m.get('species')))
+                        **extra))
     return out
 
 
@@ -675,8 +683,9 @@ def registry_get(id_):
 
 def combined_facts(slides):
     uniq = lambda k: ', '.join(dict.fromkeys(str(s[k]) for s in slides if s.get(k)))
-    return dict(nCells=sum(s.get('nCells') or 0 for s in slides), technology=uniq('technology') or None, species=uniq('species') or None,
-                source='Combined: ' + ', '.join(dict.fromkeys(s['fromTitle'] for s in slides)))
+    facts = dict(nCells=sum(s.get('nCells') or 0 for s in slides) or None, technology=uniq('technology') or None, species=uniq('species') or None,
+                 source='Combined: ' + ', '.join(dict.fromkeys(s['fromTitle'] for s in slides)))
+    return facts
 
 
 @app.post('/hub/api/combined')
@@ -685,8 +694,8 @@ async def add_combined(request: Request):
     ws = workspace_of(request)
     body = await request.json()
     kind = body.get('kind')
-    if kind not in ('spatial', 'singlecell'):
-        raise HTTPException(400, 'Combined datasets are for the spatial and single-cell viewers')
+    if kind not in KIND_PATH:
+        raise HTTPException(400, 'kind: spatial, singlecell or crispr')
     title = str(body.get('title') or '').strip()[:300]
     if not title:
         raise HTTPException(400, 'Give the combined dataset a name')
@@ -841,6 +850,17 @@ def projects(kind: str, request: Request, include: str = ''):
             continue
         base = f'/hub/api/data/{d["id"]}'
         extra = {}
+        if d['kind'] == 'crispr' and d.get('combined'):
+            for sl in d['slides']:
+                try:
+                    pj = json.loads((Path(sl['root']) / 'project.json').read_text())
+                except Exception:
+                    continue
+                out.append({**pj, 'id': d['id'], 'sample': sl['id'], 'group': d['title'], 'groupDescription': d.get('description') or '',
+                            'title': sl['title'], 'url': f'{view_url(d)}?s={sl["id"]}', 'base': f'{base}/{sl["id"]}',
+                            'arcs': f'/hub/api/arcs/{d["id"]}/{sl["id"]}', 'mine': own(d, ws), 'ownerName': d.get('ownerName'),
+                            'slides': [], 'downloads': []})
+            continue
         if d['layout'] == 'screen':
             try:
                 extra = json.loads((Path(d['root']) / 'project.json').read_text())
@@ -856,7 +876,7 @@ def projects(kind: str, request: Request, include: str = ''):
                 extra = {}
             if d.get('description'):  # edited in the hub (starts as project.json's)
                 extra['description'] = d['description']
-        out.append({**extra, 'id': d['id'], 'title': d['title'], 'url': view_url(d), 'base': base, 'mine': own(d, ws),
+        out.append({**extra, 'id': d['id'], 'title': d['title'], 'url': view_url(d), 'base': base, 'arcs': f'/hub/api/arcs/{d["id"]}', 'mine': own(d, ws),
                     'ownerName': d.get('ownerName'),
                     'technology': extra.get('technology') or d.get('technology'), 'species': extra.get('species') or d.get('species'),
                     'slides': [dict(id=s['id'], title=s['title'], base=f'{base}/{s["dir"]}'.rstrip('/'),
@@ -885,8 +905,14 @@ def tss_table(genome: str):
     return _TSS[genome]
 
 
+@app.get('/hub/api/arcs/{id_}/{sample}/{which}.bedpe')
+def enhancer_arcs_sample(id_: str, sample: str, which: str, genome: str = 'hg38'):
+    """The same for one screen of a combined CRISPR dataset."""
+    return enhancer_arcs(id_, which, genome, sample)
+
+
 @app.get('/hub/api/arcs/{id_}/{which}.bedpe')
-def enhancer_arcs(id_: str, which: str, genome: str = 'hg38'):
+def enhancer_arcs(id_: str, which: str, genome: str = 'hg38', sample: str = ''):
     """Enhancer -> target-gene TSS links of an enhancer screen as BEDPE, for a Genome Canvas loop track
     (as the ATHENA locus view): `significant` or `all` tested pairs; score = |log2FC| (arc height)."""
     if which not in ('significant', 'all'):
@@ -895,7 +921,13 @@ def enhancer_arcs(id_: str, which: str, genome: str = 'hg38'):
     tss = tss_table(genome)
     if d['kind'] != 'crispr' or tss is None:
         raise HTTPException(404, f'no enhancer links for {genome}')
-    p = Path(d['root']) / 'tests.json'
+    folder = Path(d['root'])
+    if sample or d.get('combined'):
+        sl = next((x for x in d['slides'] if x['id'] == sample), None)
+        if not sl or not sl.get('root'):
+            raise HTTPException(404, f'no screen {sample}')
+        folder = Path(sl['root'])
+    p = folder / 'tests.json'
     if not p.is_file():
         raise HTTPException(404, 'not an enhancer screen')
     t = json.loads(p.read_text())

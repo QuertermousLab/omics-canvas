@@ -251,12 +251,21 @@
     if (!screens.some((s) => s.id === screenId)) { fail(`There is no CRISPR screen “${esc(screenId)}”.<br><a class="btn btn--primary btn--sm" href="/crispr/">Your CRISPR screens</a>`); return; }
     const order = ['enhancer', 'perturbseq'];
     screens.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.title.localeCompare(b.title));
-    screen = screens.find((s) => s.id === screenId)!;
-    $('screen').innerHTML = [['enhancer', 'Enhancer screens'], ['perturbseq', 'Perturb-seq (TSS CRISPRi)']].map(([k, label]) =>
-      `<optgroup label="${label}">${screens.filter((s) => s.kind === k).map((s) => `<option value="${esc(s.id)}" ${s === screen ? 'selected' : ''}>${esc(s.title)}${s.mine === false && s.ownerName ? ` · shared by ${esc(s.ownerName)}` : ''}</option>`).join('')}</optgroup>`).join('');
-    $<HTMLSelectElement>('screen').onchange = (e) => { location.href = `/crispr/${encodeURIComponent((e.target as HTMLSelectElement).value)}/`; };
+    // a combined dataset holds several screens: ?s= picks one (the first by default)
+    const here = screens.filter((s) => s.id === screenId);
+    screen = here.find((s) => s.sample && s.sample === params.get('s')) ?? here[0];
+    const option = (s: Screen) => `<option value="${esc(s.url ?? `/crispr/${s.id}/`)}" ${s === screen ? 'selected' : ''}>${esc(s.title)}${s.mine === false && s.ownerName ? ` · shared by ${esc(s.ownerName)}` : ''}</option>`;
+    const groups = [...new Set(screens.filter((s) => s.group).map((s) => s.id))];
+    $('screen').innerHTML = [
+      ...groups.map((g) => { const g0 = screens.find((s) => s.id === g)!; return `<optgroup label="${esc(g0.group!)}">${screens.filter((s) => s.id === g).map(option).join('')}</optgroup>`; }),
+      ...[['enhancer', 'Enhancer screens'], ['perturbseq', 'Perturb-seq (TSS CRISPRi)']].map(([k, label]) => {
+        const list = screens.filter((s) => !s.group && s.kind === k);
+        return list.length ? `<optgroup label="${label}">${list.map(option).join('')}</optgroup>` : '';
+      }),
+    ].join('');
+    $<HTMLSelectElement>('screen').onchange = (e) => { location.href = (e.target as HTMLSelectElement).value; };
     $('facts').textContent = [screen.species, screen.cell, screen.assembly, screen.method].filter(Boolean).join(' · ');
-    $('source').innerHTML = `${esc(screen.description ?? '')}${screen.citation ? ` <em>${esc(screen.citation)}</em>.` : ''}
+    $('source').innerHTML = `${screen.group ? `<b>${esc(screen.group)}</b>${screen.groupDescription ? ` — ${esc(screen.groupDescription)}` : ''}<br>` : ''}${esc(screen.description ?? '')}${screen.citation ? ` <em>${esc(screen.citation)}</em>.` : ''}
       Data: ${(screen.sources ?? []).map((s) => s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">IGVF ${esc(s.accession)}</a>` : `<span class="mono">${esc(s.path ?? s.accession)}</span>`).join(', ')}`;
     document.title = `${screen.title} · CRISPR explorer · Omics Canvas`;
     $('msg').hidden = true;

@@ -7,6 +7,10 @@ export interface Screen {
   id: string; title: string; url?: string; base: string; fdr?: number; mine?: boolean; ownerName?: string; description?: string; kind: 'enhancer' | 'perturbseq'; species?: string; assembly?: string;
   cell?: string; citation?: string; method?: string; sources?: { accession: string; url: string | null; path?: string }[];
   stats?: Record<string, number>;
+  /** a screen of a combined dataset: its id there (?s=), the combined dataset's name and description */
+  sample?: string; group?: string; groupDescription?: string;
+  /** /hub/api/arcs/<dataset>[/<screen>]: enhancer-gene loops */
+  arcs?: string;
 }
 
 /** One enhancer–gene test (TAP-seq). p values as -log10. */
@@ -110,10 +114,10 @@ export function canvasURL(o: { locus: string; genome: string | null; highlight?:
 
 /** The screen's enhancer -> target-gene TSS links as two Genome Canvas loop tracks (hub /hub/api/arcs, hg38 gene
  *  table): significant pairs and all tested pairs, arc height = |log2FC| — the ATHENA locus view's CRISPR arcs. */
-export const enhancerArcTracks = (screen: { id: string; title: string }, genome: string | null) =>
+export const enhancerArcTracks = (screen: { id: string; title: string; arcs?: string }, genome: string | null) =>
   genome === 'hg38' ? (['significant', 'all'] as const).map((which) => ({
     name: `${screen.title} · ${which === 'significant' ? 'significant links' : 'all tested links'}`,
-    url: `/hub/api/arcs/${encodeURIComponent(screen.id)}/${which}.bedpe`,
+    url: `${screen.arcs ?? `/hub/api/arcs/${encodeURIComponent(screen.id)}`}/${which}.bedpe`,
   })) : [];
 
 /** BED-style element (0-based start) → 1-based region text */
