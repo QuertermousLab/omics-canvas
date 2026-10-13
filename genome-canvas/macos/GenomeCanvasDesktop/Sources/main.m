@@ -1049,6 +1049,12 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 }
 
 - (void)openLinkQuery:(NSString *)linkQuery {
+    // A link that launches the app arrives before applicationDidFinishLaunching: has built the window and the
+    // web view; keep it for the first page load (loadServerAddress: appends it).
+    if (!self.webView) {
+        self.pendingLinkQuery = linkQuery;
+        return;
+    }
     NSString *script = [NSString stringWithFormat:@"(function(){const b=window.GenomeCanvasDesktop;return Boolean(b&&b.openLink&&b.openLink(%@));})()", [self JSONFragment:linkQuery]];
     [self.webView evaluateJavaScript:script completionHandler:^(id result, NSError *error) {
         if ([result respondsToSelector:@selector(boolValue)] && [result boolValue]) return;

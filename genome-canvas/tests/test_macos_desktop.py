@@ -12,7 +12,7 @@ class MacOSDesktopClientTests(unittest.TestCase):
         with (MAC_APP / "Resources" / "Info.plist").open("rb") as stream:
             info = plistlib.load(stream)
         self.assertEqual(info["CFBundleIdentifier"], "org.genomecanvas.desktop")
-        self.assertEqual(info["CFBundleShortVersionString"], "1.7.0")
+        self.assertEqual(info["CFBundleShortVersionString"], "1.7.1")
         self.assertEqual(info["LSMinimumSystemVersion"], "13.0")
         self.assertTrue(info["NSAppTransportSecurity"]["NSAllowsArbitraryLoadsInWebContent"])
         self.assertNotIn("NSAllowsArbitraryLoads", info["NSAppTransportSecurity"])
@@ -28,6 +28,8 @@ class MacOSDesktopClientTests(unittest.TestCase):
         self.assertIn('@[@"locus", @"genome", @"highlight", @"color", @"track"]', source)
         self.assertIn("b.openLink(%@)", source)
         self.assertIn("self.pendingLinkQuery", source)
+        # a link that launches the app comes before the web view exists
+        self.assertIn("if (!self.webView) {\n        self.pendingLinkQuery = linkQuery;", source)
         self.assertIn("openLink(query) { if (!state.browser) return false;", web_app)
 
     def test_client_uses_persistent_webkit_and_native_file_panels(self):

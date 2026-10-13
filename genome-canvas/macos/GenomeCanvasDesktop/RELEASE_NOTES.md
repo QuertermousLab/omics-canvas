@@ -1,5 +1,9 @@
 Native Genome Canvas Desktop builds for Apple Silicon and Intel Macs.
 
+## What's new in 1.7.1
+
+- Fixed: a `genomecanvas://` link that started the app only opened the default view; the region, highlight and linked tracks now show when the link launches the app too
+
 ## What's new in 1.7.0
 
 - Opens views from `genomecanvas://open?locus=…&genome=…&highlight=…&track=name|url` links (the same parameters work on the web page): the Omics Canvas app and CRISPR explorer use them to show an enhancer with its enhancer–gene loops. When a canvas is already open the app jumps there in place and keeps the loaded tracks
