@@ -1370,6 +1370,9 @@ static NSArray *TVSamples(NSDictionary *dataset) {
         NSDictionary *env = [NSProcessInfo processInfo].environment;
         NSString *pages = env[@"OMICS_CANVAS_SNAPSHOT_PAGES"];
         if (pages.length) {
+            // a desktop-sized window (the runner's screen is small; the viewers need the width for their side panel)
+            NSLog(@"snapshot screen %@", NSStringFromRect(NSScreen.mainScreen.frame));
+            [self.window setFrame:NSMakeRect(0, 0, 1480, 920) display:YES];
             NSString *workspace = env[@"OMICS_CANVAS_SNAPSHOT_WORKSPACE"];
             void (^run)(void) = ^{ [self capturePages:[pages componentsSeparatedByString:@";"] directory:directory]; };
             if (workspace.length) [self callDesktopMethod:@"selectWorkspace" arguments:@[workspace] completion:^(id result) { [self refreshWorkspaces]; run(); }];
