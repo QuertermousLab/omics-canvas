@@ -1,0 +1,115 @@
+name: Documentation screenshots
+
+# Screenshots of both Mac apps for docs/TUTORIAL.md. CI cannot reach the lab server, so this runs a small Omics
+# Canvas server on the runner (Genome Canvas for workspaces, the hub, gateway/dev_gateway.py) with public 10x data:
+# a Visium human heart section (with its H&E image) and PBMC 3k. Run it by hand or push a docs-shots-* branch.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "docs-shots-*"
+
+permissions:
+  contents: read
+
+jobs:
+  shots:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Python packages
+        run: pip install --quiet fastapi uvicorn numpy pandas scipy anndata scanpy pillow pyarrow h5py igraph leidenalg
+      - name: Public demo data, converted for the viewers
+        shell: bash
+        run: |
+          D="${RUNNER_TEMP}/data"
+          mkdir -p "${D}/V1_Human_Heart"
+          cd "${D}/V1_Human_Heart"
+          base=https://cf.10xgenomics.com/samples/spatial-exp/1.1.0/V1_Human_Heart
+          curl -sSfL -o filtered_feature_bc_matrix.h5 "${base}/V1_Human_Heart_filtered_feature_bc_matrix.h5"
+          curl -sSfL "${base}/V1_Human_Heart_spatial.tar.gz" | tar xz
+          cd "${D}"
+          python -c "import scanpy as sc; sc.datasets.pbmc3k_processed().write_h5ad('pbmc3k.h5ad')"
+          cd "${GITHUB_WORKSPACE}"
+          python hub/converters/convert.py "${D}/V1_Human_Heart" "${D}/V1_Human_Heart.vizhub" --id heart \
+            --title "Human heart · Visium (10x demo)" --kind spatial --compute-umap | grep -v '^@@'
+          python hub/converters/convert.py "${D}/pbmc3k.h5ad" "${D}/pbmc3k.h5ad.vizhub" --id pbmc3k \
+            --title "PBMC 3k (10x demo)" --kind singlecell | grep -v '^@@'
+      - name: Viewer pages
+        working-directory: hub/web
+        run: |
+          npm ci --no-audit --no-fund
+          node build.mjs
+      - name: Start a test server
+        shell: bash
+        run: |
+          D="${RUNNER_TEMP}/data"
+          cat > hub/config.json <<EOF
+          {"host": "127.0.0.1", "port": 8893, "publicUrl": "http://127.0.0.1:8892", "maxJobs": 2,
+           "roots": [{"label": "Demo data", "path": "${D}"}], "workspaceApi": "http://127.0.0.1:8000/api/workspaces",
+           "services": [{"id": "genome-canvas", "name": "Genome Canvas", "url": "/genome-canvas/", "health": "http://127.0.0.1:8000/api/health"}]}
+          EOF
+          GENOME_CANVAS_STATE_DIR="${RUNNER_TEMP}/gc-state" python3 genome-canvas/server.py --host 127.0.0.1 --port 8000 > "${RUNNER_TEMP}/gc.log" 2>&1 &
+          (cd hub && python -m uvicorn server:app --host 127.0.0.1 --port 8893 > "${RUNNER_TEMP}/hub.log" 2>&1 &)
+          python3 gateway/dev_gateway.py --port 8892 > "${RUNNER_TEMP}/gateway.log" 2>&1 &
+          for attempt in $(seq 1 60); do curl -sf http://127.0.0.1:8892/hub/api/health >/dev/null && curl -sf http://127.0.0.1:8892/genome-canvas/api/health >/dev/null && break; sleep 1; done
+          ws=$(curl -sf -X POST -H 'Origin: http://127.0.0.1:8892' -H 'content-type: application/json' \
+            http://127.0.0.1:8892/genome-canvas/api/workspaces -d '{"name":"Demo"}' | python -c "import json,sys; print(json.load(sys.stdin)['workspace']['id'])")
+          sleep 31  # the hub refreshes its workspace list every 30 s
+          for p in "${D}/V1_Human_Heart.vizhub" "${D}/pbmc3k.h5ad.vizhub"; do
+            curl -sf -X POST -H "X-Vizhub-Workspace: ${ws}" -H 'content-type: application/json' \
+              http://127.0.0.1:8892/hub/api/datasets -d "{\"path\": \"${p}\"}"
+            echo
+          done
+          urls=$(curl -sf -H "X-Vizhub-Workspace: ${ws}" http://127.0.0.1:8892/hub/api/datasets | python -c "
+          import json, sys
+          d = {x['kind']: x['url'] for x in json.load(sys.stdin)}
+          print(d['spatial'], d['singlecell'])")
+          read spatial single <<< "${urls}"
+          echo "WORKSPACE=${ws}" >> "${GITHUB_ENV}"
+          echo "SPATIAL=${spatial}" >> "${GITHUB_ENV}"
+          echo "SINGLE=${single}" >> "${GITHUB_ENV}"
+      - name: Omics Canvas window
+        working-directory: desktop/OmicsCanvasDesktop
+        shell: bash
+        run: |
+          ./build.sh dist/docs
+          shots="${RUNNER_TEMP}/shots"
+          mkdir -p "${shots}"
+          defaults write edu.stanford.quertermouslab.omicscanvas OmicsCanvasServerAddress http://127.0.0.1:8892/
+          pages="omics-spatial=${SPATIAL}?gene=COL1A2;omics-single-cell=${SINGLE}?gene=CD79A;omics-datasets=/single-cell/;omics-spatial-dark=${SPATIAL}"
+          env OMICS_CANVAS_SNAPSHOT_DIR="${shots}" OMICS_CANVAS_SNAPSHOT_WORKSPACE="${WORKSPACE}" OMICS_CANVAS_SNAPSHOT_PAGES="${pages}" \
+            "dist/docs/Omics Canvas.app/Contents/MacOS/OmicsCanvasDesktop" > "${shots}/omics.log" 2>&1 &
+          for attempt in $(seq 1 90); do [[ -f "${shots}/omics-spatial-dark.png" ]] && break; sleep 2; done
+          ls -la "${shots}"
+          test -f "${shots}/omics-spatial-dark.png"
+      - name: Genome Canvas window, opened from a genomecanvas:// link
+        working-directory: genome-canvas/macos/GenomeCanvasDesktop
+        shell: bash
+        run: |
+          ./build.sh dist/docs
+          shots="${RUNNER_TEMP}/shots/genome-canvas"
+          mkdir -p "${shots}"
+          launchctl setenv GENOME_CANVAS_SNAPSHOT_DIR "${shots}"
+          open -a "${PWD}/dist/docs/Genome Canvas.app" \
+            "genomecanvas://open?locus=chr8:127,700,001-127,760,000&genome=hg38&highlight=chr8:127,735,001-127,736,000"
+          for attempt in $(seq 1 60); do [[ -f "${shots}/window-dark.png" ]] && break; sleep 2; done
+          launchctl unsetenv GENOME_CANVAS_SNAPSHOT_DIR
+          ls -la "${shots}"
+      - name: Logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/shots"
+          cp "${RUNNER_TEMP}"/*.log "${RUNNER_TEMP}/shots/" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docs-screenshots
+          path: ${{ runner.temp }}/shots

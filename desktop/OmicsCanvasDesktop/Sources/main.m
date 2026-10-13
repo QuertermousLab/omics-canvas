@@ -1365,7 +1365,39 @@ static NSArray *TVSamples(NSDictionary *dataset) {
             self.datasetCountLabel.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)self.datasets.count];
             [self rebuildDatasetRows];
         }
+        // documentation screenshots against a test server: OMICS_CANVAS_SNAPSHOT_WORKSPACE (workspace id) and
+        // OMICS_CANVAS_SNAPSHOT_PAGES ("name=/path;name=/path"): each page is captured as <name>.png
+        NSDictionary *env = [NSProcessInfo processInfo].environment;
+        NSString *pages = env[@"OMICS_CANVAS_SNAPSHOT_PAGES"];
+        if (pages.length) {
+            NSString *workspace = env[@"OMICS_CANVAS_SNAPSHOT_WORKSPACE"];
+            void (^run)(void) = ^{ [self capturePages:[pages componentsSeparatedByString:@";"] directory:directory]; };
+            if (workspace.length) [self callDesktopMethod:@"selectWorkspace" arguments:@[workspace] completion:^(id result) { [self refreshWorkspaces]; run(); }];
+            else run();
+            return;
+        }
         [self captureThemes:@[@"light", @"dark"] directory:directory];
+    });
+}
+
+- (void)capturePages:(NSArray<NSString *> *)pages directory:(NSString *)directory {
+    if (!pages.count) { [NSApp terminate:nil]; return; }
+    NSArray<NSString *> *parts = [pages.firstObject componentsSeparatedByString:@"="];
+    NSArray<NSString *> *rest = [pages subarrayWithRange:NSMakeRange(1, pages.count - 1)];
+    if (parts.count < 2) { [self capturePages:rest directory:directory]; return; }
+    NSString *name = parts.firstObject, *path = [[parts subarrayWithRange:NSMakeRange(1, parts.count - 1)] componentsJoinedByString:@"="];
+    NSString *theme = [name hasSuffix:@"-dark"] ? @"dark" : @"light";
+    [self setAppearancePreference:theme];
+    NSDictionary<NSString *, NSString *> *viewer = TVViewerForPath([path componentsSeparatedByString:@"?"].firstObject);
+    if (viewer) { self.kind = viewer[@"kind"]; [self selectCardForKind:self.kind]; }
+    [self loadPage:path];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(14 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self refreshDatasets:nil];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self captureWindowToPath:[directory stringByAppendingPathComponent:[name stringByAppendingString:@".png"]] completion:^{
+                [self capturePages:rest directory:directory];
+            }];
+        });
     });
 }
 
