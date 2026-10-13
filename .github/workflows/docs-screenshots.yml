@@ -83,7 +83,7 @@ jobs:
           shots="${RUNNER_TEMP}/shots"
           mkdir -p "${shots}"
           defaults write edu.stanford.quertermouslab.omicscanvas OmicsCanvasServerAddress http://127.0.0.1:8892/
-          pages="omics-spatial=${SPATIAL}?gene=COL1A2;omics-single-cell=${SINGLE}?gene=CD79A;omics-datasets=/single-cell/;omics-spatial-dark=${SPATIAL}"
+          pages="warmup=${SPATIAL};omics-spatial=${SPATIAL}?gene=COL1A2;omics-single-cell=${SINGLE}?gene=CD79A;omics-combine=/single-cell/?combine=1;omics-spatial-dark=${SPATIAL}"
           env OMICS_CANVAS_SNAPSHOT_DIR="${shots}" OMICS_CANVAS_SNAPSHOT_WORKSPACE="${WORKSPACE}" OMICS_CANVAS_SNAPSHOT_PAGES="${pages}" \
             "dist/docs/Omics Canvas.app/Contents/MacOS/OmicsCanvasDesktop" > "${shots}/omics.log" 2>&1 &
           for attempt in $(seq 1 90); do [[ -f "${shots}/omics-spatial-dark.png" ]] && break; sleep 2; done
