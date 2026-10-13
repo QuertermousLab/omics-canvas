@@ -92,7 +92,6 @@ export function mountManager(root: HTMLElement, kind: Kind) {
       <section class="card mgr__list">
         <div class="mgr__bar"><h2>Datasets</h2>
           <button type="button" class="btn btn--light btn--sm" data-m-combine title="${kind === 'crispr' ? 'One dataset made of several of your screens' : 'One dataset made of samples of your datasets — time points, conditions, sections'}"><svg class="icon"><use href="#i-layers"/></svg>Combine ${kind === 'crispr' ? 'screens' : 'datasets'}</button>
-          <label class="check small muted" data-m-inside-wrap hidden><input type="checkbox" data-m-inside /> <span data-m-inside-label></span></label>
           <input class="input" type="search" placeholder="Filter" data-m-q aria-label="Filter datasets" /></div>
         <div class="table-wrap"><table class="table ds" data-m-table></table></div>
       </section>
@@ -157,25 +156,46 @@ export function mountManager(root: HTMLElement, kind: Kind) {
       .filter(Boolean).join(' · ');
   };
 
+  // groups (combined datasets, multi-sample projects) open to their samples; datasets that went into a combined one
+  // are listed there (with their Rename / Remove), not on their own
+  const EXPANDED = `vizhub-expanded-${kind}`;
+  const expanded = new Set<string>((() => { try { return JSON.parse(localStorage.getItem(EXPANDED) ?? '[]') as string[]; } catch { return []; } })());
+  const saveExpanded = () => { try { localStorage.setItem(EXPANDED, JSON.stringify([...expanded])); } catch { /* private window */ } };
+  const isGroup = (d: Dataset) => !!d.combined || d.slides.length > 1;
+  const sampleUrl = (d: Dataset, sid: string) => `${d.url}?s=${encodeURIComponent(sid)}`;
+
   function renderDatasets() {
     const q = $<HTMLInputElement>('q').value.trim().toLowerCase();
-    // datasets inside a combined one are listed under it (shown on their own with the switch, e.g. to rename them)
-    const inside = datasets.filter((d) => d.inCombined?.length);
-    $('inside-wrap').hidden = !inside.length;
-    $('inside-label').textContent = `Show the ${inside.length} dataset${inside.length === 1 ? '' : 's'} inside combined ones`;
-    const showInside = $<HTMLInputElement>('inside').checked;
-    const titleOf = new Map(datasets.map((d) => [d.id, d.title]));
-    const shown = datasets.filter((d) => (showInside || !d.inCombined?.length)
-      && (!q || `${d.title} ${d.id} ${d.source} ${d.technology ?? ''} ${d.species ?? ''} ${d.slides.map((sl) => sl.title).join(' ')}`.toLowerCase().includes(q)));
+    const byId = new Map(datasets.map((d) => [d.id, d]));
+    const text = (d: Dataset) => `${d.title} ${d.id} ${d.source} ${d.technology ?? ''} ${d.species ?? ''}`.toLowerCase();
+    const sampleMatch = (d: Dataset) => d.slides.some((sl) => `${sl.title} ${sl.fromTitle ?? ''}`.toLowerCase().includes(q));
+    const shown = datasets.filter((d) => !d.inCombined?.length && (!q || text(d).includes(q) || sampleMatch(d)));
     if (!datasets.length) {
       $('table').innerHTML = `<tbody><tr><td class="empty">No ${P.noun} in your workspace yet — <a href="#add">add one below</a>.</td></tr></tbody>`;
       return;
     }
-    $('table').innerHTML = `<thead><tr><th>Dataset</th><th>Link</th><th>Source</th><th></th></tr></thead><tbody>${shown.map((d) => `
-      <tr data-id="${esc(d.id)}">
-        <td class="ds__title"><a href="${esc(d.url)}">${esc(d.title)}</a>${d.inCombined?.length ? ` <span class="chip">in ${esc(d.inCombined.map((c) => titleOf.get(c) ?? c).join(', '))}</span>` : ''}
-          <div class="small muted">${esc(facts(d))}</div>
-          ${d.combined || d.slides.length > 1 ? `<ol class="ds__samples small">${d.slides.map((sl) => `<li>${esc(sl.title)}${sl.fromTitle && sl.fromTitle !== sl.title ? ` <span class="muted">· ${esc(sl.fromTitle)}</span>` : ''}</li>`).join('')}</ol>` : ''}</td>
+    const children = (d: Dataset) => d.slides.map((sl) => {
+      // a sample from a dataset listed only here: its own Rename / Remove
+      const from = sl.fromDataset && sl.fromDataset !== d.id ? byId.get(sl.fromDataset) : undefined;
+      const member = from && from.inCombined?.includes(d.id) ? from : undefined;
+      const url = sampleUrl(d, sl.id);
+      return `<tr class="ds__child"${member ? ` data-id="${esc(member.id)}"` : ''}>
+        <td class="ds__title"><a href="${esc(url)}">${esc(sl.title)}</a>
+          <div class="small muted">${esc([from && from.title !== sl.title ? `from ${from.title}` : !from && sl.fromTitle && sl.fromTitle !== sl.title ? `from ${sl.fromTitle}` : '',
+            member ? facts(member) : sl.nCells ? `${sl.nCells.toLocaleString()} cells` : ''].filter(Boolean).join(' · '))}</div></td>
+        <td class="nowrap"><a class="mono small" href="${esc(url)}">${esc(url)}</a></td>
+        <td class="ds__src">${member ? `<span class="mono small" title="${esc(member.source)}">${esc(member.source)}</span>` : ''}</td>
+        <td class="nowrap ds__acts"><a class="btn btn--light btn--sm" href="${esc(url)}">Open</a>
+          ${member ? `<button type="button" class="btn btn--quiet btn--sm" data-act="rename" title="Rename the dataset “${esc(member.title)}”">Rename</button>
+          <button type="button" class="btn btn--quiet btn--sm" data-act="remove" title="Remove the dataset “${esc(member.title)}” from your workspace">Remove</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+    $('table').innerHTML = `<thead><tr><th>Dataset</th><th>Link</th><th>Source</th><th></th></tr></thead><tbody>${shown.map((d) => {
+      const group = isGroup(d), open = group && (expanded.has(d.id) || (!!q && sampleMatch(d)));
+      return `
+      <tr data-id="${esc(d.id)}" class="${group ? 'ds__group' : ''}">
+        <td class="ds__title">${group ? `<button type="button" class="icon-btn sm ghost ds__toggle${open ? ' open' : ''}" data-act="expand" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} the ${d.slides.length} samples"><svg class="icon"><use href="#i-chevron-down"/></svg></button>` : ''}<a href="${esc(d.url)}">${esc(d.title)}</a>
+          <div class="small muted">${esc(facts(d))}</div></td>
         <td class="nowrap"><a class="mono small" href="${esc(d.url)}">${esc(d.url)}</a>
           <button type="button" class="icon-btn sm ghost" data-act="copy" title="Copy the full link" aria-label="Copy link"><svg class="icon"><use href="#i-copy"/></svg></button></td>
         <td class="ds__src"><span class="mono small" title="${esc(d.source)}">${esc(d.source)}</span><div class="small muted">added ${fmtAgo(d.added)}</div></td>
@@ -183,7 +203,8 @@ export function mountManager(root: HTMLElement, kind: Kind) {
           ${d.combined || d.layout === 'project' ? '<button type="button" class="btn btn--quiet btn--sm" data-act="samples">Edit samples</button>' : ''}
           <button type="button" class="btn btn--quiet btn--sm" data-act="rename">Rename</button>
           <button type="button" class="btn btn--quiet btn--sm" data-act="remove">Remove</button></td>
-      </tr>`).join('') || '<tr><td colspan="4" class="empty">Nothing matches the filter.</td></tr>'}</tbody>`;
+      </tr>${open ? children(d) : ''}`;
+    }).join('') || '<tr><td colspan="4" class="empty">Nothing matches the filter.</td></tr>'}</tbody>`;
   }
 
   async function loadDatasets() {
@@ -194,7 +215,14 @@ export function mountManager(root: HTMLElement, kind: Kind) {
   $('table').addEventListener('click', async (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!btn) return;
-    const d = datasets.find((x) => x.id === btn.closest<HTMLElement>('tr')!.dataset.id)!;
+    const d = datasets.find((x) => x.id === btn.closest<HTMLElement>('tr')!.dataset.id);
+    if (!d) return;
+    if (btn.dataset.act === 'expand') {
+      expanded.has(d.id) ? expanded.delete(d.id) : expanded.add(d.id);
+      saveExpanded();
+      renderDatasets();
+      return;
+    }
     if (btn.dataset.act === 'copy') {
       navigator.clipboard?.writeText(d.publicUrl).then(() => toast(`Copied <span class="mono">${esc(d.publicUrl)}</span>`, 2500)).catch(() => prompt('Copy:', d.publicUrl));
     }
@@ -217,7 +245,6 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     }
   });
   $<HTMLInputElement>('q').oninput = renderDatasets;
-  $<HTMLInputElement>('inside').onchange = renderDatasets;
 
   // ---------------------------------------------------------------- combined datasets
   let editing: Dataset | null = null;

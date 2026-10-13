@@ -88,7 +88,7 @@ folder; the page only offers what that viewer reads and points to the right one 
 - **Combine datasets** (all three pages): pick samples from your datasets — single sections, slides of multi-sample
   projects, or CRISPR screens — order and name them, and they become one dataset with one link and a sample (screen)
   picker, like *Mouse SMC atherosclerosis timecourse* or *Mouse Xenium 5K*. Datasets that went into it are listed inside
-  it (a switch on the Datasets page shows them on their own); **Edit samples** also works on existing projects (kept in
+  it (expand the group: its samples, and the datasets' Rename / Remove); **Edit samples** also works on existing projects (kept in
   the hub, `project.json` unchanged, restorable). Nothing is copied: the samples are read from their own
   folders (`/hub/api/data/<combined>/<sample>/…`); **Edit samples** changes them later. Removing a combined dataset keeps
   the datasets it combines, and their converted files are not deleted while a combined dataset uses them.
