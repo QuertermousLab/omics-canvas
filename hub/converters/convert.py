@@ -346,11 +346,12 @@ def write_slide(adata, out: Path, a, *, spatial_xy=None, groups=None, technology
             spot_units = 0.9 * nn_spacing(xy)
         log(f'  spatial: {pixel_size:.4g} µm per unit, spots drawn {spot_units:.3g} units wide')
         margin = 2 * spot_units
-        xy = xy - np.nanmin(xy, axis=0) + margin
+        origin = np.nanmin(xy, axis=0) - margin  # slide = source coordinates - origin (tissue images use it too)
+        xy = xy - origin
         width, height = (np.nanmax(xy, axis=0) + margin).tolist()
         radius = np.full(n, spot_units / 2, np.float32)
     else:
-        pixel_size, scale_unknown = 1.0, False
+        pixel_size, scale_unknown, origin = 1.0, False, None
         first = next(iter(embeddings_wanted), None)
         if first:
             xy = np.asarray(adata.obsm[first], dtype=np.float64)[:, :2]
@@ -421,12 +422,147 @@ def write_slide(adata, out: Path, a, *, spatial_xy=None, groups=None, technology
         normalization='log1p(counts / total_counts * 10000)' if integer else f'values as stored ({mname})',
         exprDtype='uint16' if integer else 'float32',
         scaleUnknown=bool(spatial_xy is not None and scale_unknown),
+        origin=[float(v) for v in origin] if origin is not None else None,
     )
     (out / 'slide.json').write_text(json.dumps(slide, separators=(',', ':')))
     return slide
 
 
 # ----------------------------------------------------------------- readers
+
+def pick_image_scale(xy, shape, candidates):
+    """The scale factor (full-resolution pixel -> image pixel) that maps the positions inside the image:
+    Seurat keeps one image (low- or high-resolution) and both factors; the largest one that fits wins."""
+    h, w = shape[0], shape[1]
+    best = None
+    for s in candidates:
+        try:
+            s = float(s)
+        except (TypeError, ValueError):
+            continue
+        if not s or s != s or s <= 0:
+            continue
+        hi = np.nanpercentile(xy, 99, axis=0) * s
+        if hi[0] <= w * 1.02 and hi[1] <= h * 1.02 and (best is None or s > best):
+            best = s
+    return best
+
+
+def tissue_from_uns(adata):
+    """scanpy / Space Ranger: uns["spatial"][library]["images"]["hires" | "lowres"] + scalefactors; obsm["spatial"]
+    holds full-resolution pixels (x = column, y = row). One library only (several overlap in that layout)."""
+    lib = adata.uns.get('spatial') if hasattr(adata, 'uns') else None
+    if not isinstance(lib, dict) or not lib:
+        return []
+    if len(lib) > 1:
+        log(f'  {len(lib)} image libraries in uns["spatial"]: tissue images left out (one section per file is supported)')
+        return []
+    name, entry = next(iter(lib.items()))
+    images, sf = entry.get('images') or {}, entry.get('scalefactors') or {}
+    for res in ('hires', 'lowres'):
+        arr, scale = images.get(res), sf.get(f'tissue_{res}_scalef')
+        if arr is not None and scale:
+            return [dict(name=str(name), array=np.asarray(arr), scale=float(scale), shift=np.zeros(2))]
+    return []
+
+
+def tissue_channels(tissue, slide):
+    """Readers' tissue images -> image_tiles channels in slide coordinates (positions were shifted by `origin`)."""
+    import image_tiles
+    if not tissue or not slide.get('origin'):
+        return []
+    ox, oy = slide['origin']
+    sources = []
+    for t in tissue:
+        arr = image_tiles.as_uint8(t['array'])
+        if arr.ndim == 3 and (arr.shape[2] == 1 or (arr.shape[2] >= 3 and np.array_equal(arr[..., 0], arr[..., 1])
+                                                    and np.array_equal(arr[..., 1], arr[..., 2]))):
+            arr = arr[..., 0]
+        if arr.ndim == 2:
+            arr = image_tiles.stretch(arr)  # a grey scan (often dim): stretch its contrast
+        s, (dx, dy) = t['scale'], t['shift']
+        affine = [[1 / s, 0, dx - ox], [0, 1 / s, dy - oy]]
+        sources.append(image_tiles.Source([(arr, 1)], affine, mode='rgb'))
+    return [dict(name='Tissue image', sources=sources, visible=True)]
+
+
+def read_spaceranger(d: Path, sr):
+    """A Space Ranger output folder (see detect.spaceranger) -> AnnData laid out like scanpy's read_visium:
+    obsm["spatial"] = full-resolution pixels (x = column, y = row), uns["spatial"][sample] = images + scale factors."""
+    import anndata as ad
+    from PIL import Image
+    m = Path(sr['matrix'])
+    progress(5, f'Reading {m.name if m.is_file() else "the feature-barcode matrix"}')
+    if m.is_file():
+        import scanpy as sc
+        adata = sc.read_10x_h5(m)
+    else:
+        import gzip
+        from scipy.io import mmread
+        opener = lambda f: gzip.open(f, 'rt') if f.suffix == '.gz' else open(f)
+        pick = lambda *names: next(m / n for n in names if (m / n).exists())
+        with opener(pick('matrix.mtx.gz', 'matrix.mtx')) as f:
+            X = sp.csr_matrix(mmread(f).T)
+        feats = pd.read_csv(pick('features.tsv.gz', 'features.tsv', 'genes.tsv.gz', 'genes.tsv'), sep='\t', header=None)
+        bcs = pd.read_csv(pick('barcodes.tsv.gz', 'barcodes.tsv'), sep='\t', header=None)[0].astype(str)
+        symbols = feats[1] if feats.shape[1] > 1 else feats[0]
+        adata = ad.AnnData(X=X, obs=pd.DataFrame(index=pd.Index(bcs.to_numpy())), var=pd.DataFrame({'gene_ids': feats[0].to_numpy()}, index=pd.Index(symbols.astype(str).to_numpy())))
+        if feats.shape[1] > 2:  # keep gene expression (not antibody capture etc.)
+            ge = (feats[2] == 'Gene Expression').to_numpy()
+            if ge.any() and not ge.all():
+                adata = adata[:, ge].copy()
+    adata.var_names_make_unique()
+    pos_f = Path(sr['positions'])
+    cols = ['barcode', 'in_tissue', 'array_row', 'array_col', 'pxl_row_in_fullres', 'pxl_col_in_fullres']
+    if pos_f.suffix == '.parquet':
+        pos = pd.read_parquet(pos_f)
+    else:
+        pos = pd.read_csv(pos_f, header=0 if pos_f.name == 'tissue_positions.csv' else None)
+        if pos_f.name != 'tissue_positions.csv':
+            pos.columns = cols
+    pos = pos.set_index(pos['barcode'].astype(str))
+    pos = pos[pos['in_tissue'] == 1] if 'in_tissue' in pos else pos
+    keep = adata.obs_names.intersection(pos.index, sort=False)
+    if len(keep) < adata.n_obs:
+        log(f'  {adata.n_obs - len(keep):,} barcodes are not under tissue and are left out')
+    adata = adata[keep].copy()
+    pos = pos.loc[keep]
+    adata.obs['array_row'] = pos['array_row'].to_numpy()
+    adata.obs['array_col'] = pos['array_col'].to_numpy()
+    adata.obsm['spatial'] = pos[['pxl_col_in_fullres', 'pxl_row_in_fullres']].to_numpy(dtype=np.float64)
+    spd = pos_f.parent
+    sf = json.loads((spd / 'scalefactors_json.json').read_text()) if (spd / 'scalefactors_json.json').exists() else {}
+    images = {}
+    for res in ('hires', 'lowres'):
+        f = spd / f'tissue_{res}_image.png'
+        if f.exists() and sf.get(f'tissue_{res}_scalef'):
+            images[res] = np.asarray(Image.open(f).convert('RGB'))
+            break  # the high-resolution one is enough
+    sample = d.parent.name if d.name == 'outs' else d.name
+    adata.uns['spatial'] = {sample: dict(images=images, scalefactors=sf)}
+    # Space Ranger's own clusterings (analysis/clustering/<method>/clusters.csv), graph-based first
+    found = sorted((d / 'analysis' / 'clustering').glob('*/clusters.csv'), key=lambda f: ('graphclust' not in f.parent.name, f.parent.name))
+    for f in found[:6]:
+        c = pd.read_csv(f).set_index('Barcode')['Cluster'].astype(str).reindex(adata.obs_names)
+        name = f.parent.name.replace('gene_expression_', '')
+        adata.obs[name] = pd.Categorical(c.where(c.notna(), None), categories=sorted(c.dropna().unique(), key=lambda v: (len(v), v)))
+    return adata
+
+
+def add_tissue_image(out: Path, slide, tissue):
+    """Tile the readers' tissue images under the spots and record them in slide.json (a failure only logs)."""
+    if not tissue:
+        return
+    import image_tiles
+    progress(81, 'Tiling the tissue image')
+    try:
+        image_tiles.add_images(out, slide, tissue_channels(tissue, slide), log=log,
+                               progress=lambda f: progress(81 + 4 * f, 'Tiling the tissue image'))
+        (out / 'slide.json').write_text(json.dumps(slide, separators=(',', ':')))
+    except Exception as e:
+        log(f'  tissue image left out: {e}')
+        notice(f'The tissue image could not be added ({e}); the spots are shown without it.')
+
 
 def read_rds_export(d: Path, a):
     """The files written by rds_export.R -> (AnnData, spatial xy or None, technology, annotation groups)."""
@@ -466,15 +602,26 @@ def read_rds_export(d: Path, a):
     images = info.get('images') or []
     xy, technology = None, None
     if images and a.kind != 'singlecell':
-        parts, offset = [], 0.0
+        parts, offset, tissue = [], 0.0, []
         for img in images:
             df = pd.read_csv(d / img['file'], dtype={'cell': str}).drop_duplicates('cell').set_index('cell')
             pts = df[['x', 'y']].to_numpy(dtype=np.float64)
+            raw = pts.copy()
+            shift = np.zeros(2)
             if len(images) > 1:  # several sections in one object: lay them out side by side
-                pts[:, 0] += offset - np.nanmin(pts[:, 0])
-                pts[:, 1] -= np.nanmin(pts[:, 1])
+                shift = np.array([offset - np.nanmin(pts[:, 0]), -np.nanmin(pts[:, 1])])
+                pts += shift
                 offset = np.nanmax(pts[:, 0]) + 0.1 * (np.nanmax(pts[:, 0]) - np.nanmin(pts[:, 0]) + 1)
             parts.append(pd.DataFrame(pts, index=df.index, columns=['x', 'y']).assign(section=img['name']))
+            r = img.get('raster')
+            if r and (d / r['file']).exists():
+                arr = np.fromfile(d / r['file'], dtype=np.uint8).reshape(r['dim'])
+                scale = r.get('scale') or pick_image_scale(raw, arr.shape, [r.get('hires'), r.get('lowres')])
+                if scale:
+                    tissue.append(dict(name=img['name'], array=arr, scale=float(scale), shift=shift))
+                else:
+                    log(f'  image {img["name"]}: no scale factor matches the coordinates; image left out')
+        info['tissue'] = tissue
         allxy = pd.concat(parts)
         allxy = allxy[~allxy.index.duplicated()]
         keep = adata.obs_names.intersection(allxy.index, sort=False)
@@ -742,7 +889,7 @@ def main():
         else:
             spatial_xy, technology, groups = None, a.technology, None
             primary, extras, motifs, fragments, annotation, genome = None, [], {}, [], None, None
-            adata, kind = None, None
+            adata, kind, tissue = None, None, []
             slide_done = done('slide') and (out / 'slide.json').exists()
             if name.endswith('.rds'):
                 if done('r-export') and (work / 'export.json').exists():
@@ -765,6 +912,7 @@ def main():
                     if a.kind == 'crispr':
                         raise SystemExit(f'this RDS holds a {info["type"]} object (cells), not CRISPR results')
                     adata, spatial_xy, tech, groups, info = read_rds_export(work, a)
+                    tissue = info.get('tissue') or []
                     if spatial_xy is not None and any(x.get('type') == 'peaks' for x in info.get('assays') or []):
                         tech = f'Spatial ATAC ({tech})' if tech else 'Spatial ATAC'
                     technology = technology or tech
@@ -775,8 +923,13 @@ def main():
                     _, _, _, fragments = read_h5mu(src, a)
             else:
                 import anndata as ad
+                import detect
                 progress(3, f'Reading {src.name}')
-                if name.endswith('.h5ad'):
+                sr = detect.spaceranger(src if src.is_dir() else src.parent)
+                if sr and (src.is_dir() or os.path.samefile(sr['matrix'], src)):
+                    adata = read_spaceranger(src if src.is_dir() else src.parent, sr)
+                    technology = technology or ('Visium HD' if 'square_' in str(src) else 'Visium')
+                elif name.endswith('.h5ad'):
                     adata = ad.read_h5ad(src)
                 elif name.endswith('.h5mu'):
                     adata, primary, extras, fragments = read_h5mu(src, a)
@@ -806,6 +959,8 @@ def main():
                     raise SystemExit('this object has no tissue coordinates: choose the single-cell viewer')
                 slide = write_slide(adata, out, a, spatial_xy=spatial_xy, groups=groups, technology=technology,
                                     primary=primary, extras=extras, motifs=motifs)
+                if slide['spatial']:
+                    add_tissue_image(out, slide, tissue or tissue_from_uns(adata))
                 mark('slide')
             if slide is not None:
                 kind, layout = ('spatial' if slide['spatial'] else 'singlecell'), 'slide'

@@ -1351,14 +1351,43 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     return TVViewerForPath(path) != nil || [path hasPrefix:@"/hub/api/"] || [path hasPrefix:@"/hub/static/"] || [path hasPrefix:@"/genome-canvas/api/"];
 }
 
+// Links leaving the viewers. Genome Canvas pages on this server go to Genome Canvas.app when it is installed
+// (genomecanvas://open?locus=…&highlight=…, opened on the server that app uses); otherwise, and for the hub
+// home page, JupyterLab and other sites, the default browser.
+- (void)openOutside:(NSURL *)url {
+    if (!url) return;
+    NSURL *root = [self serverRoot];
+    BOOL sameServer = root && [url.host isEqualToString:root.host] && ((url.port == nil && root.port == nil) || [url.port isEqual:root.port]);
+    if (sameServer && [url.path hasPrefix:@"/genome-canvas/"] && ![url.path hasPrefix:@"/genome-canvas/api/"]) {
+        NSURLComponents *link = [NSURLComponents componentsWithString:@"genomecanvas://open"];
+        NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray array];
+        for (NSURLQueryItem *item in [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO].queryItems ?: @[]) {
+            if (![@[@"locus", @"genome", @"highlight", @"color", @"track"] containsObject:item.name]) continue;
+            // track=<name>|/server/path: make the path absolute, Genome Canvas.app may be on another server or its local backend
+            NSRange bar = [item.value rangeOfString:@"|" options:NSBackwardsSearch];
+            if ([item.name isEqualToString:@"track"] && bar.location != NSNotFound && bar.location + 1 < item.value.length && [item.value characterAtIndex:bar.location + 1] == '/') {
+                NSURL *absolute = [NSURL URLWithString:[item.value substringFromIndex:bar.location + 1] relativeToURL:url];
+                item = [NSURLQueryItem queryItemWithName:@"track" value:[NSString stringWithFormat:@"%@|%@", [item.value substringToIndex:bar.location], absolute.absoluteString]];
+            }
+            [items addObject:item];
+        }
+        link.queryItems = items.count ? items : nil;
+        if (link.URL && [[NSWorkspace sharedWorkspace] URLForApplicationToOpenURL:link.URL]) {
+            [[NSWorkspace sharedWorkspace] openURL:link.URL];
+            return;
+        }
+    }
+    [[NSWorkspace sharedWorkspace] openURL:url];
+}
+
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     if (navigationAction.shouldPerformDownload) { decisionHandler(WKNavigationActionPolicyDownload); return; }
     NSURL *url = navigationAction.request.URL;
     NSString *scheme = url.scheme.lowercaseString;
     if ([@[@"blob", @"about", @"data"] containsObject:scheme ?: @""]) { decisionHandler(WKNavigationActionPolicyAllow); return; }
-    // Genome Canvas, the hub home page, JupyterLab and other sites open in the browser; this app shows the three viewers
+    // this app shows the three viewers; everything else leaves through openOutside:
     if (navigationAction.targetFrame.isMainFrame && ![self isViewerURL:url]) {
-        if (url) [[NSWorkspace sharedWorkspace] openURL:url];
+        [self openOutside:url];
         decisionHandler(WKNavigationActionPolicyCancel);
         return;
     }
@@ -1406,10 +1435,10 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) { completionHandler(result == NSModalResponseOK ? panel.URLs : nil); }];
 }
 - (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures {
-    // target=_blank links: viewer pages stay in this window, everything else opens in the browser
+    // target=_blank links: viewer pages stay in this window, everything else leaves through openOutside:
     NSURL *url = navigationAction.request.URL;
     if ([self isViewerURL:url]) [webView loadRequest:navigationAction.request];
-    else if (url) [[NSWorkspace sharedWorkspace] openURL:url];
+    else [self openOutside:url];
     return nil;
 }
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler {

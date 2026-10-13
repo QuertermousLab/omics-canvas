@@ -17,6 +17,19 @@ class MacOSDesktopClientTests(unittest.TestCase):
         self.assertTrue(info["NSAppTransportSecurity"]["NSAllowsArbitraryLoadsInWebContent"])
         self.assertNotIn("NSAllowsArbitraryLoads", info["NSAppTransportSecurity"])
 
+    def test_client_opens_genomecanvas_links_in_place(self):
+        with (MAC_APP / "Resources" / "Info.plist").open("rb") as stream:
+            info = plistlib.load(stream)
+        schemes = [scheme for entry in info["CFBundleURLTypes"] for scheme in entry["CFBundleURLSchemes"]]
+        self.assertEqual(schemes, ["genomecanvas"])
+        source = (MAC_APP / "Sources" / "main.m").read_text(encoding="utf-8")
+        web_app = (ROOT / "app.js").read_text(encoding="utf-8")
+        self.assertIn("application:(NSApplication *)application openURLs:", source)
+        self.assertIn('@[@"locus", @"genome", @"highlight", @"color", @"track"]', source)
+        self.assertIn("b.openLink(%@)", source)
+        self.assertIn("self.pendingLinkQuery", source)
+        self.assertIn("openLink(query) { if (!state.browser) return false;", web_app)
+
     def test_client_uses_persistent_webkit_and_native_file_panels(self):
         source = (MAC_APP / "Sources" / "main.m").read_text(encoding="utf-8")
         self.assertIn("http://171.65.68.140:8892/genome-canvas/", source)

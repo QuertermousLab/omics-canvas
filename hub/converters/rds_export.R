@@ -121,6 +121,22 @@ write_xy <- function(cells, x, y, path) {
 }
 
 safe_name <- function(s) gsub("[^A-Za-z0-9_.-]+", "_", s)
+
+# A tissue image (array h x w [x channels], values 0-1 or 0-255) -> raw uint8, row-major h x w x c, for
+# image_tiles.py. Returns list(file, dim) or NULL.
+write_raster <- function(a, path) {
+  if (is.null(a) || length(dim(a)) < 2 || prod(dim(a)) == 0) return(NULL)
+  d <- dim(a)
+  if (length(d) == 2) { a <- array(a, c(d, 1)); d <- dim(a) }
+  v <- as.numeric(a)
+  if (max(v, na.rm = TRUE) <= 1) v <- v * 255
+  v[is.na(v)] <- 0
+  a <- array(as.integer(pmin(pmax(round(v), 0), 255)), d)
+  # R arrays are column-major: put the channel first, then column, then row so the bytes read as h x w x c
+  con <- file(path, "wb"); on.exit(close(con))
+  writeBin(as.raw(aperm(a, c(3, 2, 1))), con)
+  list(file = basename(path), dim = as.integer(d))
+}
 # slots are attributes: this also works for classes whose package (e.g. Signac) is not installed
 slot_or <- function(obj, name, default = NULL) {
   v <- attr(obj, name, exact = TRUE)
@@ -255,7 +271,8 @@ export_seurat <- function(obj) {
     if (!is.null(b) && !is.null(b$centroids)) {
       cc <- slot_or(b$centroids, "coords")
       cn <- slot_or(b$centroids, "cells")
-      if (!is.null(cc)) xy <- data.frame(cell = cn, x = cc[, 1], y = cc[, 2])
+      # VisiumV2 keeps its spot centroids as (imagerow, imagecol); other FOVs as (x, y)
+      if (!is.null(cc)) xy <- if (cls == "VisiumV2") data.frame(cell = cn, x = cc[, 2], y = cc[, 1]) else data.frame(cell = cn, x = cc[, 1], y = cc[, 2])
     }
     if (is.null(xy)) {
       co <- slot_or(img, "coordinates")
@@ -276,7 +293,14 @@ export_seurat <- function(obj) {
     f <- sprintf("spatial_%s.csv", safe_name(img_name))
     write_xy(xy$cell, xy$x, xy$y, file.path(out, f))
     img_assay <- tryCatch(as.character(slot_or(img, "assay")), error = function(e) "")
-    images[[length(images) + 1]] <- list(name = img_name, class = cls, file = f, spot = spot, assay = img_assay, cells = nrow(xy))
+    # the tissue image (Visium keeps the low- or high-resolution PNG; coordinates are full-resolution pixels)
+    raster <- tryCatch(write_raster(slot_or(img, "image"), file.path(out, sprintf("image_%s.u8", safe_name(img_name)))),
+                       error = function(e) { cat("  image raster not exported:", conditionMessage(e), "\n"); NULL })
+    if (!is.null(raster)) {
+      raster$lowres <- tryCatch(as.numeric(sf$lowres), error = function(e) NA)
+      raster$hires <- tryCatch(as.numeric(sf$hires), error = function(e) NA)
+    }
+    images[[length(images) + 1]] <- list(name = img_name, class = cls, file = f, spot = spot, assay = img_assay, cells = nrow(xy), raster = raster)
     cat(sprintf("  image %s (%s): %d positions\n", img_name, cls, nrow(xy)))
   }
   progress(85, "Looking for fragments, gene annotation and motifs")
@@ -311,8 +335,28 @@ export_sce <- function(obj) {
   images <- list()
   if (inherits(obj, "SpatialExperiment") && has("SpatialExperiment")) {
     sc <- SpatialExperiment::spatialCoords(obj)
-    write_xy(cells, sc[, 1], sc[, 2], file.path(out, "spatial_tissue.csv"))
-    images[[1]] <- list(name = "tissue", class = "SpatialExperiment", file = "spatial_tissue.csv", spot = NA, assay = "", cells = nrow(sc))
+    samples <- tryCatch(as.character(obj$sample_id), error = function(e) rep("tissue", length(cells)))
+    if (length(samples) != length(cells)) samples <- rep("tissue", length(cells))
+    imgs <- tryCatch(SpatialExperiment::imgData(obj), error = function(e) NULL)
+    # one section per sample (laid out side by side), each with its first image (spatialCoords are full-resolution pixels)
+    for (s in unique(samples)) {
+      k <- samples == s
+      f <- sprintf("spatial_%s.csv", safe_name(s))
+      write_xy(cells[k], sc[k, 1], sc[k, 2], file.path(out, f))
+      raster <- NULL
+      if (!is.null(imgs) && nrow(imgs)) {
+        r <- which(as.character(imgs$sample_id) == s)[1]
+        if (!is.na(r)) raster <- tryCatch({
+          ras <- SpatialExperiment::imgRaster(imgs$data[[r]])
+          rgb <- grDevices::col2rgb(as.vector(ras), alpha = TRUE)  # 4 x (h*w), raster is row-major
+          a <- array(t(rgb), c(ncol(ras), nrow(ras), 4))           # w x h x 4 (column-major fill of the row-major pixels)
+          x <- write_raster(aperm(a, c(2, 1, 3)), file.path(out, sprintf("image_%s.u8", safe_name(s))))
+          x$scale <- as.numeric(imgs$scaleFactor[r])
+          x
+        }, error = function(e) { cat("  image raster not exported:", conditionMessage(e), "\n"); NULL })
+      }
+      images[[length(images) + 1]] <- list(name = s, class = "SpatialExperiment", file = f, spot = NA, assay = "", cells = sum(k), raster = raster)
+    }
   }
   list(type = "sce", assay = layer, matrix = info, meta = types, embeddings = embeddings, images = images)
 }

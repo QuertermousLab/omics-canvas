@@ -2,7 +2,7 @@
 
 inspect(path) returns a dict with
   type     viewer-slide | viewer-project | crispr-screen | viewer-collection   (ready: load directly)
-           h5ad | h5-10x | loom | rds | xenium | table                          (convertible)
+           h5ad | h5-10x | loom | rds | xenium | visium | table                         (convertible)
            unsupported
   ready    True when the files are already in the ATHENA viewer format
   kind     suggested viewer: spatial | singlecell | crispr (None when unknown)
@@ -105,6 +105,25 @@ def _project(d: Path):
                 slides=slides, species=meta.get('species'), technology=meta.get('technology'))
 
 
+SPACERANGER_POSITIONS = ('tissue_positions.parquet', 'tissue_positions.csv', 'tissue_positions_list.csv')
+
+
+def spaceranger(d: Path):
+    """A Space Ranger output folder (Visium, or one Visium HD bin size such as binned_outputs/square_008um):
+    spatial/ with tissue positions, scale factors and the tissue images, and a feature-barcode matrix."""
+    sp = d / 'spatial'
+    pos = next((sp / n for n in SPACERANGER_POSITIONS if os.path.isfile(sp / n)), None)
+    if pos is None:
+        return None
+    matrix = next((d / n for n in ('filtered_feature_bc_matrix.h5', 'raw_feature_bc_matrix.h5') if os.path.isfile(d / n)), None)
+    if matrix is None:
+        matrix = next((m for m in (d / 'filtered_feature_bc_matrix', d) if any(os.path.isfile(m / f) for f in ('matrix.mtx', 'matrix.mtx.gz'))), None)
+    if matrix is None:
+        return None
+    images = [n for n in ('tissue_hires_image.png', 'tissue_lowres_image.png') if os.path.isfile(sp / n)]
+    return dict(positions=str(pos), matrix=str(matrix), images=images, scalefactors=os.path.isfile(sp / 'scalefactors_json.json'))
+
+
 def inspect_folder(d: Path):
     if _is_slide(d):
         sm = _slide_meta(d) or {}
@@ -119,6 +138,9 @@ def inspect_folder(d: Path):
         except Exception:
             pass
         return dict(type='xenium', ready=False, kind='spatial', details=details, title=d.name)
+    sr = spaceranger(d)
+    if sr:
+        return dict(type='visium', ready=False, kind='spatial', details=sr, title=d.parent.name if d.name == 'outs' else d.name)
     p = _project(d)
     if p:
         return dict(ready=True, details=p, **{k: p[k] for k in ('type', 'kind', 'title')})
@@ -264,6 +286,10 @@ def inspect_file(path: Path):
                 shape = list(f['matrix']['shape'][:]) if tenx else None
         except Exception:
             tenx, shape = False, None
+        if tenx and spaceranger(path.parent):  # filtered_feature_bc_matrix.h5 of a Space Ranger run: convert the run
+            sr = spaceranger(path.parent)
+            if os.path.samefile(sr['matrix'], path):
+                return dict(type='visium', ready=False, kind='spatial', details=dict(sr, shape=shape), **base)
         if tenx:
             return dict(type='h5-10x', ready=False, kind='singlecell', details=dict(shape=shape, note='10x feature-barcode matrix; UMAP and clusters are computed'), **base)
         return dict(type='unsupported', ready=False, kind=None, details=dict(reason='HDF5 file that is not a 10x matrix (use .h5ad)'), **base)

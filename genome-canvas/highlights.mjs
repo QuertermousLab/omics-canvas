@@ -56,3 +56,46 @@ export function normalizeHighlights(items) {
     }];
   });
 }
+
+// "chr8:127,728,001-127,742,000" (1-based, inclusive, as IGV prints it) -> { chr, start (0-based), end }
+export function parseRegion(text) {
+  const match = /^\s*([^:\s]+):([\d,]+)-([\d,]+)\s*$/.exec(String(text || ""));
+  if (!match) return null;
+  const first = Number(match[2].replaceAll(",", ""));
+  const last = Number(match[3].replaceAll(",", ""));
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last < first) return null;
+  return { chr: match[1], start: Math.max(0, first - 1), end: last };
+}
+
+// track=<name>|<url> (or a bare URL): a track to load with the view; http(s) or same-server paths only
+export function linkedTrack(value) {
+  const text = String(value || "").trim();
+  const bar = text.lastIndexOf("|");
+  const url = (bar >= 0 ? text.slice(bar + 1) : text).trim();
+  if (!/^(https?:\/\/|\/)/i.test(url)) return null;
+  const path = url.split(/[?#]/)[0];
+  let name = bar >= 0 ? text.slice(0, bar).trim() : "";
+  if (!name) {
+    try { name = decodeURIComponent(path.split("/").pop()); } catch { name = path.split("/").pop(); }
+  }
+  const track = { name: name || "Linked track", url };
+  if (/\.bedpe(\.gz)?$/i.test(path)) {
+    // enhancer-gene links: arc height follows the score column
+    Object.assign(track, { format: "bedpe", type: "interact", arcType: "proportional" });
+  }
+  return track;
+}
+
+// Link parameters other pages (and genomecanvas:// links) use to open a view:
+// ?locus=<region or gene>&genome=<id>&highlight=<region>[&highlight=...]&color=<hex>&track=<name>|<url>[&track=...]
+export function linkedView(search) {
+  const params = search instanceof URLSearchParams ? search : new URLSearchParams(search || "");
+  const color = normalizeHexColor(params.get("color") ? `#${params.get("color").replace(/^#/, "")}` : "");
+  const highlights = params.getAll("highlight").flatMap((value) => value.split(";"))
+    .map(parseRegion).filter(Boolean)
+    .map((region, index) => ({ ...region, id: `link-highlight-${index}`, color }));
+  const locus = String(params.get("locus") || "").trim();
+  const genome = String(params.get("genome") || "").trim();
+  const tracks = params.getAll("track").map(linkedTrack).filter(Boolean);
+  return { locus: locus || null, genome: genome || null, highlights, tracks };
+}

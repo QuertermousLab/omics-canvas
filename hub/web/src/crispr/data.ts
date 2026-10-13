@@ -89,13 +89,45 @@ export class PerturbSeq {
   }
 }
 
-/** Gene → page links shared by both screen kinds: Genome Canvas (human, hg38) and the first single-cell
- *  dataset in the hub of the same species. */
-export function geneLinks(gene: string, species: string | undefined, singleCell: { url?: string; species?: string; slides: { id: string }[] }[]) {
+/** Genome Canvas genome id for a screen: its assembly (GRCh38, hg19, GRCm39 …) or, without one, its species. */
+export function canvasGenome(species: string | undefined, assembly: string | undefined): string | null {
+  const a = (assembly ?? '').toLowerCase().replace(/\.p\d+$/, '');
+  const ids: Record<string, string> = { grch38: 'hg38', hg38: 'hg38', grch37: 'hg19', hg19: 'hg19', grcm39: 'mm39', mm39: 'mm39', grcm38: 'mm10', mm10: 'mm10' };
+  if (ids[a]) return ids[a];
+  return species === 'Mouse' ? 'mm39' : 'hg38';
+}
+
+/** /genome-canvas/?locus=…&genome=…&highlight=… — Genome Canvas opens there (regions are 1-based, inclusive).
+ *  The Omics Canvas Mac app hands these links to Genome Canvas.app (genomecanvas://) when it is installed. */
+export function canvasURL(o: { locus: string; genome: string | null; highlight?: string[]; color?: string; tracks?: { name: string; url: string }[] }) {
+  const q = new URLSearchParams({ locus: o.locus });
+  if (o.genome) q.set('genome', o.genome);
+  for (const h of o.highlight ?? []) q.append('highlight', h);
+  for (const t of o.tracks ?? []) q.append('track', `${t.name.replace(/\|/g, '/')}|${t.url}`);
+  if (o.color) q.set('color', o.color.replace(/^#/, ''));
+  return `/genome-canvas/?${q}`;
+}
+
+/** The screen's enhancer -> target-gene TSS links as two Genome Canvas loop tracks (hub /hub/api/arcs, hg38 gene
+ *  table): significant pairs and all tested pairs, arc height = |log2FC| — the ATHENA locus view's CRISPR arcs. */
+export const enhancerArcTracks = (screen: { id: string; title: string }, genome: string | null) =>
+  genome === 'hg38' ? (['significant', 'all'] as const).map((which) => ({
+    name: `${screen.title} · ${which === 'significant' ? 'significant links' : 'all tested links'}`,
+    url: `/hub/api/arcs/${encodeURIComponent(screen.id)}/${which}.bedpe`,
+  })) : [];
+
+/** BED-style element (0-based start) → 1-based region text */
+export const region = (chrom: string, start: number, end: number) =>
+  `${/^chr/i.test(chrom) || !/^(\d+|[XYM]|MT)$/i.test(chrom) ? chrom : `chr${chrom}`}:${Math.max(1, start + 1)}-${end}`;
+
+/** Gene → page links shared by both screen kinds: Genome Canvas (searches the gene in the screen's genome)
+ *  and the first single-cell dataset in the hub of the same species. */
+export function geneLinks(gene: string, species: string | undefined, assembly: string | undefined,
+  singleCell: { url?: string; species?: string; slides: { id: string }[] }[], tracks: { name: string; url: string }[] = []) {
   const human = species !== 'Mouse';
   const sc = singleCell.find((p) => (p.species ?? '').toLowerCase().startsWith(human ? 'h' : 'm')) ?? null;
   return {
-    locus: human ? `/genome-canvas/?locus=${encodeURIComponent(gene)}` : null,
+    locus: canvasURL({ locus: gene, genome: canvasGenome(species, assembly), tracks }),
     singleCell: sc?.url ? `${sc.url}?gene=${encodeURIComponent(gene)}` : null,
   };
 }

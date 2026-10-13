@@ -12,9 +12,11 @@ import {
   genomicExtentFromPixels,
   hexToRgba,
   normalizeHexColor,
+  linkedView,
   normalizeHighlights,
+  parseRegion,
   visibleHighlightPixels,
-} from "./highlights.mjs?v=20260821.1";
+} from "./highlights.mjs?v=20261012.3";
 import {
   PUBLIC_HUBS,
   filterHubTracks,
@@ -1189,6 +1191,11 @@ async function initializeBrowser(configRequest) {
     }
   }
 
+  // ?locus=&genome=&highlight= links from the Omics Canvas pages (and genomecanvas:// links in the Mac app)
+  const link = linkedView(params);
+  if (!browserConfig && link.genome && [...ui.genome.options].some((option) => option.value === link.genome)) {
+    initialGenome = link.genome;
+  }
   if (!browserConfig) {
     browserConfig = {
       genome: initialGenome,
@@ -1196,8 +1203,11 @@ async function initializeBrowser(configRequest) {
       tracks: [],
     };
   }
+  // a region opens directly; a gene name or rsID is searched once the browser is up
+  const linkedLocusSearch = link.locus && !parseRegion(link.locus) ? link.locus : null;
+  if (link.locus && !linkedLocusSearch) browserConfig.locus = link.locus;
   browserConfig = normalizeBrowserConfigURLs(browserConfig);
-  const restoredHighlights = normalizeHighlights(browserConfig.genomeCanvasHighlights);
+  const restoredHighlights = [...normalizeHighlights(browserConfig.genomeCanvasHighlights), ...link.highlights];
   const restoredCenterGuide = browserConfig.genomeCanvasCenterGuide === true;
   const restoredHighlightColor = normalizeHexColor(browserConfig.genomeCanvasHighlightColor, DEFAULT_HIGHLIGHT_COLOR);
   delete browserConfig.genomeCanvasHighlights;
@@ -1231,6 +1241,7 @@ async function initializeBrowser(configRequest) {
   syncCanvasTheme();
   await state.browser.layoutChange?.();
   for (const trackConfig of deferredTracks) await loadConfiguredTrack(trackConfig);
+  await loadLinkedTracks(link.tracks);
   state.highlights = restoredHighlights;
   state.centerGuide = restoredCenterGuide;
   state.browser.doShowCenterLine = restoredCenterGuide;
@@ -1248,6 +1259,7 @@ async function initializeBrowser(configRequest) {
   updateLocus();
   syncTracks();
   ui.loading.classList.add("hidden");
+  if (linkedLocusSearch) await searchLocation(linkedLocusSearch);
   setStatus("Ready");
 }
 
@@ -2268,6 +2280,39 @@ async function searchLocation(queryValue) {
   }
 }
 
+// Tracks named in a link (e.g. enhancer-gene loops from the CRISPR explorer); one already open is not added again.
+async function loadLinkedTracks(tracks) {
+  const open = new Set(trackViews().map((view) => view.track?.url || view.track?.config?.url).filter(Boolean));
+  let failed = 0;
+  for (const config of tracks) {
+    if (open.has(config.url)) continue;
+    try {
+      await loadConfiguredTrack(config);
+    } catch (error) {
+      failed += 1;
+      toast(`Could not load ${config.name}: ${error.message}`, "error");
+    }
+  }
+  if (tracks.length) syncTracks();
+  return failed;
+}
+
+// A genomecanvas:// link (or ?locus= query) arriving while the browser is open: jump there in place, keeping the tracks.
+async function openLinkedLocation(search) {
+  const link = linkedView(search);
+  if (link.genome && link.genome !== state.currentGenome && [...ui.genome.options].some((option) => option.value === link.genome)) {
+    await selectDesktopGenome(link.genome);
+  }
+  await loadLinkedTracks(link.tracks);
+  if (link.locus) await searchLocation(link.locus);
+  if (link.highlights.length) {
+    const stamp = Date.now();
+    state.highlights.push(...link.highlights.map((highlight, index) => ({ ...highlight, id: `link-highlight-${stamp}-${index}` })));
+    scheduleHighlightRender();
+    notifyDesktopHost();
+  }
+}
+
 async function selectDesktopGenome(genome) {
   if (!state.browser || !genome || genome === state.currentGenome) return;
   const option = [...ui.genome.options].find((item) => item.value === genome);
@@ -2362,6 +2407,8 @@ function setDesktopHighlightColor(colorValue) {
 window.GenomeCanvasDesktop = Object.freeze({
   snapshot: desktopStateSnapshot,
   search(query) { void searchLocation(query); return true; },
+  // false while the browser is still starting, so the host loads the link URL instead
+  openLink(query) { if (!state.browser) return false; void openLinkedLocation(query); return true; },
   selectGenome(genome) { void selectDesktopGenome(genome); return true; },
   selectWorkspace(workspaceId) { selectDesktopWorkspace(workspaceId); return true; },
   createWorkspace(name) { void createDesktopWorkspace(name); return true; },

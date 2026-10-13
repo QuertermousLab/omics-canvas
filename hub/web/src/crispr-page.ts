@@ -3,7 +3,7 @@
   // adapted to the hub (screen in the URL path /crispr/<screen>/, /hub/api/projects, no sign-in).
   import { css, esc, initChrome, loadWorkspace } from './common';
   import { mountManager } from './manager';
-  import { geneLinks, listScreens, loadTests, PerturbSeq, SIGNIFICANT, type Screen, type Test } from './crispr/data';
+  import { canvasGenome, canvasURL, enhancerArcTracks, geneLinks, region, listScreens, loadTests, PerturbSeq, SIGNIFICANT, type Screen, type Test } from './crispr/data';
   import { Scatter } from './crispr/plots';
   import { listProjects, type Project } from './spatial/data';
 
@@ -33,15 +33,12 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
   const linkButtons = (gene: string) => {
-    const l = geneLinks(gene, screen.species, singleCell);
-    return `${l.locus ? `<a class="btn btn--light btn--sm" href="/genome-canvas/" target="_blank" rel="noopener" data-copy="${esc(gene)}" title="Copies ${esc(gene)} so you can paste it into the Genome Canvas locus box">${esc(gene)} in Genome Canvas</a>` : ''}
+    // enhancer screens bring their enhancer-gene loops along
+    const tracks = screen.kind === 'enhancer' ? enhancerArcTracks(screen, canvasGenome(screen.species, screen.assembly)) : [];
+    const l = geneLinks(gene, screen.species, screen.assembly, singleCell, tracks);
+    return `<a class="btn btn--light btn--sm" href="${esc(l.locus)}" target="_blank" rel="noopener">${esc(gene)} in Genome Canvas</a>
       ${l.singleCell ? `<a class="btn btn--light btn--sm" href="${esc(l.singleCell)}">${esc(gene)} in single-cell viewer</a>` : ''}`;
   };
-  // Genome Canvas has no locus URL parameter: put the gene or region on the clipboard on the way there
-  document.addEventListener('click', (e) => {
-    const a = (e.target as HTMLElement).closest<HTMLElement>('[data-copy]');
-    if (a) navigator.clipboard?.writeText(a.dataset.copy!).catch(() => {});
-  });
 
   // ============================================================= enhancer screens
 
@@ -85,14 +82,17 @@
       const rows = tests.filter((t) => key(t) === selected);
       if (!rows.length) { $('detail').innerHTML = '<p class="muted">Select an enhancer–gene test in the table or the plot.</p>'; return; }
       const t = rows[0], pad = 150_000;
-      const locus = t.chrom ? `${t.chrom}:${Math.max(1, t.start - pad)}-${t.end + pad}` : '';
+      // ±150 kb around the element, with the element highlighted
+      const genome = canvasGenome(screen.species, screen.assembly);
+      const view = t.chrom ? canvasURL({ locus: region(t.chrom, Math.max(0, t.start - pad), t.end + pad), genome,
+        highlight: [region(t.chrom, t.start, t.end)], tracks: enhancerArcTracks(screen, genome) }) : '';
       $('detail').innerHTML = `<h3>Enhancer <span class="mono">${esc(key(t))}</span></h3>
         <p class="muted">${[t.set, `${t.guides} guides`, t.chrom ? `${(t.end - t.start).toLocaleString()} bp` : '', screen.cell ?? ''].filter(Boolean).map(esc).join(' · ')}</p>
         <table class="table"><thead><tr><th>Gene tested</th><th>log2FC</th><th>P</th><th>FDR</th><th></th></tr></thead><tbody>
         ${rows.sort((a, b) => b.nlog10p - a.nlog10p).map((r) => `<tr class="${r.significant ? 'sig' : ''}"><td><b>${esc(r.gene)}</b></td><td>${lfc(r.log2fc)}</td>
           <td>${p10(r.nlog10p)}</td><td>${p10(r.nlog10padj)}</td><td>${r.significant ? '<span class="pill--ok">significant</span>' : ''}</td></tr>`).join('')}
         </tbody></table>
-        <div class="btns">${locus && screen.species !== 'Mouse' ? `<a class="btn btn--primary btn--sm" href="/genome-canvas/" target="_blank" rel="noopener" data-copy="${esc(locus)}" title="Copies ${esc(locus)} for the Genome Canvas locus box">Open ±150 kb in Genome Canvas</a>` : ''}
+        <div class="btns">${view ? `<a class="btn btn--primary btn--sm" href="${esc(view)}" target="_blank" rel="noopener" title="${esc(region(t.chrom, t.start, t.end))} highlighted, with this screen's enhancer–gene links">Open ±150 kb in Genome Canvas</a>` : ''}
           ${linkButtons(rows.find((r) => r.significant)?.gene ?? t.gene)}</div>`;
     }
 

@@ -514,6 +514,8 @@ def browse(path: str = '', hidden: bool = False):
                     hint = 'xenium'
                 elif os.path.exists(os.path.join(e.path, 'project.json')):
                     hint = 'project'
+                elif any(os.path.exists(os.path.join(e.path, 'spatial', n)) for n in detect.SPACERANGER_POSITIONS):
+                    hint = 'visium'
         elif name_l.endswith('.h5ad'):
             hint = 'h5ad'
         elif name_l.endswith('.rds'):
@@ -711,6 +713,57 @@ def projects(kind: str, request: Request, include: str = ''):
 
 
 RANGE = re.compile(r'bytes=(\d*)-(\d*)')
+
+
+# --------------------------------------------------------------- enhancer arcs for Genome Canvas
+
+_TSS = {}
+
+
+def tss_table(genome: str):
+    """gene symbol -> (chrom, 0-based TSS) from resources/genes.<genome>.json.gz ({symbol: [chr, start, end, strand]})."""
+    if genome not in _TSS:
+        f = HERE / 'resources' / f'genes.{genome}.json.gz'
+        if not f.is_file():
+            return None
+        import gzip
+        genes = json.loads(gzip.decompress(f.read_bytes()))
+        _TSS[genome] = {g: (c, int(s) - 1 if strand == '+' else int(e) - 1) for g, (c, s, e, strand) in genes.items()}
+    return _TSS[genome]
+
+
+@app.get('/hub/api/arcs/{id_}/{which}.bedpe')
+def enhancer_arcs(id_: str, which: str, genome: str = 'hg38'):
+    """Enhancer -> target-gene TSS links of an enhancer screen as BEDPE, for a Genome Canvas loop track
+    (as the ATHENA locus view): `significant` or `all` tested pairs; score = |log2FC| (arc height)."""
+    if which not in ('significant', 'all'):
+        raise HTTPException(404, 'significant or all')
+    d = dataset(id_)
+    tss = tss_table(genome)
+    if d['kind'] != 'crispr' or tss is None:
+        raise HTTPException(404, f'no enhancer links for {genome}')
+    p = Path(d['root']) / 'tests.json'
+    if not p.is_file():
+        raise HTTPException(404, 'not an enhancer screen')
+    t = json.loads(p.read_text())
+    col = {c: i for i, c in enumerate(t['columns'])}
+    arcs = []
+    for r in t['rows']:
+        chrom, start, end, gene = r[col['chrom']], r[col['start']], r[col['end']], r[col['gene']]
+        sig = bool(r[col['significant']])
+        if not chrom or (which == 'significant' and not sig):
+            continue
+        chrom = chrom if str(chrom).startswith('chr') else f'chr{chrom}'
+        hit = tss.get(gene)
+        if not hit or hit[0] != chrom:
+            continue
+        lfc = float(r[col['log2fc']])
+        name = f'{gene} log2FC {lfc:+.2f} · FDR {10 ** -float(r[col["nlog10padj"]]):.1e}' if sig else f'{gene} log2FC {lfc:+.2f} (n.s.)'
+        arcs.append((chrom, int(start), int(end), chrom, hit[1], hit[1] + 1, name, f'{abs(lfc):.4f}', '.', '.'))
+    arcs.sort(key=lambda a: (a[0], a[1], a[4]))
+    body = ''.join('\t'.join(map(str, a)) + '\n' for a in arcs)
+    # readable from Genome Canvas on another origin (e.g. the Mac app's local backend)
+    return Response(body, media_type='text/plain', headers={'cache-control': 'private, max-age=300', 'access-control-allow-origin': '*'})
 
 
 @app.get('/hub/api/data/{id_}/{rest:path}')

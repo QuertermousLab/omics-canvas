@@ -12,14 +12,14 @@ export type ColorBy = { kind: 'group' } | { kind: 'obs'; key: string } | { kind:
   /** values computed by the page, e.g. the accessibility of a genomic region (sparse like a gene) */
   | { kind: 'values'; label: string; values: Float32Array };
 export type Tool = 'pan' | 'rect' | 'lasso';
-export interface Channel { visible: boolean; color: string; lo: number; hi: number; gamma: number }
+export interface Channel { visible: boolean; color: string; lo: number; hi: number; gamma: number; opacity: number; rgb: boolean }
 export interface Region { name: string; cells: number[]; preset?: boolean }
 
 const POLYGON_ZOOM = -2.2; // "auto" shape: segmentation polygons above this zoom
 const DIM_ALPHA = 38;      // cells outside the current selection
 const filterExt = [new DataFilterExtension({ filterSize: 1 })];
 
-interface TileContent { channels: number[]; pixels: (Uint8Array | null)[] }
+interface TileContent { channels: number[]; pixels: (Uint8Array | Uint8ClampedArray | null)[] }
 
 export class Viewer {
   readonly slide: Slide;
@@ -79,7 +79,7 @@ export class Viewer {
       this.catColors.set(o.key, o.colors?.length === o.categories!.length ? [...o.colors] : categoryColors(o.categories!));
       this.catVisible.set(o.key, o.categories!.map(() => true));
     }
-    this.channels = (m.image?.channels ?? []).map((c) => ({ visible: c.visible, color: c.color, lo: 0, hi: 255, gamma: 1 }));
+    this.channels = (m.image?.channels ?? []).map((c) => ({ visible: c.visible, color: c.color, lo: 0, hi: 255, gamma: 1, opacity: 1, rgb: c.mode === 'rgb' }));
     this.setLayout(m.spatial === false ? m.embeddings[0]?.key ?? 'spatial' : 'spatial', false);
     this.view = this.fitView();
 
@@ -445,17 +445,21 @@ export class Viewer {
       .filter(([c, px]) => px && this.channels[c].visible);
     let canvas: HTMLCanvasElement | null = null;
     if (active.length) {
+      const lut = (ch: { lo: number; hi: number; gamma: number }) => {
+        const t = new Float32Array(256), span = Math.max(1, ch.hi - ch.lo);
+        for (let v = 0; v < 256; v++) t[v] = Math.max(0, Math.min(1, (v - ch.lo) / span)) ** ch.gamma;
+        return t;
+      };
+      // fluorescence channels: additive on black
       const img = new ImageData(size, size);
       const d = img.data;
-      for (const [c, px] of active) {
+      const grey = active.filter(([c]) => !this.channels[c].rgb);
+      for (const [c, px] of grey) {
         const ch = this.channels[c];
         const [cr, cg, cb] = hexToRgb(ch.color);
+        const t = lut(ch);
         const lr = new Uint8Array(256), lg = new Uint8Array(256), lb = new Uint8Array(256);
-        const span = Math.max(1, ch.hi - ch.lo);
-        for (let v = 0; v < 256; v++) {
-          const t = Math.max(0, Math.min(1, (v - ch.lo) / span)) ** ch.gamma;
-          lr[v] = cr * t; lg[v] = cg * t; lb[v] = cb * t;
-        }
+        for (let v = 0; v < 256; v++) { lr[v] = cr * t[v]; lg[v] = cg * t[v]; lb[v] = cb * t[v]; }
         const p = px!;
         for (let i = 0, j = 0; i < p.length; i++, j += 4) {
           const v = p[i];
@@ -470,6 +474,31 @@ export class Viewer {
         if (!m) continue;
         const k = 255 / m;
         d[j] *= k; d[j + 1] *= k; d[j + 2] *= k; d[j + 3] = m;
+      }
+      // brightfield images (H&E, ...) go underneath, as they are (black/white/gamma per color component, opacity)
+      const rgb = active.filter(([c]) => this.channels[c].rgb);
+      if (rgb.length) {
+        const out = new ImageData(size, size), o = out.data;
+        for (const [c, px] of rgb) {
+          const ch = this.channels[c], t = lut(ch), p = px!;
+          for (let j = 0; j < o.length; j += 4) {
+            const a = (p[j + 3] / 255) * ch.opacity;
+            if (!a) continue;
+            const ba = o[j + 3] / 255, oa = a + ba * (1 - a);
+            for (let k = 0; k < 3; k++) o[j + k] = (255 * t[p[j + k]] * a + o[j + k] * ba * (1 - a)) / oa;
+            o[j + 3] = 255 * oa;
+          }
+        }
+        if (grey.length) {  // fluorescence over the brightfield image
+          for (let j = 0; j < o.length; j += 4) {
+            const a = d[j + 3] / 255;
+            if (!a) continue;
+            const ba = o[j + 3] / 255, oa = a + ba * (1 - a);
+            for (let k = 0; k < 3; k++) o[j + k] = (d[j + k] * a + o[j + k] * ba * (1 - a)) / oa;
+            o[j + 3] = 255 * oa;
+          }
+        }
+        d.set(o);
       }
       canvas = document.createElement('canvas');
       canvas.width = canvas.height = size;

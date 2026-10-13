@@ -23,6 +23,7 @@ analysed, QC-passed cells) unless --keep-all-cells is given.
 import argparse
 import io
 import json
+import re
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor
@@ -244,6 +245,24 @@ def tile_channel(args):
 
 # ----------------------------------------------------------------- main
 
+def find_he(b: Path, a):
+    """(H&E OME-TIFF, 3 x 3 matrix H&E pixel -> morphology pixel) or None. Xenium Explorer writes the matrix in that
+    direction; the inverse is taken when only it lands the image on the cells."""
+    tif = a.he_image or next((f for f in sorted(b.glob('*.tif*')) if re.search(r'(^|[_.-])(he|h&e)([_.-]|$)|he_image', f.name, re.I)), None)
+    csv = a.he_alignment or next(iter(sorted(b.glob('*imagealignment*.csv'))), None)
+    if not tif:
+        return None
+    if not csv:
+        print(f'H&E {tif.name} found but no alignment (*imagealignment.csv from Xenium Explorer): not added', flush=True)
+        return None
+    rows = [r for r in (line.strip() for line in csv.read_text().splitlines()) if r and re.match(r'^[-+0-9.eE, ]+$', r)]
+    m = np.array([[float(v) for v in r.split(',')] for r in rows[:3]], dtype=np.float64)
+    if m.shape != (3, 3):
+        print(f'{csv.name}: not a 3 x 3 matrix: H&E not added', flush=True)
+        return None
+    return tif, m
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('bundle', type=Path, help='Xenium output folder')
@@ -261,6 +280,9 @@ def main():
     ap.add_argument('--min-level', type=int, default=0, help='finest pyramid level to keep (1 halves the image size)')
     ap.add_argument('--jpeg-quality', type=int, default=85)
     ap.add_argument('--no-image', action='store_true')
+    ap.add_argument('--he-image', type=Path, help='post-Xenium H&E (pyramidal OME-TIFF); default: *he_image*.tif in the bundle')
+    ap.add_argument('--he-alignment', type=Path, help='Xenium Explorer alignment (3 x 3, H&E pixel -> morphology pixel); '
+                                                      'default: *imagealignment.csv in the bundle')
     ap.add_argument('--no-boundaries', action='store_true')
     ap.add_argument('--workers', type=int, default=4)
     a = ap.parse_args()
@@ -407,6 +429,33 @@ def main():
         float(pos[1::2].max()) + 50, float(pos[0::2].max()) + 50)
     if image and a.min_level:
         h, w = h * 2 ** a.min_level, w * 2 ** a.min_level
+
+    # post-Xenium H&E, registered in Xenium Explorer: an RGB channel under the morphology channels
+    he = None if a.no_image else find_he(b, a)
+    if he:
+        import image_tiles
+        tif, m = he
+        levels_he = image_tiles.tiff_levels(tif)
+
+        def cover(mat):  # fraction of the image's bounding box that lies on the slide
+            lo, hi = image_tiles.Source(levels_he, mat[:2]).bounds()
+            ix = max(0.0, min(hi[0], w) - max(lo[0], 0)) * max(0.0, min(hi[1], h) - max(lo[1], 0))
+            return ix / max(1e-9, (hi[0] - lo[0]) * (hi[1] - lo[1]))
+        if cover(m) < 0.2 and cover(np.linalg.inv(m)) > 2 * cover(m):
+            print('H&E alignment: the matrix maps the other way; using its inverse', flush=True)
+            m = np.linalg.inv(m)
+        src = image_tiles.Source(levels_he, m[:2], mode='rgb')
+        lo, hi = src.bounds()
+        print(f'H&E {tif.name}: covers x {lo[0]:.0f}-{hi[0]:.0f}, y {lo[1]:.0f}-{hi[1]:.0f} of {w:.0f} x {h:.0f}', flush=True)
+        c = len(image['channels']) if image else 0
+        levels, size = image_tiles.write_channel([src], out, c, w, h, levels=image['levels'] if image else None,
+                                                 min_level=None if image else a.min_level, quality=a.jpeg_quality)
+        print(f'H&E: {size / 1e6:.0f} MB', flush=True)
+        if image is None:
+            image = dict(tileSize=TILE, format='mixed', levels=levels, channels=[])
+        for ch in image['channels']:
+            ch['visible'] = False
+        image['channels'].append(dict(name='H&E', file=f'img_{c}', color='#ffffff', visible=True, window=[0, 255], mode='rgb'))
 
     cats = [s['key'] for s in cols.specs if s['type'] == 'category']
     if a.default:

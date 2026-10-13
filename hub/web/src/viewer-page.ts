@@ -381,13 +381,15 @@
     if (!img) return;
     $('channels').innerHTML = img.channels.map((c, i) => {
       const s = v.channels[i];
+      // a brightfield image (H&E, IHC) is drawn in its own colors: no tint, but an opacity to see the spots over it
       return `<div class="channel" data-ch="${i}">
         <label class="check"><input type="checkbox" data-k="visible" ${s.visible ? 'checked' : ''}>
-          <input type="color" value="${s.color}" data-k="color"> ${esc(c.name)}</label>
+          ${s.rgb ? '' : `<input type="color" value="${s.color}" data-k="color">`} ${esc(c.name)}</label>
         <div class="ch-sliders">
           <label>Black <input type="range" min="0" max="254" value="${s.lo}" data-k="lo"></label>
           <label>White <input type="range" min="1" max="255" value="${s.hi}" data-k="hi"></label>
           <label>Gamma <input type="range" min="0.3" max="2.5" step="0.05" value="${s.gamma}" data-k="gamma"></label>
+          ${s.rgb ? `<label>Opacity <input type="range" min="0.05" max="1" step="0.05" value="${s.opacity}" data-k="opacity"></label>` : ''}
         </div>
       </div>`;
     }).join('');

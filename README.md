@@ -79,13 +79,29 @@ folder; the page only offers what that viewer reads and points to the right one 
   a CRISPR screen folder, or a folder of those (e.g. `~/baldar/app/athena/*/data/view`).
 - **Converted** into `<file>.vizhub/` next to the source, with progress shown under *Conversions*:
   `.h5ad` (spatial if `obsm["spatial"]`), Seurat v3–v5 / SingleCellExperiment `.rds` (Visium, Visium HD, Slide-seq and
-  FOV/Xenium images become spatial), 10x `.h5`, `.loom`, Xenium output folders, and CRISPR results
+  FOV/Xenium images become spatial), Space Ranger output folders (Visium, or a Visium HD bin folder such as
+  `binned_outputs/square_008um`: `spatial/` + matrix), 10x `.h5`, `.loom`, Xenium output folders, and CRISPR results
   (`.tsv/.csv/.parquet` or an `.rds` sceptre_object / data.frame: SCEPTRE, IGVF, generic target/gene/log2FC/p).
   Raw integer counts are used when present (`layers["counts"]`, `raw.X`, `X`); otherwise values are shown as stored.
   A UMAP (+ Leiden clusters if there is no annotation) is computed when a single-cell dataset has no embedding.
   Selecting a source again reuses a finished conversion unless the source changed.
 - Removing a dataset only unregisters it; the hub can also delete the `.vizhub` folder it generated (not while another
   workspace still uses it), never source data.
+
+### Tissue images (H&E, IHC, IF)
+
+The spatial viewer draws the tissue image under the spots (Image section: show/hide, black/white/gamma, opacity;
+PNG exports keep it). Images are tiled at conversion into the slide's coordinates (`hub/converters/image_tiles.py`:
+RGB as WebP with transparency outside the image, grey scans contrast-stretched):
+
+- Seurat `VisiumV1` / `VisiumV2` images (the low- or high-resolution PNG stored in the object; the matching scale
+  factor is picked from the positions), SpatialExperiment `imgData` (one section per `sample_id`, side by side),
+  scanpy / squidpy `uns["spatial"][library]` (`hires`, else `lowres`; one library per file), and Space Ranger
+  folders (`spatial/tissue_hires_image.png`, its clusterings under `analysis/clustering/` become annotations).
+- Xenium: the morphology channels (fluorescence) and, when the folder holds a post-Xenium H&E OME-TIFF (`*he_image*.tif`)
+  with its Xenium Explorer alignment (`*imagealignment.csv`, 3 × 3, H&E pixel → morphology pixel), the H&E as an RGB
+  channel on the same pyramid (`xenium_to_viewer.py --he-image/--he-alignment` to name them).
+- Seurat keeps `VisiumV2` spot centroids as (row, column); they are turned into (x, y) so spots sit on the image.
 
 ### Multiome and scATAC
 
@@ -115,6 +131,19 @@ Command line (same as the hub runs): `hub/venv/bin/python hub/converters/convert
   resumes it; "Convert again" / "Start over" (`--fresh`) and a changed source start from scratch.
 - Long steps (more than ~30 min, e.g. 50–100 GB of fragments) show a notice with a rough time estimate and this
   resume behaviour.
+
+## Genome Canvas links
+
+Genome Canvas opens views from its URL: `/genome-canvas/?locus=chr6:33,557,481-33,857,780&genome=hg38`
+`&highlight=chr6:33,707,481-33,707,780&track=<name>|<url>` (`locus` may be a gene; `highlight` and `track` repeat;
+regions are 1-based). The CRISPR explorer uses it for enhancer screens: the element ±150 kb, highlighted, with the
+screen's **enhancer → target-gene loops** as two arc tracks (significant links / all tested links, arc height = |log2FC|,
+like the ATHENA locus view), served as BEDPE by `/hub/api/arcs/<screen>/{significant,all}.bedpe` from the hg38 gene
+table in `hub/resources/`. Gene buttons open the gene with the same loops.
+
+In **Omics Canvas for Mac** these links open **Genome Canvas.app** when it is installed (`genomecanvas://open?…`,
+same parameters, on the server or local backend that app uses; an open canvas jumps in place and keeps its tracks),
+otherwise the default browser.
 
 ## Notes
 

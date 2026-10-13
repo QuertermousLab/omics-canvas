@@ -430,6 +430,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 @property(nonatomic, strong) NSTask *localServerTask;
 @property(nonatomic, strong) NSFileHandle *localServerLogHandle;
 @property(nonatomic, copy) NSString *localServerAddress;
+@property(nonatomic, copy) NSString *pendingLinkQuery;
 @end
 
 @implementation GCAppDelegate
@@ -1025,6 +1026,39 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     }];
 }
 
+#pragma mark - genomecanvas:// links
+
+// genomecanvas://open?locus=chr8:127,600,001-127,900,000&genome=hg38&highlight=chr8:127,735,001-127,736,000
+// Omics Canvas (and any page) sends these to show a region in this app. They open on the server or local
+// backend the app is already using: in place when the canvas is up (tracks stay), else with the page load.
+- (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {
+    for (NSURL *url in urls) {
+        if (![url.scheme.lowercaseString isEqualToString:@"genomecanvas"]) continue;
+        NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+        NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray array];
+        for (NSURLQueryItem *item in components.queryItems ?: @[]) {
+            if ([@[@"locus", @"genome", @"highlight", @"color", @"track"] containsObject:item.name] && item.value.length) [items addObject:item];
+        }
+        if (!items.count) continue;
+        NSURLComponents *query = [NSURLComponents new];
+        query.queryItems = items;
+        [self openLinkQuery:query.percentEncodedQuery];
+    }
+    [self.window makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+- (void)openLinkQuery:(NSString *)linkQuery {
+    NSString *script = [NSString stringWithFormat:@"(function(){const b=window.GenomeCanvasDesktop;return Boolean(b&&b.openLink&&b.openLink(%@));})()", [self JSONFragment:linkQuery]];
+    [self.webView evaluateJavaScript:script completionHandler:^(id result, NSError *error) {
+        if ([result respondsToSelector:@selector(boolValue)] && [result boolValue]) return;
+        self.pendingLinkQuery = linkQuery;
+        // the local backend is still starting: its ready handler loads the page with the link
+        if (self.localMode && !self.localServerAddress.length) return;
+        [self loadServerAddress:self.localMode ? self.localServerAddress : self.serverAddress remember:NO];
+    }];
+}
+
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender { return YES; }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
@@ -1312,6 +1346,15 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     if (remember) {
         self.serverAddress = [self storableAddressFromURL:url];
         [[NSUserDefaults standardUserDefaults] setObject:self.serverAddress forKey:GCServerDefaultsKey];
+    }
+    // a genomecanvas:// link that came in before the canvas was up opens with the page
+    if (self.pendingLinkQuery.length) {
+        NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+        NSURLComponents *link = [NSURLComponents new];
+        link.percentEncodedQuery = self.pendingLinkQuery;
+        components.queryItems = [(components.queryItems ?: @[]) arrayByAddingObjectsFromArray:link.queryItems ?: @[]];
+        url = components.URL ?: url;
+        self.pendingLinkQuery = nil;
     }
     [self setStatus:@"Connecting" state:@"busy"];
     NSURLRequest *request = [NSURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadRevalidatingCacheData timeoutInterval:30];

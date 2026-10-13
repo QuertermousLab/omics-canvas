@@ -35,8 +35,9 @@ const PAGE: Record<Kind, { path: string; name: string; noun: string; lede: strin
     lede: 'Enhancer screens and Perturb-seq results (SCEPTRE, IGVF or any target / gene / log2FC / p-value table).' },
 };
 const FORMATS: Record<Kind, string[]> = {
-  spatial: ['<b>.h5ad</b> with <span class="mono">obsm["spatial"]</span> (Visium, Slide-seq…)', '<b>.rds</b> Seurat v3–v5 with images (Visium, Visium HD, Xenium / FOV) or SpatialExperiment — spatial ATAC (Signac): peaks, gene activity, chromVAR and accessibility tracks too',
-    '<b>Xenium output folder</b> (experiment.xenium) — morphology image and cell outlines', '<b>Viewer folders</b> (slide.json, project.json, ATHENA <span class="mono">spatial/data/view</span>)'],
+  spatial: ['<b>.h5ad</b> with <span class="mono">obsm["spatial"]</span> (Visium, Slide-seq…) — the H&amp;E from <span class="mono">uns["spatial"]</span>', '<b>.rds</b> Seurat v3–v5 with images (Visium, Visium HD, Xenium / FOV) or SpatialExperiment, with the tissue image — spatial ATAC (Signac): peaks, gene activity, chromVAR and accessibility tracks too',
+    '<b>Space Ranger output folder</b> (Visium / Visium HD bin folder: <span class="mono">spatial/</span> + matrix) — with the H&amp;E image',
+    '<b>Xenium output folder</b> (experiment.xenium) — morphology image, cell outlines, post-Xenium H&amp;E', '<b>Viewer folders</b> (slide.json, project.json, ATHENA <span class="mono">spatial/data/view</span>)'],
   singlecell: ['<b>.h5ad</b> AnnData', '<b>.rds</b> Seurat v3–v5 or SingleCellExperiment — multiome / Signac scATAC: every assay (RNA, peaks, gene activity, chromVAR + motifs), accessibility tracks from the fragment files',
     '<b>.h5mu</b> MuData multiome (rna, atac, … modalities)', '<b>.h5</b> 10x matrix, <b>.loom</b> — UMAP and clusters are computed',
     '<b>Viewer folders</b> (slide.json, project.json, ATHENA <span class="mono">singlecell/data/view</span>)'],
@@ -44,16 +45,16 @@ const FORMATS: Record<Kind, string[]> = {
     '<b>Screen folders</b> (project.json + tests.json / targets.json, ATHENA <span class="mono">crispr/data/view</span>)'],
 };
 const HINTS: Record<Kind, Set<string>> = {
-  spatial: new Set(['h5ad', 'rds', 'xenium', 'viewer', 'project', 'output']),
+  spatial: new Set(['h5ad', 'rds', 'xenium', 'visium', 'viewer', 'project', 'output']),
   singlecell: new Set(['h5ad', 'h5mu', 'rds', 'h5', 'loom', 'viewer', 'project', 'output']),
   crispr: new Set(['table', 'rds', 'project', 'output']),
 };
-const HINT_LABEL: Record<string, string> = { h5ad: 'h5ad', h5mu: 'h5mu', rds: 'rds', h5: '10x h5', loom: 'loom', table: 'table', xenium: 'Xenium', viewer: 'viewer', project: 'project', output: 'converted' };
+const HINT_LABEL: Record<string, string> = { h5ad: 'h5ad', h5mu: 'h5mu', rds: 'rds', h5: '10x h5', loom: 'loom', table: 'table', xenium: 'Xenium', visium: 'Visium', viewer: 'viewer', project: 'project', output: 'converted' };
 const KIND_OF_PATH: Record<Kind, string> = { spatial: 'spatial', singlecell: 'single-cell', crispr: 'crispr' };
 const TYPE_LABEL: Record<string, string> = {
   'viewer-slide': 'Viewer dataset · ready', 'viewer-project': 'Viewer project · ready', 'crispr-screen': 'CRISPR screen · ready',
   'viewer-collection': 'Folder of datasets · ready', h5ad: 'AnnData (.h5ad)', h5mu: 'MuData multiome (.h5mu)', 'h5-10x': '10x matrix (.h5)', loom: 'Loom file',
-  rds: 'R object (.rds)', xenium: 'Xenium output bundle', table: 'Results table', unsupported: 'Not supported',
+  rds: 'R object (.rds)', xenium: 'Xenium output bundle', visium: 'Space Ranger output (Visium)', table: 'Results table', unsupported: 'Not supported',
 };
 
 const other = (k: Kind, path?: string) => `<a href="${PAGE[k].path}${path ? `?path=${encodeURIComponent(path)}#add` : ''}">${PAGE[k].name}</a>`;
@@ -292,8 +293,9 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     if (t === 'unsupported' || t === 'viewer-collection' || t === 'rds') return null;
     if (info.ready && info.kind && info.kind !== kind) return `This is a ${PAGE[info.kind].noun.replace(/s$/, '')} — load it in the ${other(info.kind, info.path)}.`;
     if (t === 'table' && kind !== 'crispr') return `CRISPR results load in the ${other('crispr', info.path)}.`;
-    if (kind === 'crispr' && ['h5ad', 'h5mu', 'h5-10x', 'loom', 'xenium'].includes(t)) return `This holds cells, not screen results: use the ${other(info.kind === 'spatial' ? 'spatial' : 'singlecell', info.path)}.`;
+    if (kind === 'crispr' && ['h5ad', 'h5mu', 'h5-10x', 'loom', 'xenium', 'visium'].includes(t)) return `This holds cells, not screen results: use the ${other(info.kind === 'spatial' ? 'spatial' : 'singlecell', info.path)}.`;
     if (kind === 'singlecell' && t === 'xenium') return `Xenium bundles load in the ${other('spatial', info.path)}.`;
+    if (kind === 'singlecell' && t === 'visium') return `Space Ranger outputs load in the ${other('spatial', info.path)}.`;
     if (kind === 'spatial' && (t === 'h5-10x' || t === 'loom' || t === 'h5mu' || (t === 'h5ad' && !d.spatialKey && !d.error))) return `No tissue coordinates (<span class="mono">obsm["spatial"]</span>) in this file: use the ${other('singlecell', info.path)}.`;
     return null;
   }
@@ -311,6 +313,11 @@ export function mountManager(root: HTMLElement, kind: Kind) {
       rows.push(['Annotations', `${d.categorical?.length ?? 0} categorical, ${d.numeric?.length ?? 0} numeric`]);
     } else if (info.type === 'xenium') {
       rows.push(['Panel', esc(d.panel ?? '—')], ['Cells', d.cells?.toLocaleString() ?? '—'], ['Run', esc(d.run ?? '—')]);
+      rows.push(['Tissue image', 'morphology channels; a post-Xenium H&E with its Xenium Explorer alignment (*he_imagealignment.csv) in the folder is added']);
+    } else if (info.type === 'visium') {
+      rows.push(['Matrix', `<span class="mono">${esc(String(d.matrix).split('/').pop() ?? '')}</span>`]);
+      rows.push(['Positions', `<span class="mono">spatial/${esc(String(d.positions).split('/').pop() ?? '')}</span>`]);
+      rows.push(['Tissue image', d.images?.length ? `<span class="mono">${d.images.map(esc).join(', ')}</span> (the high-resolution one is shown)` : 'none']);
     } else if (info.type === 'table') {
       const c = d.crisprColumns ?? {};
       rows.push(['Columns', Object.entries(c).filter(([, v]) => v).map(([k, v]) => `${k}: <span class="mono">${esc(v)}</span>`).join(' · ')]);

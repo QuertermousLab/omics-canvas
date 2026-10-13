@@ -180,11 +180,26 @@ In the dark theme the track canvas is Nord `#2e3440`: `canvas-theme.mjs` swaps
 only canvas chrome (ruler, axes, labels, legends, empty Hi-C cells) and draws
 neutral dark-gray features such as RefSeq genes in light gray so they stay
 visible; colored tracks are unchanged. Export PNG always renders with the
-light palette on a white background, whichever theme is active. Manrope, Fraunces and JetBrains Mono (SIL
+light palette on a transparent background, whichever theme is active. Manrope, Fraunces and JetBrains Mono (SIL
 OFL 1.1, licenses alongside the files) are bundled in `vendor/fonts/`, so no
 font service is contacted. `public/favicon.svg` is the application logo; the
 macOS client icon `macos/GenomeCanvasDesktop/Resources/GenomeCanvas-1024.png`
 is rendered from the same design.
+
+### Opening a View From a Link
+
+Other pages can open a view with URL parameters (shared views keep using `?session=`):
+
+| Parameter | Example | |
+| --- | --- | --- |
+| `locus` | `chr8:127,600,001-127,900,000` or `MYC` | region (1-based) or a gene / rsID to search |
+| `genome` | `hg38` | one of the genome menu's ids |
+| `highlight` | `chr8:127,735,001-127,736,000` | repeatable; `;` separates several in one value |
+| `color` | `5f8a6a` | highlight color |
+| `track` | `Loops\|/hub/api/arcs/screen/significant.bedpe` | repeatable `name\|url` (http(s) or a server path); BEDPE draws proportional arcs |
+
+The macOS app registers `genomecanvas://open?<same parameters>`: the link opens in the app on its current server
+(or local backend), in place when a canvas is already open, so loaded tracks stay.
 
 ## Configure Server Data Directories
 

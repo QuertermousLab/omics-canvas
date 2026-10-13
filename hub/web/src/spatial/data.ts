@@ -26,7 +26,9 @@ export interface AssayMeta {
 export interface Motif { name: string; pwm: [number, number, number, number][] }
 
 export interface ImageLevel { level: number; width: number; height: number; rows: number; cols: number; start: number }
-export interface ImageChannel { name: string; file: string; color: string; visible: boolean; window: [number, number] }
+/** mode "rgb": a brightfield image (H&E, IHC, ...) as RGBA tiles drawn as is; otherwise one grey fluorescence
+ *  channel tinted with `color` and added to the others. */
+export interface ImageChannel { name: string; file: string; color: string; visible: boolean; window: [number, number]; mode?: 'rgb' | 'grey' }
 export interface SlideMeta {
   version: number; id: string; title: string; technology: string; panel?: string; preservation?: string; run?: string;
   /** false: no tissue coordinates, the viewer shows the embeddings only (default true) */
@@ -222,8 +224,8 @@ export class Slide {
     })));
   }
 
-  /** 8-bit grey pixels of one image tile, or null where the tile is empty. */
-  async tile(channel: number, level: number, x: number, y: number, signal?: AbortSignal): Promise<Uint8Array | null> {
+  /** One image tile: 8-bit grey pixels, or RGBA pixels for an "rgb" channel; null where the tile is empty. */
+  async tile(channel: number, level: number, x: number, y: number, signal?: AbortSignal): Promise<Uint8Array | Uint8ClampedArray | null> {
     const img = this.meta.image!;
     const lv = img.levels.find((l) => l.level === level);
     if (!lv || x < 0 || y < 0 || x >= lv.cols || y >= lv.rows) return null;
@@ -245,6 +247,7 @@ export class Slide {
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close();
     const rgba = ctx.getImageData(0, 0, size, size).data;
+    if (img.channels[channel].mode === 'rgb') return rgba;
     const grey = new Uint8Array(size * size);
     for (let i = 0; i < grey.length; i++) grey[i] = rgba[i * 4];
     return grey;
