@@ -204,7 +204,8 @@ The current macOS release is **1.5.2**. Check
   - Mac toolbar buttons no longer stay looking selected after a click.
 - Untracked items that were intentionally left in place:
   - `node_modules/`: only needed for `npm run vendor:update`.
-  - Apache logs in `.genomecanvas/apache/`: truncate them rather than delete them; Apache keeps them open.
+  - `.genomecanvas/apache/`: the retired standalone gateway's logs (until 2026-10-12), compressed to `*.log.gz` on
+    2026-10-15. The live gateway logs to `../gateway/logs/` (truncate those rather than delete them; Apache keeps them open).
   - `data/.claude/`.
 - **2026-10-12, 1.6.0:** the repository became Omics Canvas (Genome Canvas moved to
   `genome-canvas/`, history kept); transparent PNG export; pinned data-root ids; link to the
