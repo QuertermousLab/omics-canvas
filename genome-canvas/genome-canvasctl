@@ -223,9 +223,9 @@ follow_logs() {
 }
 
 follow_access_logs() {
-  local access_log="$script_dir/.genomecanvas/apache/access.log"
-  [[ -f "$script_dir/../gateway/logs/access.log" ]] && access_log="$script_dir/../gateway/logs/access.log"
-  local error_log="$script_dir/.genomecanvas/apache/error.log"
+  # the shared gateway (../gateway, run by vizhub-gateway.service) logs every request
+  local access_log="$script_dir/../gateway/logs/access.log"
+  local error_log="$script_dir/../gateway/logs/error.log"
   touch "$access_log" "$error_log" 2>/dev/null || fail "could not access Apache logs"
   exec tail -n 100 -F "$access_log" "$error_log"
 }
