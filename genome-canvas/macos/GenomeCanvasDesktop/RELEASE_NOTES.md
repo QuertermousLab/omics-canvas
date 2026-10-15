@@ -1,5 +1,9 @@
 Native Genome Canvas Desktop builds for Apple Silicon and Intel Macs.
 
+## What's new in 1.8.0
+
+- **Shared tracks**: a sidebar card under **Open server files**, or **File → Shared Tracks…** (⇧⌘L), lists every server file anyone in the lab has loaded (files in Home folders stay private) with its folder, format, genome and who loaded it. Filter, tick and load several at once; **Only hg38** (the genome in view) and **Not in this view** are on by default. Deleted or moved files drop off the list and rewritten ones show their new date. Available when connected to a server (hidden in This Mac mode)
+
 ## What's new in 1.7.1
 
 - Fixed: a `genomecanvas://` link that started the app only opened the default view; the region, highlight and linked tracks now show when the link launches the app too

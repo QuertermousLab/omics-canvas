@@ -1,5 +1,24 @@
-Native Mac apps for Apple Silicon and Intel Macs: **Omics Canvas 1.2.1** (spatial, single-cell and CRISPR viewers)
-and **Genome Canvas 1.7.1** (genome browser).
+Native Mac apps for Apple Silicon and Intel Macs: **Omics Canvas 1.3.0** (spatial, single-cell and CRISPR viewers)
+and **Genome Canvas 1.8.0** (genome browser).
+
+## Omics Canvas 1.3.0
+
+- **Shared datasets** (CRISPR explorer: **Shared screens**): the button under the dataset list, or **File → Shared
+  Datasets…** (⇧⌘L), opens the lab's shared list: every dataset anyone has loaded, converted or combined in this
+  viewer, with who shared it. Tick some and add them to your workspace (in a viewer: add & open); nothing is copied or
+  converted again. **Not in my workspace** (on by default) leaves out what you already have
+- The list follows the files: datasets whose converted files were deleted drop off; ones converted again or renamed by
+  the person who added them are updated; a conversion whose source changed is marked *source changed*.
+  **Shared by you** lists your own, with **Unshare**
+- The same button is on the web pages: next to *Datasets*, under the viewers' dataset picker and next to the CRISPR
+  explorer's screen picker
+
+## Genome Canvas 1.8.0
+
+- **Shared tracks**: a card under **Open server files**, or **File → Shared Tracks…** (⇧⌘L), lists every server file
+  anyone in the lab has loaded (files in Home folders stay private) with its folder, format, genome and who loaded it.
+  Filter, tick and **Load selected tracks**; **Only hg38** (the genome in view) and **Not in this view** are on by
+  default. Deleted or moved files drop off the list, rewritten ones show their new date. Server mode only
 
 ## Omics Canvas 1.2.1
 
