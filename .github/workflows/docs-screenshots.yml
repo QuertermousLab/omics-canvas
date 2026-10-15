@@ -89,6 +89,22 @@ jobs:
           for attempt in $(seq 1 90); do [[ -f "${shots}/omics-spatial-dark.png" ]] && break; sleep 2; done
           ls -la "${shots}"
           test -f "${shots}/omics-spatial-dark.png"
+      - name: Omics Canvas connection settings (example values, light and dark)
+        working-directory: desktop/OmicsCanvasDesktop
+        shell: bash
+        run: |
+          shots="${RUNNER_TEMP}/shots"
+          d=edu.stanford.quertermouslab.omicscanvas; p=OmicsCanvasConnection
+          defaults write $d ${p}Host 171.65.68.140; defaults write $d ${p}Port -int 8892; defaults write $d ${p}Scheme http
+          defaults write $d ${p}Path /; defaults write $d ${p}UseTunnel -bool true; defaults write $d ${p}SSHHost 171.65.68.140
+          defaults write $d ${p}SSHPort -int 22; defaults write $d ${p}SSHUser yourname
+          for theme in light dark; do
+            env OMICS_CANVAS_SNAPSHOT_DIR="${shots}" OMICS_CANVAS_SNAPSHOT_SHEET="${theme}" \
+              "dist/docs/Omics Canvas.app/Contents/MacOS/OmicsCanvasDesktop" > "${shots}/sheet-${theme}.log" 2>&1 &
+            for attempt in $(seq 1 30); do [[ -f "${shots}/connection-sheet$([[ $theme == dark ]] && echo -dark).png" ]] && break; sleep 1; done
+            sleep 1
+          done
+          ls -la "${shots}"/connection-sheet*.png
       - name: Genome Canvas window, opened from a genomecanvas:// link
         working-directory: genome-canvas/macos/GenomeCanvasDesktop
         shell: bash

@@ -514,9 +514,25 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     [NSApp activateIgnoringOtherApps:YES];
     [self updateServerLabel];
     [self connectAndShowViewer];
-    // CI: show the connection settings sheet for a screenshot of the screen
-    if ([self snapshotDirectory].length && NSProcessInfo.processInfo.environment[@"OMICS_CANVAS_SNAPSHOT_SHEET"].length) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ [self editServerAddress:nil]; });
+    // CI / documentation: OMICS_CANVAS_SNAPSHOT_SHEET=light|dark opens the connection settings sheet and saves the
+    // sheet alone as connection-sheet[-dark].png (any other value: leave it open for a screenshot of the screen)
+    NSString *sheetTheme = NSProcessInfo.processInfo.environment[@"OMICS_CANVAS_SNAPSHOT_SHEET"];
+    if ([self snapshotDirectory].length && sheetTheme.length) {
+        if ([@[@"light", @"dark"] containsObject:sheetTheme]) [self setAppearancePreference:sheetTheme];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self editServerAddress:nil];
+            if (![@[@"light", @"dark"] containsObject:sheetTheme]) return;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                NSView *view = self.window.attachedSheet.contentView;
+                if (view) {
+                    NSBitmapImageRep *rep = [view bitmapImageRepForCachingDisplayInRect:view.bounds];
+                    [view cacheDisplayInRect:view.bounds toBitmapImageRep:rep];
+                    NSString *name = [sheetTheme isEqualToString:@"dark"] ? @"connection-sheet-dark.png" : @"connection-sheet.png";
+                    [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:[[self snapshotDirectory] stringByAppendingPathComponent:name] atomically:YES];
+                }
+                [NSApp terminate:nil];
+            });
+        });
     }
 }
 

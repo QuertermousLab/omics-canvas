@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           shots="${RUNNER_TEMP}/shots"
-          env OMICS_CANVAS_SNAPSHOT_DIR="${shots}/sheet" OMICS_CANVAS_SNAPSHOT_SHEET=1 \
+          env OMICS_CANVAS_SNAPSHOT_DIR="${shots}/sheet" OMICS_CANVAS_SNAPSHOT_SHEET=screen \
             "desktop/OmicsCanvasDesktop/dist/test/Omics Canvas.app/Contents/MacOS/OmicsCanvasDesktop" > "${shots}/sheet.log" 2>&1 &
           app=$!
           sleep 14
