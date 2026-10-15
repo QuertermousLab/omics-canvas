@@ -187,7 +187,8 @@ xattr -dr com.apple.quarantine "/Applications/Omics Canvas.app" "/Applications/G
 
 **Genome Canvas.app** — the genome browser in a native window: the same canvas with a native track list, genome and
 locus fields, highlight tools and workspace menu. **Server** uses THOR's files; **This Mac** starts a built-in backend
-for files on your Mac (**Open local files**). Shortcuts: ⌘O server files, ⌘D public data, ⇧⌘S favorites, ⇧⌘E PNG,
+for files on your Mac (**Open local files**). The **Shared tracks** card (Server only) opens the lab's shared track
+list. Shortcuts: ⌘O server files, ⌘D public data, ⇧⌘L shared tracks, ⇧⌘S favorites, ⇧⌘E PNG,
 ⇧⌘T light / dark, ⌘, server address.
 
 ![Genome Canvas.app opened from a link: region and highlight](images/app-genome-canvas.png)
@@ -195,7 +196,8 @@ for files on your Mac (**Open local files**). Shortcuts: ⌘O server files, ⌘D
 **Omics Canvas.app** — the spatial, single-cell and CRISPR viewers in one window. The sidebar picks the viewer
 (⌘1 / ⌘2 / ⌘3), your workspace and your datasets: groups (combined datasets, projects) open with the arrow, a sample
 opens with a click. Right-click a dataset for **Open**, **Edit Samples…**, **Rename…**, **Remove…**,
-**Combine Datasets…**; the stack button above the list combines too.
+**Combine Datasets…**; the stack button above the list combines too. **Shared datasets** (**Shared screens**) under the list
+(⇧⌘L) opens the viewer's shared list to add to yours.
 
 ![Omics Canvas.app: Visium heart with its H&E image](images/app-omics-spatial.jpg)
 

@@ -453,6 +453,8 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 @property(nonatomic, copy) NSArray<NSDictionary *> *datasetRows;
 @property(nonatomic, strong) NSMutableSet<NSString *> *expandedDatasets;
 @property(nonatomic, strong) GCButton *combineButton;
+@property(nonatomic, strong) GCButton *sharedButton;
+@property(nonatomic, strong) NSMenuItem *sharedMenuItem;
 @property(nonatomic) BOOL snapshotScheduled;
 @property(nonatomic) BOOL showingErrorPage;
 @end
@@ -591,6 +593,12 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     self.emptyLabel.textColor = GCText3Color();
     self.emptyLabel.hidden = YES;
 
+    // the pages' "Shared datasets" dialog: what anyone has loaded, converted or combined, to add in one click
+    GCButton *sharedButton = [GCButton buttonWithLabel:@"Shared datasets" symbol:@"person.2" style:GCButtonStyleSecondary target:self action:@selector(showShared:)];
+    sharedButton.font = GCUIFont(12.5, 550);
+    sharedButton.identifier = @"SharedButton";
+    self.sharedButton = sharedButton;
+
     self.statusDot = [[GCFillView alloc] initWithFrame:NSZeroRect];
     self.statusDot.cornerRadius = 3.5;
     self.statusDot.fillColor = GCWarningColor();
@@ -617,7 +625,7 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     footer.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     footer.alignment = NSLayoutAttributeCenterY;
 
-    NSArray<NSView *> *rows = @[brand, viewerLabel, cardStack, workspaceLabel, workspaceField, divider, datasetsHeading, self.emptyLabel, scroll, footer, self.serverLabel];
+    NSArray<NSView *> *rows = @[brand, viewerLabel, cardStack, workspaceLabel, workspaceField, divider, datasetsHeading, self.emptyLabel, scroll, sharedButton, footer, self.serverLabel];
     NSStackView *columnStack = [NSStackView stackViewWithViews:rows];
     columnStack.translatesAutoresizingMaskIntoConstraints = NO;
     columnStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -629,7 +637,8 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     [columnStack setCustomSpacing:16 afterView:workspaceField];
     [columnStack setCustomSpacing:14 afterView:divider];
     [columnStack setCustomSpacing:8 afterView:datasetsHeading];
-    [columnStack setCustomSpacing:12 afterView:scroll];
+    [columnStack setCustomSpacing:10 afterView:scroll];
+    [columnStack setCustomSpacing:12 afterView:sharedButton];
     [columnStack setCustomSpacing:2 afterView:footer];
     [sidebar addSubview:columnStack];
 
@@ -642,7 +651,7 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
         [scroll.heightAnchor constraintGreaterThanOrEqualToConstant:120],
         [self.statusDot.widthAnchor constraintEqualToConstant:7], [self.statusDot.heightAnchor constraintEqualToConstant:7],
     ]];
-    for (NSView *row in @[cardStack, workspaceField, divider, datasetsHeading, self.emptyLabel, scroll, footer, self.serverLabel]) {
+    for (NSView *row in @[cardStack, workspaceField, divider, datasetsHeading, self.emptyLabel, scroll, sharedButton, footer, self.serverLabel]) {
         [constraints addObject:[row.widthAnchor constraintEqualToAnchor:columnStack.widthAnchor]];
     }
     for (TVViewerCard *card in cards) [constraints addObject:[card.widthAnchor constraintEqualToAnchor:cardStack.widthAnchor]];
@@ -834,6 +843,7 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     for (NSURLQueryItem *item in page.queryItems ?: @[]) if (![item.name isEqualToString:@"desktop"]) [items addObject:item];
     [items addObject:[NSURLQueryItem queryItemWithName:@"desktop" value:@"1"]];
     components.queryItems = items;
+    components.fragment = page.fragment;
     return components.URL;
 }
 
@@ -852,6 +862,11 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 
 - (void)selectCardForKind:(NSString *)kind {
     for (TVViewerCard *card in self.cards) card.chosen = [card.kind isEqualToString:kind];
+    NSString *noun = [kind isEqualToString:@"crispr"] ? @"screens" : @"datasets";
+    self.sharedButton.label = [@"Shared " stringByAppendingString:noun];
+    self.sharedButton.toolTip = [NSString stringWithFormat:@"%@ others in the lab have loaded, converted or combined: add them without looking for their files",
+        [kind isEqualToString:@"crispr"] ? @"Screens" : @"Datasets"];
+    self.sharedMenuItem.title = [NSString stringWithFormat:@"Shared %@…", [kind isEqualToString:@"crispr"] ? @"Screens" : @"Datasets"];
     for (NSMenuItem *item in self.viewerMenuItems) item.state = [item.representedObject isEqualToString:kind] ? NSControlStateValueOn : NSControlStateValueOff;
 }
 
@@ -869,6 +884,15 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 - (void)chooseViewer:(TVViewerCard *)sender { [self showViewer:sender.kind]; }
 - (void)chooseViewerFromMenu:(NSMenuItem *)sender { [self showViewer:sender.representedObject]; }
 - (void)manageDatasets:(id)sender { [self showViewer:self.kind]; }
+
+/** The "Shared datasets" dialog of the page showing (window.VizHubDesktop.showShared), else the dataset page at #shared. */
+- (void)showShared:(id)sender {
+    NSString *kind = self.kind;
+    [self callDesktopMethod:@"showShared" arguments:@[] completion:^(id result) {
+        if (([result respondsToSelector:@selector(boolValue)] && [result boolValue]) || ![kind isEqualToString:self.kind]) return;
+        [self loadPage:[[self viewerPagePath] stringByAppendingString:@"#shared"]];
+    }];
+}
 - (void)goBack:(id)sender { if (self.webView.canGoBack) [self.webView goBack]; }
 
 - (void)openInBrowser:(id)sender {
@@ -1476,6 +1500,8 @@ static NSArray *TVSamples(NSDictionary *dataset) {
     NSMenuItem *fileItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
     NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
     [fileMenu addItem:[self menuItem:@"Add or Manage Datasets…" action:@selector(manageDatasets:) key:@"o" modifiers:0]];
+    self.sharedMenuItem = [self menuItem:@"Shared Datasets…" action:@selector(showShared:) key:@"l" modifiers:NSEventModifierFlagCommand | NSEventModifierFlagShift];
+    [fileMenu addItem:self.sharedMenuItem];
     [fileMenu addItem:[NSMenuItem separatorItem]];
     [fileMenu addItem:[self menuItem:@"Export PNG…" action:@selector(exportPNG:) key:@"e" modifiers:NSEventModifierFlagCommand | NSEventModifierFlagShift]];
     [fileMenu addItem:[self menuItem:@"Open in Browser" action:@selector(openInBrowser:) key:@"b" modifiers:NSEventModifierFlagCommand | NSEventModifierFlagShift]];

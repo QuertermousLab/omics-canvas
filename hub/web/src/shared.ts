@@ -3,7 +3,7 @@
 // (nothing is copied or converted). "Not in my workspace" (on by default, like Genome Canvas's "Only hg38") leaves
 // out what the caller already has. Opened from the viewers' side panels, the CRISPR explorer's header and the dataset
 // pages. "Shared by you" lists the caller's own entries to unshare.
-import { api, esc, fmtAgo, fmtBytes, requireWorkspace, toast } from './common';
+import { api, esc, fmtAgo, fmtBytes, requireWorkspace, setSharedOpener, toast } from './common';
 
 export type Kind = 'spatial' | 'singlecell' | 'crispr';
 interface Sample { id: string; title: string; root?: string; nCells?: number }
@@ -236,5 +236,6 @@ export function openShared(kind: Kind, opts: Options = {}) {
 /** Wire every [data-shared-open] button under `root` and fill their counts. */
 export function bindShared(root: ParentNode, kind: Kind, opts: Options = {}) {
   root.querySelectorAll<HTMLElement>('[data-shared-open]').forEach((b) => (b.onclick = () => openShared(kind, opts)));
+  setSharedOpener(() => openShared(kind, opts));
   root.querySelectorAll<HTMLElement>('[data-shared-count]').forEach((el) => showCount(el, kind));
 }

@@ -7,9 +7,9 @@ links to it (and to the hub home page or JupyterLab) open in the web browser.
 
 - **Sidebar**: the three viewers, your workspace (the same workspaces as Genome Canvas and the web pages),
   your datasets of the chosen viewer (click to open), **+** to add / convert / manage datasets (the viewer's
-  web data page), the server status and address.
+  web data page), **Shared datasets** / **Shared screens** (the pages' shared-library dialog, ⇧⌘L), the server status and address.
 - **Toolbar**: Back, Datasets, the page title, Export PNG (transparent background), Open in Browser, theme, Reload.
-- **Menus**: ⌘1 / ⌘2 / ⌘3 switch viewers, ⌘O datasets, ⇧⌘E export PNG, ⇧⌘B open in browser, ⌘R reload,
+- **Menus**: ⌘1 / ⌘2 / ⌘3 switch viewers, ⌘O datasets, ⇧⌘L shared datasets, ⇧⌘E export PNG, ⇧⌘B open in browser, ⌘R reload,
   ⇧⌘T toggle light/dark, ⌘, connect to another server address.
 - The pages are opened with `?desktop=1`: they hide their own top bar and take the theme from the window
   (`window.VizHubDesktop` in `hub/web/src/common.ts` is the bridge; the page posts `page` / `workspace`

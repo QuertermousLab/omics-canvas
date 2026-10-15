@@ -153,8 +153,10 @@ other track views' `renderSVGContext` with a no-op and call `toSVG` once per tra
 - AppKit code (`Sources/main.m`) **only compiles on macOS**. Without a Mac, push a
   branch named `mac-ui-*`: the **macOS UI preview** workflow builds the app,
   launches it in This Mac mode with `GENOME_CANVAS_SNAPSHOT_DIR`, and uploads
-  `window-light.png` / `window-dark.png` as artifact `macos-ui-preview`
-  (`gh run download <id> -n macos-ui-preview`). Review them before merging.
+  `window-light.png` / `window-dark.png` as artifact `macos-ui-preview-genome-canvas`
+  (`gh run download <id> -n macos-ui-preview-genome-canvas`). `server/` has the same window in server mode
+  (`GENOME_CANVAS_SNAPSHOT_SERVER`, a test `server.py` on the runner) and `shared-tracks-dark.png`, the
+  dialog opened by the sidebar's Shared tracks card. Review them before merging.
 - The palette is defined with `GC_COLOR(...)` macros that mirror the CSS tokens.
   Custom controls (`GCButton`, `GCCardButton`, `GCTrackRowView`, `GCFillView`)
   draw in `drawRect:` so they follow appearance changes and render in snapshots.

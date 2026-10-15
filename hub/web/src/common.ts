@@ -122,6 +122,10 @@ function applyTheme(theme: string) {
   window.dispatchEvent(new Event('vizhub:theme'));
 }
 
+let sharedOpener: (() => void) | null = null;
+/** The page's "Shared datasets" dialog (shared.ts bindShared), for the Mac app's sidebar. */
+export const setSharedOpener = (open: () => void) => { sharedOpener = open; };
+
 const PAGE_TITLE: Record<string, string> = { hub: '', spatial: 'Spatial viewer', 'single-cell': 'Single-cell viewer', crispr: 'CRISPR explorer' };
 
 /** Top bar: page title, theme toggle, workspace chip; the desktop app bridge. */
@@ -154,6 +158,12 @@ export function initChrome(navId: string) {
     // sidebar context menu of the Mac app (the Datasets page offers the same)
     renameDataset: (id: string, title: string) => api(`/hub/api/datasets/${encodeURIComponent(id)}`, { method: 'PATCH', body: { title } }),
     removeDataset: (id: string) => api(`/hub/api/datasets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    // the sidebar's "Shared datasets": this page's dialog (shared.ts), else the app opens the dataset page at #shared
+    showShared() {
+      if (!sharedOpener) return false;
+      sharedOpener();
+      return true;
+    },
     state: () => ({ page: navId, path: location.pathname + location.search, title: document.title, workspace: current }),
   };
   postToDesktop({ type: 'page', page: navId, path: location.pathname + location.search });
