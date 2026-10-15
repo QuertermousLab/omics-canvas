@@ -3,21 +3,23 @@
 Omics Canvas puts the lab's genomics data on one server page: **Genome Canvas** (genome browser), the **spatial
 viewer**, the **single-cell viewer** and the **CRISPR explorer**. Each works in the browser and in a Mac app. This guide
 shows every module with screenshots of public data (10x Genomics Visium human heart and PBMC 3k, CELLxGENE human arterial
-atlas and mouse SMC time course, IGVF HCASMC CRISPR screens).
+atlas and mouse SMC time course, IGVF HCASMC CRISPR screens, UCSC hg38 annotation tracks).
 
 - [1. Getting started](#1-getting-started)
 - [2. Genome Canvas](#2-genome-canvas)
 - [3. Spatial viewer](#3-spatial-viewer)
 - [4. Single-cell viewer](#4-single-cell-viewer)
 - [5. CRISPR explorer](#5-crispr-explorer)
-- [6. Adding and managing data](#6-adding-and-managing-data)
-- [7. Mac apps](#7-mac-apps)
-- [8. Tips](#8-tips)
+- [6. Shared data](#6-shared-data)
+- [7. Adding and managing data](#7-adding-and-managing-data)
+- [8. Mac apps](#8-mac-apps)
+- [9. Tips](#9-tips)
 
 ## 1. Getting started
 
 Open **http://171.65.68.140:8892** (THOR; from outside Stanford connect the VPN first). The home page links the four
-modules and shows how many datasets your workspace has in each.
+modules and shows how many datasets your workspace has in each (*yours*) and how many the lab shares
+([section 6](#6-shared-data)).
 
 ![Home page, light and dark](images/hub.png)
 
@@ -37,11 +39,8 @@ modules and shows how many datasets your workspace has in each.
   hg19, mm39, mm10, rn7, danRer11, dm6, sacCer3, or **Reference** for your own FASTA / 2bit).
 - **Add tracks**: **Open server files** browses `/nfs` without uploading (BAM, CRAM, VCF, BigWig, BigBed, BED, BEDPE
   loops, Hi-C, GWAS / QTL summary statistics with LD, GTF, SEG, MAF …; index files are found automatically).
-  **Shared tracks** lists every server file anyone in the lab has loaded (name, folder, format, genome, who loaded
-  it): filter, tick and **Load selected tracks**, with no path to look for. **Only hg38** (the genome in view) and
-  **Not in this view** (leaves out the tracks you have open) are on by default. Files in Home folders are not listed;
-  deleted or moved files drop off the list by themselves, rewritten ones show their new date, and **×** on a file you
-  shared first takes it off the list.
+  **Shared tracks** lists every server file anyone in the lab has loaded — tick and load them without looking for
+  their paths ([section 6](#6-shared-data)).
   **Public data** searches ENCODE, GTEx, Roadmap and 4DN hubs or takes a UCSC / WashU hub URL or any track URL.
 - **Arrange**: drag the six-dot grip to reorder tracks; right-click a track for color, height, data range and display
   mode; remove it in the track list on the left. Assay colors are automatic and stay the same in both themes.
@@ -57,7 +56,7 @@ modules and shows how many datasets your workspace has in each.
 ## 3. Spatial viewer
 
 `/spatial/` — tissue sections: Xenium, Visium / Visium HD, Slide-seq, spatial ATAC and other data with cell or spot
-coordinates. Without a dataset in the address the page lists your datasets ([section 6](#6-adding-and-managing-data)).
+coordinates. Without a dataset in the address the page lists your datasets ([section 7](#7-adding-and-managing-data)).
 
 ![Visium heart: clusters over the H&E image](images/spatial-he.jpg)
 
@@ -124,19 +123,52 @@ p-value table. The menu at the top switches screens (combined screens are listed
 - Click a target (plot or table); **Knockdown confirmed only** keeps targets whose own expression dropped.
 - **Find a gene** shows which perturbations change that gene; **Download all … results (CSV)** saves a target's table.
 
-## 6. Adding and managing data
+## 6. Shared data
 
-Each viewer's page without a dataset (`/spatial/`, `/single-cell/`, `/crispr/`) manages its datasets.
+Everything anyone in the lab has loaded is listed for everyone, so you can open what a colleague already converted or
+found without asking for its path. There is one list per module: **Shared tracks** in Genome Canvas, and **Shared
+datasets** (**Shared screens** in the CRISPR explorer) in the other three. Nothing is copied: you add the same files
+to your own list.
 
-**Shared datasets** (**Shared screens** in the CRISPR explorer) — the button next to *Datasets* here, under the dataset
-picker in the spatial and single-cell viewers, and next to the screen picker in the CRISPR explorer; the number is how
-many you do not have yet. It opens the lab's list in the style of Genome Canvas's Shared tracks: every dataset anyone
-has loaded, converted or combined in this viewer, with its contents, who shared it and its source. Tick some and
-**Add selected** (in a viewer: **Add & open**) — nothing is copied or converted again; *open* looks at one first.
-**Not in my workspace** (on by default) leaves out what you already have. The list follows the files: a dataset whose
-converted files were deleted disappears, one converted again or renamed by the person who added it is updated, and a
-conversion whose source file changed since is marked *source changed* (select the source under **Add data** to convert
-it again). **Shared by you** lists your own, with **Unshare**. The home page counts shared datasets on each card.
+**Shared datasets** — in the spatial and single-cell viewers the card under the dataset picker, in the CRISPR explorer
+the button next to the screen picker, and on each dataset page the button next to *Datasets*. The number on it is how
+many shared datasets you do not have yet.
+
+![The Shared datasets card in the single-cell viewer](images/shared-card.png)
+
+It lists every dataset anyone has loaded, converted or combined in this viewer: name and source folder, contents
+(cells, samples, screen type), who shared it (+ how many others use it) and when it last changed.
+
+![Shared screens in the CRISPR explorer: one screen ticked](images/shared-dialog.png)
+
+- Tick one or more and **Add selected** — in a viewer **Add & open**, which opens the first one. They join your
+  workspace at once: nothing is copied, nothing is converted again. *open* at the end of a row looks at a dataset
+  first, through its owner's link.
+- **Not in my workspace** (on by default, like *Only hg38* in Genome Canvas) leaves out what you already have. Switch
+  it off to see those too: they are greyed out and marked *in yours*.
+- Filter by name, person, technology or path; **Select shown** / **Clear all** work on what is shown.
+- **Shared by you** (at the bottom) lists what you added first; **Unshare** takes one off the list for the others
+  (your own dataset stays, and it is shared again if you add it again).
+
+**Shared tracks** (Genome Canvas) — the card under **Open server files** lists every file loaded from the shared server
+folders, with its folder, format, genome and who loaded it. Tick and **Load selected tracks**. **Only hg38** (the
+genome in view) and **Not in this view** (the tracks you have open) are on by default. Files in Home folders are never
+listed; **×** on a file you shared first takes it off the list.
+
+![Shared tracks in Genome Canvas: CpG islands is in view, so only the other three are listed](images/genome-canvas-shared-tracks.png)
+
+**The lists follow the files.** They are checked whenever they are opened and every hour:
+
+- a dataset whose converted files were deleted, or a track whose file was deleted or moved, disappears;
+- a dataset converted again, or renamed or given new samples by the person who added it, shows the new version;
+  a rewritten track shows its new date;
+- a conversion whose source file changed afterwards is marked *source changed* (select the source under **Add data** to
+  convert it again), one whose source was deleted *source removed* (it still opens).
+
+## 7. Adding and managing data
+
+Each viewer's page without a dataset (`/spatial/`, `/single-cell/`, `/crispr/`) manages its datasets. **Shared
+datasets** next to *Datasets* opens the lab's list ([section 6](#6-shared-data)).
 
 **Add data** — browse `/nfs` (or paste a path) and select a file or folder; the right side says what it is and how
 it will be read.
@@ -167,7 +199,7 @@ dataset with one link and a sample picker. Order and rename the samples; nothing
 The list shows combined datasets and multi-sample projects as groups: the arrow opens their samples, and the datasets
 that went into a combined one are listed there (with their own **Rename** / **Remove**).
 
-![The dataset list with an expanded group](images/manager-list.png)
+![The dataset list with an expanded project and the Shared datasets button](images/manager-list.png)
 
 - **Edit samples** changes a combined dataset later — and the samples of existing projects (e.g. drop or rename a
   section); a project folder itself is not changed, **Restore the folder's samples** undoes it.
@@ -175,7 +207,7 @@ that went into a combined one are listed there (with their own **Rename** / **Re
   you may also delete the `.vizhub` folder (kept while a combined dataset or another workspace uses it). Source data is
   never deleted.
 
-## 7. Mac apps
+## 8. Mac apps
 
 Download from the [latest release](https://github.com/QuertermousLab/omics-canvas/releases/latest) — Apple Silicon
 (`…-macOS-arm64.zip`) or Intel (`…-macOS-x86_64.zip`), unzip, move to Applications and run once in Terminal
@@ -212,12 +244,13 @@ opens with a click. Right-click a dataset for **Open**, **Edit Samples…**, **R
 - Genome Canvas links (from the CRISPR explorer) open in **Genome Canvas.app** when it is installed — in place if it
   is already open, keeping its tracks — otherwise in your browser.
 
-## 8. Tips
+## 9. Tips
 
 - **Share** any view by copying the address: dataset, sample (`?s=`), gene (`?gene=`) and CRISPR selection are in it.
 - **Figures**: every PNG export has a transparent background; set the plot background under *Display* to preview it.
-- **No login**: anyone who can reach port 8892 can open dataset links; workspaces keep lists tidy, they are not
-  access control. Do not add data that must stay private.
+- **No login**: anyone who can reach port 8892 can open dataset links, and every dataset you add (and every server file
+  you load in Genome Canvas outside your Home folder) is listed under Shared for the whole lab; workspaces keep lists
+  tidy, they are not access control. Do not add data that must stay private.
 - **Large data**: 50–100 GB fragment files take hours; the conversion card shows an estimate. Uncheck the fragment files
   under *Advanced* for a quick first look.
 - **Problems**: a conversion card's **Show log** has the converter's message; the dataset page of each viewer lists

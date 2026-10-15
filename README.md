@@ -18,7 +18,7 @@ Downloads (Apple Silicon / Intel): [Genome Canvas](https://github.com/Quertermou
 ([Intel](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/OmicsCanvasDesktop-macOS-x86_64.zip)).
 The apps are ad-hoc signed: after unzipping, run `xattr -dr com.apple.quarantine "/Applications/<App>.app"` once.
 
-**How to use it: [docs/TUTORIAL.md](docs/TUTORIAL.md)** — all four modules, data management and the Mac apps, with
+**How to use it: [docs/TUTORIAL.md](docs/TUTORIAL.md)** — all four modules, shared data, data management and the Mac apps, with
 screenshots.
 
 ## Lab server deployment (THOR)
@@ -68,8 +68,10 @@ omics-canvas/            (on THOR: /nfs/baldar/quanyiz/vizhub)
   image tiles carry alpha, so they look the same as before on black and stay transparent elsewhere.
 - Datasets and conversions belong to a **workspace** — Genome Canvas's password-free workspaces (one per /home user,
   plus named ones). The chip in the top bar reads and sets Genome Canvas's selection through its API, so choosing a
-  workspace in either app chooses it in both. Each workspace sees, renames and removes only its own datasets; a dataset
-  link opens for anyone (marked "shared by …" in the viewer's list). Like Genome Canvas this is not access control.
+  workspace in either app chooses it in both. Each workspace lists, renames and removes only its own datasets; a dataset
+  link opens for anyone (marked "shared by …" in the viewer's list), and everything any workspace adds is listed for the
+  lab under **Shared datasets** / **Shared tracks** (see below and [the tutorial](docs/TUTORIAL.md#6-shared-data)). Like
+  Genome Canvas this is not access control.
 - The hub backend stores `owner` / `ownerName` on every dataset and job (`state/registry.json`, `state/jobs.json`) and
   takes the workspace from the `X-Vizhub-Workspace` header, checked against Genome Canvas's `/api/workspaces`.
 
