@@ -71,7 +71,7 @@ omics-canvas/            (on THOR: /nfs/baldar/quanyiz/vizhub)
   gateway/apache.conf.in the Apache gateway template (apache.conf is generated; logs in gateway/logs/)
   deploy/                site.env.example (server settings), configure.py, systemd/*.in unit templates
                          (vizhub-hub, genome-canvas, vizhub-gateway alias genome-canvas-gateway, JupyterLab drop-in)
-  genome-canvas/         Genome Canvas (web app, server, macOS app; on THOR ~/baldar/IGV links here)
+  genome-canvas/         Genome Canvas (web app, server, macOS app)
   hub/
     server.py config.json  backend (FastAPI) and its settings (config.example.json in git; roots, Rscript, jobs)
     converters/           convert.py (dispatch), detect.py, rds_export.R, crispr_to_viewer.py,

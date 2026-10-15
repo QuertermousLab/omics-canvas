@@ -125,12 +125,15 @@ The locus search accepts genomic coordinates, gene symbols, and human rsIDs. `hg
 
 ### Run as a Persistent User Service
 
-The repository includes a user-level systemd service that continues running after terminal logout and starts with the user service manager:
+In the Omics Canvas repository Genome Canvas runs as the user-level systemd unit `genome-canvas.service`
+behind the gateway, both generated and linked by the root `vizhubctl` (see the root README, "Deploying on another
+server"):
 
 ```bash
-systemctl --user link "$PWD/deploy/genome-canvas.service"
-systemctl --user enable --now genome-canvas.service
+../vizhubctl configure && ../vizhubctl install
 ```
+
+On its own, `deploy/genome-canvas.service.example` is a system service and `deploy/nginx.conf.example` a reverse proxy.
 
 Common management commands:
 
@@ -154,7 +157,7 @@ same checkout while the main server is unavailable. Start only the backend,
 bound to localhost (the port-8892 Apache gateway is not required):
 
 ```bash
-cd ~/baldar/IGV
+cd ~/baldar/vizhub/genome-canvas
 ./start.sh --host 127.0.0.1 --port 8000
 ```
 
