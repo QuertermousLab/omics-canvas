@@ -111,6 +111,14 @@ const ui = {
   loadSelected: $("#load-selected-button"),
   selectAllFiles: $("#select-all-files-button"),
   clearSelectedFiles: $("#clear-selected-files-button"),
+  sharedBrowser: $("#shared-browser"),
+  sharedSearch: $("#shared-search"),
+  sharedGenomeOnly: $("#shared-genome-only"),
+  sharedGenomeLabel: $("#shared-genome-label"),
+  sharedSelectionSummary: $("#shared-selection-summary"),
+  loadShared: $("#load-shared-button"),
+  sharedSelectAll: $("#shared-select-all-button"),
+  sharedClear: $("#shared-clear-button"),
   shareUrl: $("#share-url"),
   toastRegion: $("#toast-region"),
   hubCatalog: $("#hub-catalog"),
@@ -148,6 +156,8 @@ const state = {
   currentPath: "",
   selectedFiles: new Map(),
   currentFileEntries: [],
+  sharedTracks: [],
+  selectedShared: new Map(),
   centerGuide: false,
   syncTimer: null,
   reorderObserver: null,
@@ -1158,6 +1168,7 @@ async function initializeBrowser(configRequest) {
   document.documentElement.classList.toggle("local-backend", Boolean(state.config.localMode));
   if (state.config.localMode) {
     $("#workspace-button").hidden = true;
+    $("#shared-tracks-button").hidden = true; // the lab list lives on the server
     $("#file-source-title").textContent = "Open local files";
     $("#file-source-detail").textContent = "Browse files on this Mac without uploading";
     $("#file-dialog-kicker").textContent = "This Mac";
@@ -1473,16 +1484,21 @@ function clearSelectedFiles() {
 }
 
 async function loadSelectedFiles() {
-  const selected = [...state.selectedFiles.values()];
+  await loadServerFiles([...state.selectedFiles.values()], ui.loadSelected, "file-dialog");
+}
+
+// Server files ({root, path, name}) from the file browser or the shared track list. The genome in view is
+// recorded with each file on the shared list.
+async function loadServerFiles(selected, button, dialogId) {
   if (!selected.length) return;
-  ui.loadSelected.disabled = true;
+  button.disabled = true;
   setStatus(`Loading ${selected.length} server file${selected.length === 1 ? "" : "s"}...`, "busy");
   let loaded = 0;
   const failures = [];
 
   for (const file of selected) {
     try {
-      const payload = await fetchJSON(`${appURL("api/track")}?root=${encodeURIComponent(file.root)}&path=${encodeURIComponent(file.path)}`);
+      const payload = await fetchJSON(`${appURL("api/track")}?root=${encodeURIComponent(file.root)}&path=${encodeURIComponent(file.path)}&genome=${encodeURIComponent(state.currentGenome)}`);
       if (payload.kind === "reference") {
         const reference = normalizeReferenceURLs(payload.reference);
         await loadGenome(reference, reference.name);
@@ -1494,7 +1510,7 @@ async function loadSelectedFiles() {
       failures.push(`${file.name}: ${error.message}`);
     }
   }
-  closeDialog("file-dialog");
+  closeDialog(dialogId);
   syncTracks();
   if (failures.length) {
     toast(`Loaded ${loaded}; ${failures.length} failed. ${failures[0]}`, "error");
@@ -1503,6 +1519,164 @@ async function loadSelectedFiles() {
     toast(`Loaded ${loaded} server file${loaded === 1 ? "" : "s"}`);
     setStatus("Ready");
   }
+}
+
+// ---------------------------------------------------------------- shared tracks
+// Every server file any workspace has loaded from a shared data root (server: /api/shared-tracks), so others
+// load it without looking for its path. The server drops files that are gone and dates rewritten ones.
+
+const sharedKey = (item) => `${item.root}:${item.path}`;
+
+async function openSharedTracks() {
+  state.selectedShared.clear();
+  ui.sharedGenomeLabel.textContent = state.currentGenome;
+  updateSharedSelection();
+  showDialog("shared-dialog");
+  await loadSharedTracks(false);
+}
+
+async function loadSharedTracks(refresh) {
+  ui.sharedBrowser.innerHTML = '<div class="browser-message"><div><b>G</b><span>Reading the shared track list...</span></div></div>';
+  try {
+    const payload = await fetchJSON(`${appURL("api/shared-tracks")}${refresh ? "?refresh=1" : ""}`);
+    state.sharedTracks = payload.tracks || [];
+    const known = new Set(state.sharedTracks.map(sharedKey));
+    for (const key of [...state.selectedShared.keys()]) if (!known.has(key)) state.selectedShared.delete(key);
+    renderSharedTracks();
+  } catch (error) {
+    state.sharedTracks = [];
+    ui.sharedBrowser.innerHTML = `<div class="browser-message"><div><b>!</b><span>${escapeHTML(error.message)}</span></div></div>`;
+    updateSharedSelection();
+  }
+}
+
+function visibleSharedTracks() {
+  const query = ui.sharedSearch.value.trim().toLowerCase();
+  const genomeOnly = ui.sharedGenomeOnly.checked;
+  return state.sharedTracks.filter((item) => {
+    if (genomeOnly && item.kind !== "reference" && item.genomes.length && !item.genomes.includes(state.currentGenome)) return false;
+    if (!query) return true;
+    return [item.name, item.path, item.format, item.rootLabel, item.ownerName, ...item.users, ...item.genomes]
+      .join(" ").toLowerCase().includes(query);
+  });
+}
+
+function sharedFolder(item) {
+  const folder = item.path.split("/").slice(0, -1).join("/");
+  return `${item.rootLabel} · /${folder}`;
+}
+
+function renderSharedTracks() {
+  const shown = visibleSharedTracks();
+  ui.sharedBrowser.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "file-table-head shared-row";
+  head.innerHTML = "<span></span><span>NAME</span><span>FORMAT</span><span>LOADED BY</span><span>MODIFIED</span>";
+  ui.sharedBrowser.append(head);
+  if (!shown.length) {
+    const empty = document.createElement("div");
+    empty.className = "browser-message";
+    const filtered = state.sharedTracks.length > 0;
+    empty.innerHTML = `<div><b>∅</b><span>${filtered
+      ? `No shared track matches${ui.sharedGenomeOnly.checked ? ` for ${escapeHTML(state.currentGenome)}` : ""}.`
+      : "Nothing shared yet: server files that anyone loads show up here."}</span></div>`;
+    ui.sharedBrowser.append(empty);
+    updateSharedSelection();
+    return;
+  }
+  for (const item of shown) {
+    const key = sharedKey(item);
+    const row = document.createElement("div");
+    row.className = "file-row shared-row";
+    row.classList.toggle("selected", state.selectedShared.has(key));
+    const checkSlot = document.createElement("span");
+    const check = document.createElement("input");
+    check.className = "file-check";
+    check.type = "checkbox";
+    check.checked = state.selectedShared.has(key);
+    check.setAttribute("aria-label", `Select ${item.name}`);
+    const toggle = (checked) => {
+      if (checked) state.selectedShared.set(key, item);
+      else state.selectedShared.delete(key);
+      check.checked = checked;
+      row.classList.toggle("selected", checked);
+      updateSharedSelection();
+    };
+    check.addEventListener("change", () => toggle(check.checked));
+    checkSlot.append(check);
+
+    const nameButton = document.createElement("button");
+    nameButton.type = "button";
+    nameButton.className = "file-name-button";
+    nameButton.title = `${item.rootLabel}: /${item.path}`;
+    const icon = document.createElement("span");
+    icon.className = "file-icon";
+    icon.textContent = item.kind === "reference" ? "REF" : item.format.toUpperCase().slice(0, 5);
+    const label = document.createElement("span");
+    label.className = "shared-name";
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const folder = document.createElement("small");
+    folder.textContent = sharedFolder(item);
+    label.append(name, folder);
+    nameButton.append(icon, label);
+    nameButton.addEventListener("click", () => toggle(!check.checked));
+
+    const format = document.createElement("small");
+    format.textContent = [item.kind === "reference" ? "reference" : item.format, ...item.genomes].join(" · ");
+    const by = document.createElement("small");
+    const others = item.users.filter((user) => user !== item.ownerName);
+    by.textContent = `${item.mine ? "you" : item.ownerName || "saved view"}${others.length ? ` + ${others.length}` : ""}`;
+    by.title = item.users.length ? `Loaded by ${item.users.join(", ")} (${item.loads} time${item.loads === 1 ? "" : "s"})` : "";
+    const modifiedCell = document.createElement("span");
+    modifiedCell.className = "shared-modified";
+    const modified = document.createElement("small");
+    modified.textContent = humanDate(item.modified);
+    modified.title = `${humanSize(item.size)} · first shared ${item.createdAt.slice(0, 10)}`;
+    modifiedCell.append(modified);
+    if (item.mine) {
+      const unshare = document.createElement("button");
+      unshare.type = "button";
+      unshare.className = "icon-button ghost small";
+      unshare.title = "Take it off the shared list (shared again when you load it again)";
+      unshare.setAttribute("aria-label", `Stop sharing ${item.name}`);
+      unshare.innerHTML = '<svg class="icon"><use href="#i-x"/></svg>';
+      unshare.addEventListener("click", () => unshareTrack(item));
+      modifiedCell.append(unshare);
+    }
+    row.append(checkSlot, nameButton, format, by, modifiedCell);
+    ui.sharedBrowser.append(row);
+  }
+  updateSharedSelection();
+}
+
+function updateSharedSelection() {
+  const count = state.selectedShared.size;
+  const shown = visibleSharedTracks();
+  ui.sharedSelectionSummary.textContent = count ? `${count} track${count === 1 ? "" : "s"} selected` : "No tracks selected";
+  ui.loadShared.disabled = count === 0;
+  ui.sharedSelectAll.disabled = !shown.length || shown.every((item) => state.selectedShared.has(sharedKey(item)));
+  ui.sharedClear.disabled = count === 0;
+}
+
+async function unshareTrack(item) {
+  if (!window.confirm(`Take ${item.name} off the shared list? The file is not changed.`)) return;
+  try {
+    await fetchJSON(appURL("api/shared-tracks/hide"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ root: item.root, path: item.path }),
+    });
+    state.selectedShared.delete(sharedKey(item));
+    state.sharedTracks = state.sharedTracks.filter((entry) => sharedKey(entry) !== sharedKey(item));
+    renderSharedTracks();
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function loadSelectedSharedTracks() {
+  await loadServerFiles([...state.selectedShared.values()], ui.loadShared, "shared-dialog");
 }
 
 async function loadRemoteTrack(event) {
@@ -2416,6 +2590,7 @@ window.GenomeCanvasDesktop = Object.freeze({
   zoomIn() { state.browser?.zoomIn(); return true; },
   zoomOut() { state.browser?.zoomOut(); return true; },
   openServerFiles() { void openFileBrowser(); return true; },
+  openSharedTracks() { void openSharedTracks(); return true; },
   openPublicData() { openPublicDataDialog(); return true; },
   openCustomReference() { showDialog("reference-dialog"); return true; },
   openFavorites() { void openFavoriteProfiles(); return true; },
@@ -2456,6 +2631,19 @@ function bindEvents() {
   $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.closeDialog)));
 
   $("#server-files-button").addEventListener("click", openFileBrowser);
+  $("#shared-tracks-button").addEventListener("click", openSharedTracks);
+  ui.sharedSearch.addEventListener("input", renderSharedTracks);
+  ui.sharedGenomeOnly.addEventListener("change", renderSharedTracks);
+  $("#shared-refresh-button").addEventListener("click", () => loadSharedTracks(true));
+  ui.sharedSelectAll.addEventListener("click", () => {
+    for (const item of visibleSharedTracks()) state.selectedShared.set(sharedKey(item), item);
+    renderSharedTracks();
+  });
+  ui.sharedClear.addEventListener("click", () => {
+    state.selectedShared.clear();
+    renderSharedTracks();
+  });
+  ui.loadShared.addEventListener("click", loadSelectedSharedTracks);
   $("#url-track-button").addEventListener("click", openPublicDataDialog);
   $("#custom-reference-button").addEventListener("click", () => showDialog("reference-dialog"));
   $("#favorites-button").addEventListener("click", openFavoriteProfiles);

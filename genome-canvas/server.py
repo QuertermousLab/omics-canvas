@@ -1118,6 +1118,94 @@ def list_profiles(owner="genome"):
     return profiles
 
 
+
+# Shared tracks: every file a workspace has loaded from a shared data root (not a Home folder), listed for the
+# whole lab so others can load it without looking for its path. The list follows the files: a row whose file was
+# deleted or moved is dropped, and a rewritten file (new size or mtime) is marked updated, when the list is read
+# (at most every SHARED_TRACK_CHECK_SECONDS).
+SHARED_TRACK_CHECK_SECONDS = 30
+SHARED_TRACK_CHECK = {"at": 0.0}
+SHARED_TRACK_LOCK = Lock()
+
+
+def check_shared_tracks(store, force=False):
+    with SHARED_TRACK_LOCK:
+        if not force and time.monotonic() - SHARED_TRACK_CHECK["at"] < SHARED_TRACK_CHECK_SECONDS:
+            return
+        SHARED_TRACK_CHECK["at"] = time.monotonic()
+        gone = []
+        for item in store.list_shared_tracks(include_hidden=True):
+            if item["root"] not in DATA_ROOTS:
+                continue  # a root that is not configured now: kept for when it is back
+            try:
+                path = resolve_data_path(item["root"], item["path"], DATA_ROOTS)
+                stat = path.stat()
+                if not path.is_file():
+                    raise FileNotFoundError(item["path"])
+            except (OSError, PermissionError):
+                gone.append((item["root"], item["path"]))
+                continue
+            if stat.st_size != item["size"] or int(stat.st_mtime) != item["modified"]:
+                store.update_shared_track_file(item["root"], item["path"], stat.st_size, int(stat.st_mtime))
+        store.delete_shared_tracks(gone)
+
+
+def seed_shared_tracks(store, home_root=HOME_ROOT):
+    """Server files in views saved before the shared list existed (share links, Favorites): add those still there."""
+    if LOCAL_MODE:
+        return 0
+    workspaces = {item["id"]: item for item in workspace_catalog(store, home_root)}
+    records = sorted(SESSION_DIR.glob("*.json")) + sorted(PROFILE_DIR.glob("**/*.json"))
+    added = 0
+    for record_path in records:
+        record = read_json(record_path, None)
+        if not isinstance(record, dict):
+            continue
+        view = record.get("state") if isinstance(record.get("state"), dict) else {}
+        reference = view.get("reference")
+        genome = str((reference.get("id") if isinstance(reference, dict) else reference) or view.get("genome") or "")[:40]
+        created = str(record.get("createdAt") or record.get("updatedAt") or datetime.now(timezone.utc).isoformat())
+        for track in view.get("tracks") or []:
+            url = urlparse(str(track.get("url") or "") if isinstance(track, dict) else "")
+            path = unquote(url.path)
+            if "/data/" not in path:
+                continue
+            parts = [part for part in path.split("/data/", 1)[1].split("/") if part]
+            owner = None
+            if parts and re.fullmatch(r"(home|manual)-[0-9a-f]{18}", parts[0]):
+                owner = workspaces.get(parts[0])
+                parts = parts[1:]
+            if len(parts) < 2 or parts[0] not in DATA_ROOTS:
+                continue
+            try:
+                candidate = resolve_data_path(parts[0], "/".join(parts[1:]), DATA_ROOTS)
+                if not candidate.is_file() or not is_track_file(candidate):
+                    continue
+                stat = candidate.stat()
+                file_format, _ = detect_format(format_filename(candidate))
+                relative = str(candidate.relative_to(DATA_ROOTS[parts[0]]["path"]))
+            except (OSError, PermissionError, ValueError):
+                continue
+            store.seed_shared_track(parts[0], relative, candidate.name, file_format, "track", stat.st_size,
+                                    int(stat.st_mtime), genome, owner, created)
+            added += 1
+    return added
+
+
+def record_shared_track(store, root_id, path, kind, genome, workspace):
+    """Remember a server file a workspace has just loaded (shared data roots only)."""
+    if LOCAL_MODE or root_id not in DATA_ROOTS or not workspace:
+        return
+    try:
+        relative = str(normalized_absolute(path).relative_to(DATA_ROOTS[root_id]["path"]))
+        stat = path.stat()
+        file_format, _ = detect_format(format_filename(path))
+        store.record_shared_track(root_id, relative, path.name, file_format, kind, stat.st_size,
+                                  int(stat.st_mtime), str(genome or "")[:40], workspace)
+    except Exception as exc:  # the track loads either way
+        print("Warning: could not record shared track {}: {}".format(path, exc), file=sys.stderr)
+
+
 class GenomeCanvasHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "GenomeCanvas/1.0"
@@ -1375,6 +1463,8 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
                 self.send_json(directory_payload(root_id, relative_path, roots))
             elif path == "/api/track":
                 self.handle_track_config(query)
+            elif path == "/api/shared-tracks":
+                self.handle_shared_tracks(query)
             elif path == "/api/public-hub":
                 self.handle_public_hub(query)
             elif path == "/api/variant-search":
@@ -1423,6 +1513,8 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/sessions":
             self.handle_create_session()
+        elif path == "/api/shared-tracks/hide":
+            self.handle_hide_shared_track()
         elif path == "/api/profiles":
             self.handle_save_profile()
         else:
@@ -1695,10 +1787,45 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
                 reference["fastaURL"] = track["url"]
                 if track.get("indexURL"):
                     reference["indexURL"] = track["indexURL"]
+            record_shared_track(self.workspace_store, root_id, path, "reference", query.get("genome", [""])[0], workspace)
             self.send_json({"kind": "reference", "reference": reference})
             return
 
+        record_shared_track(self.workspace_store, root_id, path, "track", query.get("genome", [""])[0], workspace)
         self.send_json({"kind": "track", "track": track})
+
+    def handle_shared_tracks(self, query):
+        if LOCAL_MODE:
+            self.send_json({"tracks": [], "disabled": True})
+            return
+        workspace = self.current_workspace()
+        check_shared_tracks(self.workspace_store, force=query.get("refresh", [""])[0] == "1")
+        tracks = []
+        for item in self.workspace_store.list_shared_tracks():
+            root = DATA_ROOTS.get(item["root"])
+            if not root:
+                continue
+            item["rootLabel"] = root["label"]
+            item["mine"] = item.pop("ownerId") == workspace["id"]
+            item["loadedByMe"] = workspace["name"] in item["users"]
+            tracks.append(item)
+        self.send_json({"tracks": tracks})
+
+    def handle_hide_shared_track(self):
+        if not self.same_origin_request():
+            self.send_api_error(403, "Cross-site changes are not allowed")
+            return
+        try:
+            body = self.read_json_body(MAX_WORKSPACE_BYTES, "Shared track request")
+            self.workspace_store.hide_shared_track(str(body.get("root", "")), str(body.get("path", "")),
+                                                   self.current_workspace()["id"])
+        except PermissionError as exc:
+            self.send_api_error(403, str(exc))
+            return
+        except (WorkspaceError, ValueError) as exc:
+            self.send_api_error(400, str(exc))
+            return
+        self.send_json({"hidden": True})
 
     def handle_public_hub(self, query):
         url = query.get("url", [""])[0].strip()
@@ -1950,6 +2077,10 @@ def main():
 
     SESSION_DIR.mkdir(parents=True, exist_ok=True)
     workspace_store = WorkspaceStore(WORKSPACE_DB_FILE)
+    try:
+        seed_shared_tracks(workspace_store)
+    except Exception as exc:
+        print("Warning: could not read saved views for the shared track list: {}".format(exc), file=sys.stderr)
     server = GenomeCanvasHTTPServer((args.host, args.port), GenomeCanvasHandler, workspace_store, HOME_ROOT)
     server.daemon_threads = True
     bound_host, bound_port = server.server_address[:2]

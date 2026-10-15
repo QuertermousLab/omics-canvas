@@ -24,6 +24,11 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
   their checkpoints, but the step in progress is redone. Web-only changes need no restart (`./vizhubctl build`).
 - Datasets and jobs belong to a Genome Canvas workspace (`owner`); never list, rename or delete another
   workspace's datasets. Removing a dataset deletes files only in folders the hub generated (`*.vizhub/`).
+  The exception by design is the shared library (`state/library.json`, "Shared in the lab"): every dataset any
+  workspace loaded, converted or combined, keyed by folder (`combined:<id>` for combined ones), listed for everyone
+  and added to a workspace with `/hub/api/library/add` (a combined one becomes a copy with `fromLibrary`). Its entries
+  follow the files (`library_sync`): call `record_library(d)` whenever a dataset is created or changed. Genome
+  Canvas's counterpart is the `shared_tracks` table (files loaded from shared data roots, never Home folders).
 - Combined datasets (`combined: true`, `root: "combined:<id>"`) exist only in `state/registry.json`: each slide has its
   own `root` (a slide folder of another dataset). Use `slide_dir()` for slide folders, never `root / dir`.
 - Never delete or overwrite source data on `/nfs`; conversions write to `<source>.vizhub/` next to it.

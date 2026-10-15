@@ -18,14 +18,14 @@
     })();
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261012.1">
+  <link rel="stylesheet" href="styles.css?v=20261014.1">
   <!-- Start the large engine download and the module graph in parallel with
        the stylesheet. Keep these hrefs identical to the import specifiers in
        app.js (including ?v=) so the preloaded responses are reused. -->
   <link rel="preload" href="vendor/fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/igv.min.js?v=20261005-reference-cache" as="script">
-  <link rel="modulepreload" href="app.js?v=20261012.3">
+  <link rel="modulepreload" href="app.js?v=20261014.2">
   <link rel="modulepreload" href="track-colors.mjs?v=20260821.4">
   <link rel="modulepreload" href="signal-style.mjs?v=20261007.2">
   <link rel="modulepreload" href="annotation-style.mjs?v=20260821.3">
@@ -65,6 +65,7 @@
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/><path d="M15.5 5.2a3 3 0 0 1 0 5.6M17.6 14.3a5.5 5.5 0 0 1 2.9 5.2"/></symbol>
     <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></symbol>
   </svg>
 
@@ -174,6 +175,11 @@
             <span><strong id="file-source-title">Open server files</strong><small id="file-source-detail">Browse data directories without uploading</small></span>
             <svg class="icon source-arrow" aria-hidden="true"><use href="#i-chevron-right"/></svg>
           </button>
+          <button class="server-source-card shared-source-card" id="shared-tracks-button" type="button">
+            <span class="source-glyph" aria-hidden="true"><svg class="icon"><use href="#i-users"/></svg></span>
+            <span><strong>Shared tracks</strong><small>Files anyone in the lab has loaded</small></span>
+            <svg class="icon source-arrow" aria-hidden="true"><use href="#i-chevron-right"/></svg>
+          </button>
           <div class="source-actions">
             <button id="url-track-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-globe"/></svg>Public data</button>
             <button id="custom-reference-button" type="button" title="Load a custom reference genome"><svg class="icon" aria-hidden="true"><use href="#i-target"/></svg>Reference</button>
@@ -256,6 +262,30 @@
           <button class="secondary-button small file-selection-button" id="clear-selected-files-button" type="button" disabled>Clear all</button>
         </div>
         <div><button class="secondary-button" value="cancel">Cancel</button><button class="primary-button" id="load-selected-button" type="button" disabled>Load selected tracks</button></div>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="modal file-modal shared-modal" id="shared-dialog">
+    <form method="dialog" class="dialog-shell">
+      <header class="dialog-header">
+        <div><span>Lab library</span><h2>Shared tracks</h2></div>
+        <button class="dialog-close" value="cancel" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+      </header>
+      <div class="file-toolbar shared-toolbar">
+        <label class="search-field"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="shared-search" type="search" placeholder="Filter by name, folder, format or person" aria-label="Filter shared tracks"></label>
+        <label class="shared-genome-toggle"><input id="shared-genome-only" type="checkbox" checked><span>Only <b id="shared-genome-label">hg38</b></span></label>
+        <button class="icon-button ghost small" id="shared-refresh-button" type="button" title="Check the files again" aria-label="Check the files again"><svg class="icon"><use href="#i-refresh"/></svg></button>
+        <p class="shared-note">Every file a workspace has loaded from the shared server folders (Home folders stay private). Files that were deleted or moved drop off the list; rewritten files show their new date.</p>
+      </div>
+      <div class="file-browser" id="shared-browser" aria-live="polite"></div>
+      <footer class="dialog-footer">
+        <div class="file-selection-controls">
+          <span id="shared-selection-summary">No tracks selected</span>
+          <button class="secondary-button small file-selection-button" id="shared-select-all-button" type="button">Select shown</button>
+          <button class="secondary-button small file-selection-button" id="shared-clear-button" type="button" disabled>Clear all</button>
+        </div>
+        <div><button class="secondary-button" value="cancel">Cancel</button><button class="primary-button" id="load-shared-button" type="button" disabled>Load selected tracks</button></div>
       </footer>
     </form>
   </dialog>
@@ -389,7 +419,7 @@
       </header>
       <div class="dialog-content help-content">
         <section><b>1</b><div><h3>Select a reference genome</h3><p>Choose a common assembly from the top bar, or load a custom FASTA or 2bit reference.</p></div></section>
-        <section><b>2</b><div><h3>Add tracks</h3><p>Select files directly from configured server directories, or connect public hubs and URLs such as ENCODE and 1000 Genomes.</p></div></section>
+        <section><b>2</b><div><h3>Add tracks</h3><p>Select files directly from configured server directories, pick from the tracks others in the lab have loaded (Shared tracks), or connect public hubs and URLs such as ENCODE and 1000 Genomes.</p></div></section>
         <section><b>3</b><div><h3>Navigate and explore</h3><p>Search coordinates, genes, or rsIDs, drag to pan, right-click a track for settings, or enable Highlight and drag across a track to mark an interval.</p></div></section>
         <section><b>4</b><div><h3>Export and share</h3><p>Export the current canvas as PNG, save a Favorite profile, or create a LAN-only short link stored on this server.</p></div></section>
         <div class="shortcut-list">
@@ -406,6 +436,6 @@
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
   <script defer src="vendor/igv.min.js?v=20261005-reference-cache"></script>
-  <script type="module" src="app.js?v=20261012.3"></script>
+  <script type="module" src="app.js?v=20261014.2"></script>
 </body>
 </html>

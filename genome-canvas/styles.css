@@ -346,6 +346,19 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .file-check { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .file-selection-controls { min-width: 0; }
 .file-selection-controls > span { min-width: 104px; color: var(--text-2); }
+/* Shared tracks: the lab's list of loaded server files (same table as the file browser) */
+.shared-source-card .source-glyph { background: var(--green-soft); color: var(--green-text); box-shadow: none; }
+.file-toolbar.shared-toolbar { grid-template-columns: minmax(240px, 1fr) auto auto; align-items: center; }
+.shared-toolbar .search-field { height: 34px; }
+.shared-genome-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 12.5px; white-space: nowrap; cursor: pointer; }
+.shared-genome-toggle input { accent-color: var(--accent); }
+.shared-note { grid-column: 1 / -1; margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.45; }
+.file-table-head.shared-row, .file-row.shared-row { grid-template-columns: 34px minmax(220px, 1fr) 130px 110px 116px; }
+.shared-name { min-width: 0; display: grid; gap: 1px; }
+.shared-name small { font-size: 11.5px; }
+.shared-modified { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.shared-modified .icon-button { width: 26px; height: 26px; color: var(--text-4); }
+.shared-modified .icon-button:hover { color: var(--danger); }
 .browser-message { min-height: 300px; display: grid; place-items: center; color: var(--text-3); font-size: 13px; text-align: center; }
 .browser-message div { display: grid; justify-items: center; gap: 10px; max-width: 420px; }
 .browser-message b { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--surface-2); color: var(--text-2); font-size: 16px; }
@@ -532,6 +545,9 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
   .file-table-head { display: none; }
   .file-row { grid-template-columns: 28px minmax(0, 1fr) 64px; padding: 4px 2px; }
   .file-row > small:nth-of-type(2), .file-row > small:nth-of-type(3) { display: none; }
+  .file-row.shared-row { grid-template-columns: 28px minmax(0, 1fr) 88px; }
+  .file-row.shared-row > small { display: none; }
+  .file-toolbar.shared-toolbar { grid-template-columns: 1fr auto auto; }
   .form-grid { grid-template-columns: 1fr; }
   .span-2 { grid-column: auto; }
   .url-modal { height: calc(100vh - 18px); }

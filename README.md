@@ -97,6 +97,14 @@ folder; the page only offers what that viewer reads and points to the right one 
   the datasets it combines, and their converted files are not deleted while a combined dataset uses them.
 - Removing a dataset only unregisters it; the hub can also delete the `.vizhub` folder it generated (not while another
   workspace still uses it), never source data.
+- **Shared in the lab** (all three pages): every dataset any workspace has loaded, converted or combined
+  (`state/library.json`, kept when the datasets made from it are removed). **Add to mine** registers it in your
+  workspace without copying or converting. Entries follow their files, checked when the list is read (at most every
+  30 s) and hourly: a folder that is gone (or a combined dataset whose samples are all gone) is dropped; files written
+  again (a new conversion) refresh its facts; a rename or new samples by the workspace that added it first are taken
+  over; a source file that changed or went away after its conversion is flagged. Its first workspace can **Unshare** it.
+- Genome Canvas has the same for tracks: **Shared tracks** lists every file loaded from a shared data root (not Home
+  folders), in its SQLite store; deleted or moved files are dropped, rewritten ones get their new size and date.
 
 ### Tissue images (H&E, IHC, IF)
 

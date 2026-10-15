@@ -612,6 +612,82 @@ subGroups biosample=Heart assay=RNA_seq
         self.assertEqual(status, 206)
         self.assertEqual(body, b"bam")
 
+    def shared_tracks(self):
+        status, _, body = self.request("GET", "/api/shared-tracks?refresh=1")
+        self.assertEqual(status, 200, body)
+        return json.loads(body)["tracks"]
+
+    def hide_shared(self, root, path):
+        body = json.dumps({"root": root, "path": path}).encode("utf-8")
+        return self.request("POST", "/api/shared-tracks/hide", body=body,
+                            headers={"Content-Type": "application/json", "Content-Length": str(len(body))})
+
+    def test_loaded_tracks_are_shared_with_every_workspace(self):
+        status, _, _ = self.request("GET", "/api/track?root=test&path=variants.vcf.gz&genome=hg38")
+        self.assertEqual(status, 200)
+        status, _, _ = self.request("GET", "/api/track?root=test&path=sample.bed&genome=mm10")
+        self.assertEqual(status, 200)
+        # a Home folder is private: not shared
+        alice_home_root = next(root_id for root_id, item in server.data_roots_for_workspace(
+            server.find_workspace(self.workspace_store, self.alice_workspace_id, self.home_root)).items()
+            if item["path"] == self.alice_home)
+        status, _, _ = self.request("GET", "/api/track?root={}&path=private.bed".format(alice_home_root))
+        self.assertEqual(status, 200)
+
+        tracks = self.shared_tracks()
+        self.assertEqual(sorted(item["path"] for item in tracks), ["sample.bed", "variants.vcf.gz"])
+        variants = next(item for item in tracks if item["path"] == "variants.vcf.gz")
+        self.assertEqual((variants["format"], variants["genomes"], variants["rootLabel"]), ("vcf", ["hg38"], "Test data"))
+        self.assertEqual((variants["ownerName"], variants["users"], variants["mine"]), ("alice", ["alice"], True))
+
+        self.select_workspace(server.home_workspace_id(self.bob_home))
+        status, _, _ = self.request("GET", "/api/track?root=test&path=variants.vcf.gz&genome=hg19")
+        self.assertEqual(status, 200)
+        variants = next(item for item in self.shared_tracks() if item["path"] == "variants.vcf.gz")
+        self.assertEqual((variants["ownerName"], variants["users"], variants["mine"], variants["loadedByMe"]),
+                         ("alice", ["alice", "bob"], False, True))
+        self.assertEqual((variants["genomes"], variants["loads"]), (["hg38", "hg19"], 2))
+        # only the workspace that shared it first may take it off the list
+        status, _, body = self.hide_shared("test", "variants.vcf.gz")
+        self.assertEqual(status, 403, body)
+
+    def test_shared_tracks_follow_their_files(self):
+        for name in ("sample.bed", "contacts.hic"):
+            status, _, _ = self.request("GET", "/api/track?root=test&path={}".format(name))
+            self.assertEqual(status, 200)
+        before = next(item for item in self.shared_tracks() if item["path"] == "sample.bed")
+
+        self.sample.write_bytes(b"chr1\t10\t20\tfeature\nchr1\t30\t40\tnew\n")  # rewritten by its author
+        self.hic.unlink()  # deleted
+        tracks = self.shared_tracks()
+        self.assertEqual([item["path"] for item in tracks], ["sample.bed"])
+        self.assertEqual(tracks[0]["size"], self.sample.stat().st_size)
+        self.assertGreaterEqual(tracks[0]["updatedAt"], before["updatedAt"])
+
+        status, _, body = self.hide_shared("test", "sample.bed")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.shared_tracks(), [])
+        # loading it again shares it again
+        status, _, _ = self.request("GET", "/api/track?root=test&path=sample.bed")
+        self.assertEqual([item["path"] for item in self.shared_tracks()], ["sample.bed"])
+
+    def test_saved_views_seed_the_shared_list(self):
+        server.SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        view = {"reference": {"id": "hg38"}, "tracks": [
+            {"type": "sequence"},
+            {"url": "http://lab:8892/genome-canvas/data/{}/test/sample.bed".format(self.alice_workspace_id)},
+            {"url": "/data/test/variants.vcf.gz", "indexURL": "/data/test/variants.vcf.gz.tbi"},
+            {"url": "/data/test/gone.bw"},
+            {"url": "https://example.org/public.bw"},
+        ]}
+        (server.SESSION_DIR / "abcdefgh.json").write_text(json.dumps({"createdAt": "2026-08-24T22:56:39+00:00", "state": view}))
+        self.assertEqual(server.seed_shared_tracks(self.workspace_store, self.home_root), 2)
+        self.assertEqual(server.seed_shared_tracks(self.workspace_store, self.home_root), 2)  # idempotent
+        tracks = {item["path"]: item for item in self.shared_tracks()}
+        self.assertEqual(sorted(tracks), ["sample.bed", "variants.vcf.gz"])
+        self.assertEqual((tracks["sample.bed"]["ownerName"], tracks["sample.bed"]["genomes"]), ("alice", ["hg38"]))
+        self.assertEqual((tracks["variants.vcf.gz"]["ownerName"], tracks["variants.vcf.gz"]["loads"]), ("", 0))
+
 
 class LocalModeServerTests(unittest.TestCase):
     def setUp(self):

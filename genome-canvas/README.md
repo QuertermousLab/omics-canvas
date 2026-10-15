@@ -9,6 +9,7 @@ Genome Canvas is a local-network genome browser for laboratories and research te
 - Common reference genomes including hg38, hg19, mm39, mm10, rn7, danRer11, dm6, and sacCer3
 - Custom FASTA + FAI and 2bit reference genomes
 - Direct access to configured server directories without file uploads
+- Shared tracks: every file a workspace has loaded from a shared data root (not Home folders), listed for the whole lab; deleted or moved files drop off the list and rewritten ones show their new date
 - Automatic discovery of `.bai`, `.crai`, `.tbi`, `.csi`, and `.fai` indexes
 - Major formats including BAM, CRAM, VCF, BCF, BigWig, BigBed, BED, BEDGraph, WIG, GFF/GFF3, GTF, Hi-C contact heatmaps, BEDPE, SEG, MAF, GWAS, and QTL
 - LocusZoom-style regional association plots for indexed GWAS summary statistics, with p-value guides, lead-variant labels, and complete variant tooltips

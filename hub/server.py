@@ -212,6 +212,7 @@ def register_folder(root: Path, owner, *, title=None, source=None, job=None, id_
             if job:
                 existing['job'] = job
             save_registry()
+            record_library(existing)
             return existing
         if info['type'] == 'viewer-slide':
             layout, slides = 'slide', [dict(id=info['details'].get('id') or 'main', title=info['title'], dir='')]
@@ -226,7 +227,217 @@ def register_folder(root: Path, owner, *, title=None, source=None, job=None, id_
                  **folder_facts(root, info))
         registry['datasets'].append(d)
         save_registry()
+        record_library(d)
         return d
+
+
+# ----------------------------------------------------------------- shared library
+# Every dataset any workspace has loaded, converted or combined, listed for everyone (state/library.json) so that
+# others add it to their own list in one click instead of looking for the files. An entry outlives the datasets
+# made from it and follows its files: it is dropped when its folder is gone (deleted, or a combined dataset's samples
+# all gone) and updated when the files were written again (converted again) or its author renamed or edited it.
+# Checked whenever the library is read (at most every LIBRARY_TTL seconds) and hourly.
+
+library = _load('library.json', {'entries': []})
+LIBRARY_TTL = 30
+_library_checked = {'at': 0.0}
+SNAPSHOT_KEYS = ('kind', 'title', 'root', 'source', 'layout', 'combined', 'description', 'nCells', 'nGenes', 'technology', 'species',
+                 'screenKind', 'stats', 'bytes')
+SLIDE_KEYS = ('id', 'title', 'dir', 'root', 'fromTitle', 'nCells', 'technology', 'species', 'screenKind')
+
+
+def save_library():
+    with lock:
+        _save('library.json', library)
+
+
+def library_key(d):
+    return f'combined:{d["id"]}' if d.get('combined') else d['root']
+
+
+def library_snapshot(d):
+    """What the library keeps of a dataset: its folder's samples (a project's edits are its workspace's own view)."""
+    snap = {k: d[k] for k in SNAPSHOT_KEYS if d.get(k) not in (None, '')}
+    slides = d['slides'] if d.get('combined') else d.get('folderSlides') or d['slides']
+    snap['slides'] = [{k: s[k] for k in SLIDE_KEYS if s.get(k) is not None} for s in slides]
+    if d.get('edited') and not d.get('combined'):
+        snap.update(folder_facts(Path(d['root']), detect.inspect_folder(Path(d['root']))))
+    return snap
+
+
+def folder_stamp(root: Path, layout):
+    """Changes when a folder's viewer files are written again: newest mtime of its manifest and metadata files."""
+    names = ['vizhub.json', 'slide.json', 'project.json']
+    if layout == 'project':
+        try:
+            names += [f'{c.name}/slide.json' for c in os.scandir(root) if c.is_dir() and not c.name.startswith('.')][:200]
+        except OSError:
+            pass
+    stamp = 0
+    for n in names:
+        try:
+            stamp = max(stamp, int((root / n).stat().st_mtime))
+        except OSError:
+            pass
+    return stamp
+
+
+def sample_marker(kind):
+    return 'project.json' if kind == 'crispr' else 'slide.json'
+
+
+def record_library(d, now=None):
+    """Remember a dataset in the shared library, or update its entry (its author's name and samples win)."""
+    if d.get('fromLibrary'):  # a copy of a shared combined dataset: one more user of the original
+        with lock:
+            e = next((x for x in library['entries'] if x['key'] == d['fromLibrary']), None)
+            if e and d.get('ownerName') and d['ownerName'] not in e.setdefault('users', []):
+                e['users'].append(d['ownerName'])
+                save_library()
+        return
+    key, now = library_key(d), now or int(time.time())
+    with lock:
+        e = next((x for x in library['entries'] if x['key'] == key), None)
+        snap = library_snapshot(d)
+        if e is None:
+            e = dict(key=key, datasetId=d['id'], owner=d.get('owner'), ownerName=d.get('ownerName'), added=d.get('added') or now, users=[])
+            library['entries'].append(e)
+            e.update(snap)
+        elif e.get('owner') == d.get('owner'):
+            e.update(snap, datasetId=d['id'])
+            if d.get('added', 0) >= now - 5:
+                e.pop('hidden', None)  # its author added it again
+        else:  # another workspace's dataset of the same folder: only the files' facts
+            e.update({k: v for k, v in snap.items() if k not in ('title', 'description')})
+        if d.get('ownerName') and d['ownerName'] not in e.setdefault('users', []):
+            e['users'].append(d['ownerName'])
+        if not d.get('combined'):
+            stamp = folder_stamp(Path(d['root']), d['layout'])
+            if stamp != e.get('stamp'):
+                e.update(stamp=stamp, updated=now)
+        if e.get('owner') == d.get('owner'):
+            e['updated'] = now
+        save_library()
+
+
+def _sync_entry(e, reg, busy, now):
+    """Bring one entry up to date with its files and its author's dataset; False when it should be dropped."""
+    if e.get('combined'):
+        author = next((d for d in reg if d['id'] == e.get('datasetId') and d.get('owner') == e.get('owner')), None)
+        snap = library_snapshot(author) if author else {'slides': e['slides']}
+        marker = sample_marker(e['kind'])
+        slides = [s for s in snap['slides'] if s.get('root') and (Path(s['root']) / marker).is_file()]
+        if not slides:
+            return False
+        if len(slides) != len(snap['slides']):  # samples whose files are gone
+            snap.update(slides=slides, **{k: v for k, v in combined_facts(slides).items() if k != 'source'})
+        if any(e.get(k) != v for k, v in snap.items()):
+            e.update(snap, updated=now)
+        return True
+    root = Path(e['root'])
+    if e['root'] in busy:  # being converted again right now
+        e['updating'] = True
+        return True
+    e.pop('updating', None)
+    if not (root / ('slide.json' if e['layout'] == 'slide' else 'project.json')).is_file():
+        return False
+    stamp = folder_stamp(root, e['layout'])
+    if stamp != e.get('stamp'):
+        info = detect.inspect_folder(root)
+        if not info.get('ready') or info['type'] == 'viewer-collection':
+            return False
+        if info['type'] == 'viewer-slide':
+            slides = [dict(id=info['details'].get('id') or 'main', title=info['title'], dir='')]
+        elif info['type'] == 'viewer-project':
+            slides = [dict(id=s['id'], title=s['title'], dir=s['id'], **({'nCells': s['nCells']} if s.get('nCells') else {})) for s in info['details']['slides']]
+        else:
+            slides = []
+        first = e.get('stamp', -1) == -1  # recorded without reading the folder: not an update
+        e.update(folder_facts(root, info), slides=slides, kind=info['kind'], stamp=stamp, updated=e.get('updated', now) if first else now)
+    author = next((d for d in reg if d['root'] == e['root'] and d.get('owner') == e.get('owner')), None)
+    if author:
+        for k in ('title', 'description'):
+            if author.get(k) and author[k] != e.get(k):
+                e[k] = author[k]
+                e['updated'] = now
+        e['datasetId'] = author['id']
+    # a converted folder whose source file changed or went away since: still viewable, flagged
+    m = detect.read_manifest(root)
+    e.pop('sourceChanged', None)
+    e.pop('sourceMissing', None)
+    if m and m.get('sourceSize') is not None and e.get('source'):
+        try:
+            st = os.stat(e['source'])
+            if st.st_size != m.get('sourceSize') or int(st.st_mtime) != m.get('sourceMtime'):
+                e['sourceChanged'] = True
+        except OSError:
+            e['sourceMissing'] = True
+    return True
+
+
+def library_sync(force=False):
+    if not force and time.time() - _library_checked['at'] < LIBRARY_TTL:
+        return
+    with lock:
+        _library_checked['at'] = time.time()
+        now = int(time.time())
+        busy = {j['out'] for j in jobs.values() if j['status'] in ('queued', 'running')}
+        before = json.dumps(library, sort_keys=True)
+        kept = [e for e in library['entries'] if _sync_entry(e, registry['datasets'], busy, now)]
+        # a source converted again into another folder (state/converted/ when its folder is read-only): the newest
+        newest = {}
+        for e in kept:
+            if not e.get('combined') and e.get('source') and e['source'] != e['root']:
+                k = (e['kind'], e['source'])
+                if k not in newest or e.get('stamp', 0) > newest[k].get('stamp', 0):
+                    newest[k] = e
+        library['entries'] = [e for e in kept if e.get('combined') or not e.get('source') or e['source'] == e['root']
+                              or newest.get((e['kind'], e['source'])) is e]
+        if json.dumps(library, sort_keys=True) != before:
+            save_library()
+
+
+def library_seed():
+    """Datasets and finished conversions from before the library existed (or missed): add them."""
+    keys = {e['key'] for e in library['entries']}
+    for d in sorted(registry['datasets'], key=lambda d: d.get('added', 0)):
+        if d.get('fromLibrary') or library_key(d) not in keys:
+            record_library(d, now=d.get('added'))
+            keys.add(library_key(d))
+        else:  # its entry exists: only make sure this workspace is among its users
+            e = next(x for x in library['entries'] if x['key'] == library_key(d))
+            if d.get('ownerName') and d['ownerName'] not in e.setdefault('users', []):
+                e['users'].append(d['ownerName'])
+                save_library()
+    for j in sorted(jobs.values(), key=lambda j: j['created']):
+        out = Path(j.get('out') or '')
+        if j['status'] != 'done' or str(out) in keys or not (out / 'vizhub.json').is_file():
+            continue
+        info = detect.inspect_folder(out)
+        if not info.get('ready') or info['type'] == 'viewer-collection':
+            continue
+        layout = {'viewer-slide': 'slide', 'viewer-project': 'project'}.get(info['type'], 'screen')
+        with lock:
+            library['entries'].append(dict(key=str(out), datasetId=j.get('datasetId'), owner=j.get('owner'), ownerName=j.get('ownerName'),
+                                           added=j.get('finished') or j['created'], updated=j.get('finished') or j['created'],
+                                           users=[j['ownerName']] if j.get('ownerName') else [], kind=info['kind'], title=j.get('title') or info['title'],
+                                           root=str(out), source=j['source'], layout=layout, slides=[]))
+        keys.add(str(out))
+    with lock:
+        for e in library['entries']:
+            e.setdefault('stamp', -1)  # read from the folder on the first sync
+    library_sync(force=True)
+
+
+def _library_hourly(check=True):
+    if check:
+        try:
+            library_sync(force=True)
+        except Exception as exc:
+            print(f'library sync: {exc}', file=sys.stderr)
+    t = threading.Timer(3600, _library_hourly)
+    t.daemon = True
+    t.start()
 
 
 # ----------------------------------------------------------------- conversion jobs
@@ -585,7 +796,7 @@ def list_datasets(request: Request, kind: str = ''):
 
 @app.get('/hub/api/summary')
 def summary(request: Request):
-    """Dataset counts per viewer: the caller's and everyone's (hub cards)."""
+    """Dataset counts per viewer: the caller's, everyone's and the shared library's (hub cards)."""
     ws = workspace_of(request, required=False)
     out = {k: {'mine': 0, 'all': 0} for k in KIND_PATH}
     inside = combined_into()
@@ -594,6 +805,10 @@ def summary(request: Request):
             continue
         out[d['kind']]['all'] += 1
         out[d['kind']]['mine'] += own(d, ws)
+    library_sync()
+    for e in library['entries']:
+        if not e.get('hidden') and e['kind'] in out:
+            out[e['kind']]['shared'] = out[e['kind']].get('shared', 0) + 1
     running = sum(1 for j in jobs.values() if j['status'] in ('queued', 'running') and ws and j.get('owner') == ws['id'])
     return {'kinds': out, 'running': running, 'workspace': ws}
 
@@ -707,6 +922,7 @@ async def add_combined(request: Request):
                  owner=ws['id'], ownerName=ws['name'], **combined_facts(slides))
         registry['datasets'].append(d)
         save_registry()
+        record_library(d)
     return public(d)
 
 
@@ -742,6 +958,7 @@ async def edit_dataset(id_: str, request: Request):
                 facts.pop('source')
             d.update(facts)
         save_registry()
+        record_library(d)
     return public(d)
 
 
@@ -757,6 +974,7 @@ def restore_samples(id_: str, request: Request):
         d.pop('edited', None)
         d.update(folder_facts(Path(d['root']), detect.inspect_folder(Path(d['root']))))
         save_registry()
+        record_library(d)
     return public(d)
 
 
@@ -783,7 +1001,89 @@ def remove_dataset(id_: str, request: Request, files: bool = False):
     with lock:
         registry['datasets'] = [x for x in registry['datasets'] if x['id'] != id_]
         save_registry()
+    if removed:
+        library_sync(force=True)  # its shared entry goes with the files
     return {'removed': id_, 'deletedFolder': removed, 'keptFor': sorted({x.get('ownerName') or '?' for x in others})}
+
+
+# ---------- shared library: every workspace's datasets, for everyone
+
+def library_public(e, ws, reg):
+    """An entry as the pages show it: whether the caller has it, and a link that opens it now (any workspace's)."""
+    if e.get('combined'):
+        cands = [d for d in reg if d.get('fromLibrary') == e['key'] or d['id'] == e.get('datasetId')]
+    else:
+        cands = [d for d in reg if d['root'] == e['root'] and not d.get('combined')]
+    mine = next((d for d in cands if own(d, ws)), None)
+    live = mine or next((d for d in cands if d.get('owner') == e.get('owner')), None) or (cands[0] if cands else None)
+    out = {k: v for k, v in e.items() if k not in ('stamp', 'owner', 'hidden')}
+    out.update(nSamples=len(e.get('slides') or []), mine=bool(mine), myUrl=view_url(mine) if mine else None,
+               openUrl=view_url(live) if live else None, author=bool(ws) and e.get('owner') == ws['id'])
+    return out
+
+
+def library_entry(key):
+    e = next((x for x in library['entries'] if x['key'] == key and not x.get('hidden')), None)
+    if not e:
+        raise HTTPException(404, 'No longer in the shared library: its files were removed')
+    return e
+
+
+@app.get('/hub/api/library')
+def list_library(request: Request, kind: str = ''):
+    """Everything any workspace has loaded, converted or combined (newest first), checked against the files."""
+    ws = workspace_of(request, required=False)
+    library_sync()
+    with lock:
+        reg = list(registry['datasets'])
+        entries = [e for e in library['entries'] if not e.get('hidden') and (not kind or e['kind'] == kind)]
+        return [library_public(e, ws, reg) for e in sorted(entries, key=lambda e: -max(e.get('updated', 0), e.get('added', 0)))]
+
+
+@app.post('/hub/api/library/add')
+async def add_from_library(request: Request):
+    """Add a shared dataset to the caller's workspace (nothing is copied or converted)."""
+    ws = workspace_of(request)
+    body = await request.json()
+    library_sync()
+    e = library_entry(str(body.get('key', '')))
+    title = str(body.get('title') or '').strip()[:300] or e['title']
+    reg = list(registry['datasets'])
+    if e.get('combined'):
+        mine = next((d for d in reg if own(d, ws) and (d.get('fromLibrary') == e['key'] or d['id'] == e.get('datasetId'))), None)
+        if mine:
+            return {'dataset': public(mine), 'existing': True}
+        marker = sample_marker(e['kind'])
+        slides = [{**s, 'fromTitle': s.get('fromTitle') or s['title']} for s in e['slides'] if (Path(s['root']) / marker).is_file()]
+        if not slides:
+            raise HTTPException(404, 'The samples of this combined dataset were removed')
+        with lock:
+            did = unique_id(title, f'{title}-{KIND_PATH[e["kind"]]}')
+            d = dict(id=did, kind=e['kind'], title=title, description=e.get('description') or '', root=f'combined:{did}', layout='project',
+                     combined=True, slides=slides, added=int(time.time()), job=None, owner=ws['id'], ownerName=ws['name'],
+                     fromLibrary=e['key'], **combined_facts(slides))
+            registry['datasets'].append(d)
+            save_registry()
+            record_library(d)
+        return {'dataset': public(d)}
+    mine = next((d for d in reg if own(d, ws) and d['root'] == e['root'] and not d.get('combined')), None)
+    if mine:
+        return {'dataset': public(mine), 'existing': True}
+    return {'dataset': public(register_folder(Path(e['root']), ws, title=title, source=e.get('source')))}
+
+
+@app.post('/hub/api/library/hide')
+async def hide_from_library(request: Request):
+    """Its author takes an entry off the shared list (it comes back if they add the dataset again)."""
+    ws = workspace_of(request)
+    body = await request.json()
+    e = library_entry(str(body.get('key', '')))
+    if e.get('owner') != ws['id']:
+        raise HTTPException(403, f'Only {e.get("ownerName") or "the workspace that added it"} can take it off the shared list')
+    with lock:
+        e['hidden'] = True
+        save_library()
+    return {'hidden': e['key']}
 
 
 # ---------- jobs
@@ -1004,6 +1304,9 @@ def data(id_: str, rest: str, request: Request):
 
 for _jid in interrupted:  # conversions cut off by a restart continue from their checkpoints
     enqueue(_jid)
+
+library_seed()
+_library_hourly(check=False)
 
 
 if __name__ == '__main__':

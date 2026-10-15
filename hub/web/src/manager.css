@@ -130,3 +130,11 @@
 .ds__child .ds__title { padding-left: 46px; position: relative; }
 .ds__child .ds__title::before { content: ""; position: absolute; left: 26px; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--border-strong); }
 .combine__restore { margin-right: auto; }
+
+/* shared in the lab (the hub's shared library) */
+.mgr__shared .mgr__bar > .muted { flex: 1 1 380px; }
+.mgr__shared .mgr__bar .input { margin-left: 0; }
+.mgr__shared .table-wrap { max-height: 560px; overflow: auto; }
+.mgr__shared .ds__title .chip { height: 19px; padding: 0 7px; font-size: 10.5px; margin-left: 4px; vertical-align: 1px; }
+.mgr__shared .ds__acts .chip { margin-left: 6px; }
+.ds__samples { max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

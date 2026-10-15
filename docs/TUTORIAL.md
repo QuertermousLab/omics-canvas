@@ -37,6 +37,10 @@ modules and shows how many datasets your workspace has in each.
   hg19, mm39, mm10, rn7, danRer11, dm6, sacCer3, or **Reference** for your own FASTA / 2bit).
 - **Add tracks**: **Open server files** browses `/nfs` without uploading (BAM, CRAM, VCF, BigWig, BigBed, BED, BEDPE
   loops, Hi-C, GWAS / QTL summary statistics with LD, GTF, SEG, MAF …; index files are found automatically).
+  **Shared tracks** lists every server file anyone in the lab has loaded (name, folder, format, genome, who loaded
+  it): filter, tick and **Load selected tracks**, with no path to look for. Files in Home folders are not listed;
+  deleted or moved files drop off the list by themselves, rewritten ones show their new date, and **×** on a file you
+  shared first takes it off the list.
   **Public data** searches ENCODE, GTEx, Roadmap and 4DN hubs or takes a UCSC / WashU hub URL or any track URL.
 - **Arrange**: drag the six-dot grip to reorder tracks; right-click a track for color, height, data range and display
   mode; remove it in the track list on the left. Assay colors are automatic and stay the same in both themes.
@@ -122,6 +126,13 @@ p-value table. The menu at the top switches screens (combined screens are listed
 ## 6. Adding and managing data
 
 Each viewer's page without a dataset (`/spatial/`, `/single-cell/`, `/crispr/`) manages its datasets.
+
+**Shared in the lab** — every dataset anyone has loaded, converted or combined in this viewer, with who shared it and
+its source. **Add to mine** puts it in your list at once (nothing is copied or converted again; **Open** looks at it
+first). The list follows the files: a dataset whose converted files were deleted disappears, one that was converted
+again or renamed by the person who added it is updated, and a conversion whose source file changed since is marked
+*source changed* (select the source under **Add data** to convert it again). **Unshare** takes your own dataset off the
+list. The home page counts shared datasets on each card.
 
 **Add data** — browse `/nfs` (or paste a path) and select a file or folder; the right side says what it is and how
 it will be read.

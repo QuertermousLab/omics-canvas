@@ -1,6 +1,7 @@
-"""Persistent password-free workspace names for Genome Canvas."""
+"""Persistent password-free workspace names for Genome Canvas, and the lab's shared track list."""
 
 import hashlib
+import json
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -62,6 +63,26 @@ class WorkspaceStore:
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     hidden_at TEXT NOT NULL
+                );
+                -- every server file a workspace has loaded from a shared data root
+                CREATE TABLE IF NOT EXISTS shared_tracks (
+                    root_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    format TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    size INTEGER,
+                    mtime INTEGER,
+                    genomes TEXT NOT NULL DEFAULT '[]',
+                    workspace_id TEXT,
+                    workspace_name TEXT,
+                    users TEXT NOT NULL DEFAULT '[]',
+                    loads INTEGER NOT NULL DEFAULT 0,
+                    hidden INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    loaded_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (root_id, path)
                 );
                 """
             )
@@ -151,3 +172,107 @@ class WorkspaceStore:
         if not result.rowcount:
             raise WorkspaceError("Hidden Home workspace was not found")
         self.invalidate_catalog()
+
+    # Shared tracks: one row per server file (data root id + root-relative path) loaded by any workspace.
+    # The first workspace is its owner (it alone may take it off the list); `users` names everyone who loaded it.
+
+    @staticmethod
+    def public_shared_track(row):
+        return {
+            "root": row["root_id"],
+            "path": row["path"],
+            "name": row["name"],
+            "format": row["format"],
+            "kind": row["kind"],
+            "size": row["size"],
+            "modified": row["mtime"],
+            "genomes": json.loads(row["genomes"] or "[]"),
+            "ownerId": row["workspace_id"],
+            "ownerName": row["workspace_name"],
+            "users": json.loads(row["users"] or "[]"),
+            "loads": row["loads"],
+            "createdAt": row["created_at"],
+            "loadedAt": row["loaded_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def record_shared_track(self, root_id, path, name, file_format, kind, size, mtime, genome, workspace):
+        now = utc_now()
+        workspace_name = (workspace or {}).get("name") or ""
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM shared_tracks WHERE root_id = ? AND path = ?", (root_id, path)
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    "INSERT INTO shared_tracks(root_id, path, name, format, kind, size, mtime, genomes, workspace_id,"
+                    " workspace_name, users, loads, created_at, loaded_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
+                    (root_id, path, name, file_format, kind, size, mtime, json.dumps([genome] if genome else []),
+                     (workspace or {}).get("id"), workspace_name, json.dumps([workspace_name] if workspace_name else []),
+                     now, now, now),
+                )
+                return
+            genomes = json.loads(row["genomes"] or "[]")
+            if genome and genome not in genomes:
+                genomes.append(genome)
+            users = json.loads(row["users"] or "[]")
+            if workspace_name and workspace_name not in users:
+                users.append(workspace_name)
+            changed = row["size"] != size or row["mtime"] != mtime
+            hidden = row["hidden"]
+            if hidden and (workspace or {}).get("id") == row["workspace_id"]:
+                hidden = 0  # its owner loaded it again: shared again
+            connection.execute(
+                "UPDATE shared_tracks SET name = ?, format = ?, kind = ?, size = ?, mtime = ?, genomes = ?, users = ?,"
+                " loads = loads + 1, hidden = ?, loaded_at = ?, updated_at = ? WHERE root_id = ? AND path = ?",
+                (name, file_format, kind, size, mtime, json.dumps(genomes), json.dumps(users), hidden, now,
+                 now if changed else row["updated_at"], root_id, path),
+            )
+
+    def seed_shared_track(self, root_id, path, name, file_format, kind, size, mtime, genome, workspace, created_at):
+        """A file from a view saved before the list existed (share link, Favorite); kept as is when already listed."""
+        workspace_name = (workspace or {}).get("name") or ""
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO shared_tracks(root_id, path, name, format, kind, size, mtime, genomes, workspace_id,"
+                " workspace_name, users, loads, created_at, loaded_at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+                (root_id, path, name, file_format, kind, size, mtime, json.dumps([genome] if genome else []),
+                 (workspace or {}).get("id"), workspace_name, json.dumps([workspace_name] if workspace_name else []),
+                 created_at, created_at, created_at),
+            )
+
+    def list_shared_tracks(self, include_hidden=False):
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM shared_tracks{} ORDER BY loaded_at DESC".format("" if include_hidden else " WHERE hidden = 0")
+            ).fetchall()
+        return [self.public_shared_track(row) for row in rows]
+
+    def update_shared_track_file(self, root_id, path, size, mtime):
+        """The file was rewritten since it was recorded (its author updated it)."""
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE shared_tracks SET size = ?, mtime = ?, updated_at = ? WHERE root_id = ? AND path = ?",
+                (size, mtime, utc_now(), root_id, path),
+            )
+
+    def delete_shared_tracks(self, keys):
+        """Rows whose files are gone: [(root_id, path), ...]."""
+        if not keys:
+            return
+        with self.connect() as connection:
+            connection.executemany("DELETE FROM shared_tracks WHERE root_id = ? AND path = ?", list(keys))
+
+    def hide_shared_track(self, root_id, path, workspace_id):
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT workspace_id, workspace_name FROM shared_tracks WHERE root_id = ? AND path = ? AND hidden = 0",
+                (root_id, path),
+            ).fetchone()
+            if row is None:
+                raise WorkspaceError("This track is no longer on the shared list")
+            if row["workspace_id"] != workspace_id:
+                raise PermissionError("Only {} can take this track off the shared list".format(row["workspace_name"] or "its owner"))
+            connection.execute("UPDATE shared_tracks SET hidden = 1 WHERE root_id = ? AND path = ?", (root_id, path))
