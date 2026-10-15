@@ -101,6 +101,17 @@ jobs:
           for attempt in $(seq 1 60); do [[ -f "${shots}/omics-key.png" ]] && break; sleep 2; done
           cat "${shots}/omics-key.log"
           grep -E "connected: http://127\.0\.0\.1:[0-9]+/ " "${shots}/omics-key.log"
+      - name: The connection settings sheet
+        if: always()
+        shell: bash
+        run: |
+          shots="${RUNNER_TEMP}/shots"
+          env OMICS_CANVAS_SNAPSHOT_DIR="${shots}/sheet" OMICS_CANVAS_SNAPSHOT_SHEET=1 \
+            "desktop/OmicsCanvasDesktop/dist/test/Omics Canvas.app/Contents/MacOS/OmicsCanvasDesktop" > "${shots}/sheet.log" 2>&1 &
+          app=$!
+          sleep 14
+          screencapture -x "${shots}/connection-sheet.png" || true
+          kill "${app}" || true
       - name: Logs
         if: always()
         shell: bash

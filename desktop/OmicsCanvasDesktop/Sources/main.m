@@ -514,6 +514,10 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     [NSApp activateIgnoringOtherApps:YES];
     [self updateServerLabel];
     [self connectAndShowViewer];
+    // CI: show the connection settings sheet for a screenshot of the screen
+    if ([self snapshotDirectory].length && NSProcessInfo.processInfo.environment[@"OMICS_CANVAS_SNAPSHOT_SHEET"].length) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ [self editServerAddress:nil]; });
+    }
 }
 
 /** Open the connection (starting the SSH tunnel when one is configured), then the current viewer. */
