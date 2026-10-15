@@ -8,14 +8,19 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
 
 - Repository https://github.com/QuertermousLab/omics-canvas (public; formerly `genome-canvas`), branch `main`.
 - THOR (`quanyiz@171.65.68.140`): the checkout `/nfs/baldar/quanyiz/vizhub` **is the live deployment** of
-  everything on port 8892 (gateway `gateway/apache.conf`, systemd user units `deploy/systemd/`, managed with
-  `./vizhubctl`). `state/`, `hub/venv/`, `hub/static/`, `hub/config.json` and Genome Canvas's
+  everything on port 8892 (gateway `gateway/apache.conf`, systemd user units, managed with `./vizhubctl`). Server
+  settings live in `deploy/site.env` (local; defaults `deploy/site.env.example` = THOR): edit the templates
+  `gateway/apache.conf.in` and `deploy/systemd/*.in`, never the generated `gateway/apache.conf` or
+  `deploy/generated/`; `./vizhubctl configure --yes` regenerates, `./vizhubctl install` relinks the units. `state/`, `hub/venv/`, `hub/static/`, `hub/config.json` and Genome Canvas's
   `genomecanvas.config.json` / `.genomecanvas/` are local and never committed.
 - `hub/server.py` (FastAPI, 127.0.0.1:8893): home page, viewer pages, API, conversion queue.
   `hub/converters/` turn source files into the ATHENA viewer format (`convert.py` dispatches;
   `rds_export.R` reads R objects; `atac_to_viewer.py` builds accessibility tracks).
   `hub/web/` is the page source (TypeScript, esbuild): `./vizhubctl build` → `hub/static/`.
 - `desktop/OmicsCanvasDesktop/`: Objective-C AppKit + WKWebView app (only compiles on macOS; CI builds it).
+  `desktop/Shared/OCConnection.{h,m}` (compiled into both Mac apps): server, port and optional SSH port forwarding
+  (password in the Keychain, handed to ssh by the app itself as `SSH_ASKPASS`); `macos-connection.yml` tests it
+  against the runner's own SSH server.
 
 ## Rules
 

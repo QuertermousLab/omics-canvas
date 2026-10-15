@@ -221,7 +221,7 @@ xattr -dr com.apple.quarantine "/Applications/Omics Canvas.app" "/Applications/G
 locus fields, highlight tools and workspace menu. **Server** uses THOR's files; **This Mac** starts a built-in backend
 for files on your Mac (**Open local files**). The **Shared tracks** card (Server only) opens the lab's shared track
 list. Shortcuts: ⌘O server files, ⌘D public data, ⇧⌘L shared tracks, ⇧⌘S favorites, ⇧⌘E PNG,
-⇧⌘T light / dark, ⌘, server address.
+⇧⌘T light / dark, ⌘, server and port forwarding.
 
 ![Genome Canvas.app opened from a link: region and highlight](images/app-genome-canvas.png)
 
@@ -240,9 +240,16 @@ opens with a click. Right-click a dataset for **Open**, **Edit Samples…**, **R
 ![Omics Canvas.app in dark mode](images/app-omics-spatial-dark.jpg)
 
 - Toolbar: back, **Datasets** (add, convert, manage — ⌘O), Export PNG (⇧⌘E), open the page in your browser (⇧⌘B),
-  light / dark (⇧⌘T), reload (⌘R). **Server…** (⌘,) connects to another address.
+  light / dark (⇧⌘T), reload (⌘R).
 - Genome Canvas links (from the CRISPR explorer) open in **Genome Canvas.app** when it is installed — in place if it
   is already open, keeping its tracks — otherwise in your browser.
+
+**Server and port forwarding** (both apps: **Server…** / **Connect to Server…**, ⌘,) — the server address and port
+(default THOR, 171.65.68.140 port 8892), and **Connect through SSH port forwarding** for servers you cannot reach
+directly (off campus without VPN, or a server that only listens on 127.0.0.1): the SSH host and port, your account
+and, optionally, your password — kept in the macOS Keychain; leave it empty to use your SSH key. The app opens the
+tunnel itself, keeps it while it runs and reconnects after sleep or a network change; **Use Default** goes back to
+THOR. The sidebar shows the connection (e.g. `171.65.68.140:8892 · SSH you@171.65.68.140`).
 
 ## 9. Tips
 

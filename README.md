@@ -37,17 +37,40 @@ One address for everything: **http://171.65.68.140:8892/** (redirects to `/hub/`
 
 Viewer links take `?s=<slide>&assay=<assay>&gene=<gene>`; the explorer takes `?t=<target>&g=<gene>`.
 
-Setting up a server: `cp hub/config.example.json hub/config.json` (and Genome Canvas's own config),
-create `hub/venv` from `hub/requirements.txt`, `./vizhubctl build` (web pages), `./vizhubctl install`
-(systemd user units in `deploy/systemd/`), `loginctl enable-linger $USER`.
+### Deploying on another server
+
+Everything runs as one user with systemd user units behind an Apache gateway (Debian / Ubuntu `apache2`, modules
+proxy, proxy_http, proxy_wstunnel, headers, rewrite). The defaults are THOR's; on another server:
+
+```bash
+uv venv --python python3.12 hub/venv && VIRTUAL_ENV=hub/venv uv pip install -r hub/requirements.txt
+./vizhubctl configure      # listen IP, port, public address, internal ports, JupyterLab, SSH host, data folders
+./vizhubctl build          # web pages
+./vizhubctl install        # systemd user units, generated in deploy/generated/systemd/
+loginctl enable-linger $USER && ./vizhubctl restart && ./vizhubctl status
+```
+
+`configure` asks for each setting (Enter keeps the shown value) or takes options, e.g. for a server that is only
+reachable through SSH port forwarding:
+
+```bash
+./vizhubctl configure --listen 127.0.0.1 --port 8892 --public-url http://localhost:8892 --ssh-host lab-server.example.org --no-jupyter --yes
+```
+
+It writes `deploy/site.env` (local; THOR's defaults are `deploy/site.env.example`) and generates `gateway/apache.conf`
+(from `gateway/apache.conf.in`), the units (from `deploy/systemd/*.in`) and the matching keys of `hub/config.json`.
+`./vizhubctl status` then prints the addresses and, with an SSH host, the port forwarding command for users
+(`ssh -N -L 8892:127.0.0.1:8892 <account>@<ssh host>`, then http://localhost:8892/) and the Mac app settings.
+Genome Canvas keeps its own `genome-canvas/genomecanvas.config.json` (data roots, references).
 
 ## Layout
 
 ```
 omics-canvas/            (on THOR: /nfs/baldar/quanyiz/vizhub)
   vizhubctl              status | start | stop | restart [hub|canvas|gateway] | logs | access | install | build
-  gateway/apache.conf    the port-8892 Apache gateway (logs in gateway/logs/)
-  deploy/systemd/        vizhub-hub, genome-canvas, vizhub-gateway (alias genome-canvas-gateway) + JupyterLab drop-in
+  gateway/apache.conf.in the Apache gateway template (apache.conf is generated; logs in gateway/logs/)
+  deploy/                site.env.example (server settings), configure.py, systemd/*.in unit templates
+                         (vizhub-hub, genome-canvas, vizhub-gateway alias genome-canvas-gateway, JupyterLab drop-in)
   genome-canvas/         Genome Canvas (web app, server, macOS app; on THOR ~/baldar/IGV links here)
   hub/
     server.py config.json  backend (FastAPI) and its settings (config.example.json in git; roots, Rscript, jobs)

@@ -5,6 +5,9 @@
 /hub/config.json
 /hub/web/node_modules/
 /gateway/logs/
+/gateway/apache.conf
+/deploy/site.env
+/deploy/generated/
 /gateway/run/
 /desktop/*/dist/
 __pycache__/

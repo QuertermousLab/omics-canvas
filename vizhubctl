@@ -1,23 +1,35 @@
 #!/usr/bin/env bash
-# Manage the Omics Canvas services (systemd user units).
+# Manage the Omics Canvas services (systemd user units). Settings: deploy/site.env (./vizhubctl configure).
 set -uo pipefail
 
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 units=(vizhub-hub.service genome-canvas.service vizhub-gateway.service)
+
+# deploy/site.env (written by configure), else the THOR defaults
+settings="$dir/deploy/site.env"
+[[ -f "$settings" ]] || settings="$dir/deploy/site.env.example"
+# shellcheck disable=SC1090
+set -a; source "$settings"; set +a
+port="${VIZHUB_PORT:-8892}"
 public="${VIZHUB_PUBLIC_URL:-http://171.65.68.140:8892}"
+public="${public%/}"
 
 usage() {
-  cat <<'EOF'
-Omics Canvas services on THOR
+  cat <<EOF
+Omics Canvas services
 
 Usage: ./vizhubctl <command>
 
-  status            services, health checks and public URLs
+  configure [options]   server settings: listen IP, port, public address, internal ports, JupyterLab, SSH host
+                        (asks, Enter keeps a value; ./vizhubctl configure --help lists the options)
+  install               generate the files from deploy/site.env, link the systemd units and enable them
+  status                services, health checks, addresses and the port forwarding command
   start | stop | restart [hub|canvas|gateway]   (default: all three; JupyterLab is never touched)
   logs [hub|canvas|gateway]                      follow systemd logs (default: hub)
-  access                                         follow the port-8892 access and error logs
-  install                                        (re)link the systemd units from deploy/systemd and enable them
+  access                                         follow the gateway's access and error logs
   build                                          rebuild the web pages (hub/web -> hub/static)
+
+Settings: ${settings#"$dir/"}
 EOF
 }
 
@@ -38,36 +50,54 @@ check() {
 }
 
 status() {
+  local gateway="http://127.0.0.1:$port"
   echo "Services"
-  for u in "${units[@]}" jupyter-lab.service; do
+  for u in "${units[@]}" ${VIZHUB_JUPYTER_PORT:+jupyter-lab.service}; do
     printf '  %-26s %s\n' "$u" "$(systemctl --user is-active "$u" 2>/dev/null)"
   done
   echo "Health"
-  check "hub backend" http://127.0.0.1:8893/hub/api/health
-  check "Genome Canvas backend" http://127.0.0.1:8000/api/health
-  check "JupyterLab backend" http://127.0.0.1:8891/api
-  check "gateway: hub" http://127.0.0.1:8892/hub/
-  check "gateway: Genome Canvas" http://127.0.0.1:8892/genome-canvas/api/health
-  check "gateway: JupyterLab" http://127.0.0.1:8892/lab
+  check "hub backend" "http://127.0.0.1:${VIZHUB_HUB_PORT:-8893}/hub/api/health"
+  check "Genome Canvas backend" "http://127.0.0.1:${VIZHUB_CANVAS_PORT:-8000}/api/health"
+  [[ -n "${VIZHUB_JUPYTER_PORT:-}" ]] && check "JupyterLab backend" "http://127.0.0.1:${VIZHUB_JUPYTER_PORT}/api"
+  check "gateway: hub" "$gateway/hub/"
+  check "gateway: Genome Canvas" "$gateway/genome-canvas/api/health"
+  [[ -n "${VIZHUB_JUPYTER_PORT:-}" ]] && check "gateway: JupyterLab" "$gateway/lab"
   echo "Open"
   echo "  $public/hub/   (also $public/)"
-  echo "  $public/genome-canvas/   $public/spatial/   $public/single-cell/   $public/crispr/   $public/lab"
+  echo "  $public/genome-canvas/   $public/spatial/   $public/single-cell/   $public/crispr/${VIZHUB_JUPYTER_PORT:+   $public/lab}"
+  if [[ -n "${VIZHUB_SSH_HOST:-}" ]]; then
+    local ssh_port="" target="127.0.0.1"
+    [[ "${VIZHUB_SSH_PORT:-22}" != 22 ]] && ssh_port=" -p ${VIZHUB_SSH_PORT}"
+    echo "Port forwarding (from outside the server's network)"
+    echo "  ssh -N -L $port:$target:$port$ssh_port <your account>@${VIZHUB_SSH_HOST}    then open http://localhost:$port/"
+    echo "  Mac apps: Server… → Server ${VIZHUB_SSH_HOST}, Port $port, Connect through SSH port forwarding,"
+    echo "            SSH host ${VIZHUB_SSH_HOST} (port ${VIZHUB_SSH_PORT:-22}), your account and password (or SSH key)"
+  fi
 }
 
+generate() { python3 "$dir/deploy/configure.py" --yes >/dev/null || exit 1; }
+
 install_units() {
-  local d="$HOME/.config/systemd/user"
+  local d="$HOME/.config/systemd/user" g="$dir/deploy/generated/systemd"
+  generate
   mkdir -p "$d/jupyter-lab.service.d"
-  for u in "${units[@]}"; do ln -sfn "$dir/deploy/systemd/$u" "$d/$u"; done
-  ln -sfn "$dir/deploy/systemd/jupyter-lab.service.d/vizhub-gateway.conf" "$d/jupyter-lab.service.d/vizhub-gateway.conf"
+  for u in "${units[@]}"; do ln -sfn "$g/$u" "$d/$u"; done
+  if [[ -f "$g/jupyter-lab.service.d/vizhub-gateway.conf" ]]; then
+    ln -sfn "$g/jupyter-lab.service.d/vizhub-gateway.conf" "$d/jupyter-lab.service.d/vizhub-gateway.conf"
+  else
+    rm -f "$d/jupyter-lab.service.d/vizhub-gateway.conf"
+  fi
   systemctl --user daemon-reload
   systemctl --user enable "${units[@]}"
   # Alias=genome-canvas-gateway.service: point at the unit name, not the file, so systemd sees one unit
   ln -sfn vizhub-gateway.service "$d/genome-canvas-gateway.service"
   systemctl --user daemon-reload
+  echo "Units linked from ${g#"$dir/"}; restart the services to use new settings (./vizhubctl restart)."
 }
 
 cmd="${1:-status}"
 case "$cmd" in
+  configure) shift; python3 "$dir/deploy/configure.py" "$@" ;;
   status) status ;;
   start|stop|restart) systemctl --user "$cmd" $(unit_for "${2:-}"); sleep 2; status ;;
   logs) journalctl --user -f -u "$(unit_for "${2:-hub}")" ;;
