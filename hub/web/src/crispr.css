@@ -9,7 +9,8 @@
   .cx-body { flex: 1; display: grid; grid-template-columns: 380px minmax(0, 1fr); min-height: 0; }
   .cx-list { border-right: 1px solid var(--line); background: var(--white); display: flex; flex-direction: column; min-height: 0; }
   .cx-filter { padding: 12px 14px 6px; display: grid; gap: 8px; }
-  .cx-count { margin: 0; padding: 0 14px 6px; font-size: .8rem; color: var(--muted); }
+  .cx-count { margin: 0; padding: 0 14px 6px; font-size: .8rem; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cx-count [data-export] { margin-left: auto; }
   .cx-table { overflow: auto; flex: 1; max-height: calc(100vh - 230px); }
   .cx-table--short { max-height: 320px; }
   .cx-table .table { font-size: .84rem; }

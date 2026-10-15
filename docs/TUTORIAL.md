@@ -117,7 +117,9 @@ p-value table. The menu at the top switches screens (combined screens are listed
 
 ![Enhancer screen: volcano plot and the selected enhancer](images/crispr-enhancer.png)
 
-- Search a gene, an enhancer or `chr:start-end`; **Significant only** keeps tests at FDR < 0.1.
+- Search a gene, an enhancer or `chr:start-end`; **Significant only** keeps tests at FDR < 0.1. **Export table (CSV)**
+  under the search saves every test shown (all columns: element, position, gene, log2FC, P, FDR, guides), and
+  **Download (CSV)** in the enhancer's panel saves its tested genes.
 - Click a point or a row: the enhancer's tested genes with log2FC, P and FDR.
 - **Open ±150 kb in Genome Canvas** shows the region with the enhancer highlighted and two loop tracks — the screen's
   significant and all tested enhancer → gene links (arc height = |log2FC|); the gene buttons open the gene in Genome
@@ -128,7 +130,9 @@ p-value table. The menu at the top switches screens (combined screens are listed
 ![Perturb-seq: targets ranked and one knockdown's effects](images/crispr-perturbseq.png)
 
 - Click a target (plot or table); **Knockdown confirmed only** keeps targets whose own expression dropped.
-- **Find a gene** shows which perturbations change that gene; **Download all … results (CSV)** saves a target's table.
+- **Find a gene** shows which perturbations change that gene. CSV downloads: **Export table (CSV)** (the targets
+  shown, with knockdown and affected-gene counts), **Download all … results (CSV)** under a target (its effect on every
+  readout gene) and under a gene (every perturbation's effect on it).
 
 ## 6. Shared data
 

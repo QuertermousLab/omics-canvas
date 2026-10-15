@@ -28,6 +28,16 @@
     history.replaceState(null, '', `?${params}`);
   };
   const fail = (html: string) => { $('msg').innerHTML = html; $('msg').hidden = false; };
+  /** CSV text with quoting (Excel / R / pandas read it as is); numbers with 7 significant digits (values are stored as
+   *  32-bit floats, more digits would only be noise) */
+  const csv = (header: string[], rows: (string | number | boolean | null | undefined)[][]) =>
+    [header, ...rows].map((r) => r.map((v) => {
+      const t = v == null ? '' : typeof v === 'number' && !Number.isInteger(v) ? String(+v.toPrecision(7)) : String(v);
+      return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    }).join(',')).join('\n') + '\n';
+  const pOf = (nlog: number) => 10 ** -nlog;
+  /** file name base: the screen (and, in a combined dataset, the screen inside it) */
+  const fileBase = () => (screen.sample ? `${screen.id}_${screen.sample}` : screen.id);
   const save = (text: string, name: string) => {
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([text], { type: 'text/csv' })), download: name });
     a.click();
@@ -94,9 +104,21 @@
           <td>${p10(r.nlog10p)}</td><td>${p10(r.nlog10padj)}</td><td>${r.significant ? '<span class="pill--ok">significant</span>' : ''}</td></tr>`).join('')}
         </tbody></table>
         <div class="btns">${view ? `<a class="btn btn--primary btn--sm" href="${esc(view)}" target="_blank" rel="noopener" title="${esc(region(t.chrom, t.start, t.end))} highlighted, with this screen's enhancer–gene links">Open ±150 kb in Genome Canvas</a>` : ''}
-          ${linkButtons(rows.find((r) => r.significant)?.gene ?? t.gene)}</div>`;
+          ${linkButtons(rows.find((r) => r.significant)?.gene ?? t.gene)}
+          <button type="button" class="btn btn--light btn--sm" data-csv-element>Download (CSV)</button></div>`;
     }
 
+    const testRow = (t: Test) => [key(t), t.chrom || '', t.chrom ? t.start + 1 : '', t.chrom ? t.end : '', t.set, t.gene, t.geneId, t.log2fc,
+      pOf(t.nlog10p), pOf(t.nlog10padj), t.significant, t.guides];
+    const testHeader = ['element', 'chrom', 'start', 'end', 'set', 'gene', 'gene_id', 'log2fc', 'p_value', 'adj_p_value', 'significant', 'guides'];
+    $('export').onclick = () => {
+      const q = $<HTMLInputElement>('q').value.trim(), filtered = q || $<HTMLInputElement>('sig').checked;
+      save(csv(testHeader, shown.map(testRow)), `${fileBase()}_tests${filtered ? '_filtered' : ''}.csv`);
+    };
+    $('detail').addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('[data-csv-element]') || !selected) return;
+      save(csv(testHeader, tests.filter((t) => key(t) === selected).map(testRow)), `${fileBase()}_${selected.replace(/[^\w.-]+/g, '_')}.csv`);
+    });
     const select = (t: Test | undefined) => { selected = t ? key(t) : null; setUrl('t', selected); render(); };
     $('table').onclick = (e) => { const tr = (e.target as HTMLElement).closest<HTMLElement>('tr[data-i]'); if (tr) select(shown[+tr.dataset.i!]); };
     plotA.onClick = (i) => i != null && select(shown[i]);
@@ -179,9 +201,8 @@
           ${sig.slice(0, 200).map((k) => `<tr data-g="${esc(ps.genes[e.index[k]])}"><td><b>${esc(ps.genes[e.index[k]])}</b></td><td>${lfc(e.log2fc[k])}</td><td>${p10(e.nlog10padj[k])}</td></tr>`).join('')}
           </tbody></table></div>` : '<p class="muted">None at FDR < 0.1.</p>'}`;
       $('detail').querySelector<HTMLElement>('[data-csv]')!.onclick = () => {
-        const rows = ['gene,log2fc,p_value,adj_p_value'];
-        for (let k = 0; k < e.index.length; k++) rows.push(`${ps.genes[e.index[k]]},${e.log2fc[k]},${10 ** -e.nlog10p[k]},${10 ** -e.nlog10padj[k]}`);
-        save(rows.join('\n') + '\n', `${screen.id}_${t.name}.csv`);
+        save(csv(['gene', 'log2fc', 'p_value', 'adj_p_value', 'significant'], Array.from({ length: e.index.length }, (_, k) =>
+          [ps.genes[e.index[k]], e.log2fc[k], pOf(e.nlog10p[k]), pOf(e.nlog10padj[k]), e.nlog10padj[k] >= SIGNIFICANT])), `${fileBase()}_${t.name}.csv`);
       };
       $('detail').querySelector('tbody')?.addEventListener('click', (ev) => {
         const g = (ev.target as HTMLElement).closest<HTMLElement>('tr[data-g]')?.dataset.g;
@@ -203,18 +224,31 @@
       const nsig = Array.from(e.nlog10padj).filter((v) => v >= SIGNIFICANT).length;
       box.innerHTML = `<h3>Which perturbations change ${esc(ps.genes[gi])}?</h3>
         <p class="muted">${nsig} of ${n.toLocaleString()} targets change it at FDR < 0.1 · strongest ${top} shown · click a target</p>
-        <div class="btns">${linkButtons(ps.genes[gi])}</div>
+        <div class="btns">${linkButtons(ps.genes[gi])}<button type="button" class="btn btn--light btn--sm" data-csv-gene>Download all ${n.toLocaleString()} results (CSV)</button></div>
         <table class="table cx-bars"><tbody>${Array.from({ length: top }, (_, k) => {
           const t = T[e.index[k]], v = e.log2fc[k], sigk = e.nlog10padj[k] >= SIGNIFICANT, w = (Math.abs(v) / max) * 50;
           return `<tr data-t="${e.index[k]}"><td><b>${esc(t.name)}</b></td>
             <td class="bar"><span style="${v < 0 ? `right:50%;width:${w}%` : `left:50%;width:${w}%`};background:${sigk ? (v < 0 ? C.down : C.up) : C.ns}"></span></td>
             <td>${lfc(v)}</td><td>${p10(e.nlog10padj[k])}</td></tr>`;
         }).join('')}</tbody></table>`;
+      box.querySelector<HTMLElement>('[data-csv-gene]')!.onclick = () => save(csv(['target', 'log2fc', 'p_value', 'adj_p_value', 'significant'],
+        Array.from({ length: n }, (_, k) => [T[e.index[k]].name, e.log2fc[k], pOf(e.nlog10p[k]), pOf(e.nlog10padj[k]), e.nlog10padj[k] >= SIGNIFICANT])),
+        `${fileBase()}_perturbations_changing_${ps.genes[gi]}.csv`);
       box.querySelector('tbody')!.addEventListener('click', (ev) => {
         const ti = (ev.target as HTMLElement).closest<HTMLElement>('tr[data-t]')?.dataset.t;
         if (ti) selectTarget(+ti);
       });
     }
+
+    $('export').onclick = () => {
+      const q = $<HTMLInputElement>('q').value.trim(), filtered = q || $<HTMLInputElement>('sig').checked;
+      save(csv(['target', 'gene_id', 'chrom', 'start', 'end', 'guides', 'knockdown_log2fc', 'knockdown_adj_p_value', 'knockdown_confirmed',
+        'readout_genes_tested', 'genes_down', 'genes_up'], order.map((i) => {
+        const t = T[i], k = t.knockdown;
+        return [t.name, t.geneId, t.chrom, t.chrom ? t.start + 1 : '', t.chrom ? t.end : '', t.guides,
+          k ? k.log2fc : '', k ? pOf(k.nlog10padj) : '', k ? k.significant : '', t.tested, t.down, t.up];
+      })), `${fileBase()}_targets${filtered ? '_filtered' : ''}.csv`);
+    };
 
     function selectTarget(i: number) {
       current = i;
