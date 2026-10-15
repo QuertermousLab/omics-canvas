@@ -1,5 +1,22 @@
-Native Mac apps for Apple Silicon and Intel Macs: **Omics Canvas 1.3.0** (spatial, single-cell and CRISPR viewers)
-and **Genome Canvas 1.8.0** (genome browser).
+Native Mac apps for Apple Silicon and Intel Macs: **Omics Canvas 1.4.0** (spatial, single-cell and CRISPR viewers)
+and **Genome Canvas 1.9.0** (genome browser).
+
+## Omics Canvas 1.4.0
+
+- **Server and port**: **Server…** (⌘,) sets the server address and port (default THOR, 171.65.68.140 port 8892)
+- **SSH port forwarding** for servers you cannot reach directly — off campus without the VPN, or a server that only
+  listens on 127.0.0.1: tick **Connect through SSH port forwarding** and give the SSH host (and port), your account and,
+  optionally, your password (kept in the macOS Keychain; leave it empty to use your SSH key). The app opens the tunnel
+  itself and reconnects after sleep or a network change; **Use Default** goes back to THOR
+- The sidebar shows the connection, e.g. `171.65.68.140:8892 · SSH you@171.65.68.140`
+
+## Genome Canvas 1.9.0
+
+- **Server and port**: **Connect to Server…** (⌘,) — or the **Server** button — sets the server address and port (default THOR, 171.65.68.140 port 8892)
+- **SSH port forwarding** for servers you cannot reach directly — off campus without the VPN, or a server that only
+  listens on 127.0.0.1: tick **Connect through SSH port forwarding** and give the SSH host (and port), your account and,
+  optionally, your password (kept in the macOS Keychain; leave it empty to use your SSH key). The app opens the tunnel
+  itself and reconnects after sleep or a network change; **Use Default** goes back to THOR
 
 ## Omics Canvas 1.3.0
 

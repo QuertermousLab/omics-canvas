@@ -1,5 +1,9 @@
 Native Genome Canvas Desktop builds for Apple Silicon and Intel Macs.
 
+## What's new in 1.9.0
+
+- **Connect to Server…** (⌘,) sets the server address and port (default 171.65.68.140 port 8892) and, optionally, **SSH port forwarding** for servers you cannot reach directly: the SSH host and port, your account and an optional password (kept in the macOS Keychain; empty: your SSH key). The app opens the tunnel itself and reconnects after sleep or a network change; **Use Default** goes back to the lab server
+
 ## What's new in 1.8.0
 
 - **Shared tracks**: a sidebar card under **Open server files**, or **File → Shared Tracks…** (⇧⌘L), lists every server file anyone in the lab has loaded (files in Home folders stay private) with its folder, format, genome and who loaded it. Filter, tick and load several at once; **Only hg38** (the genome in view) and **Not in this view** are on by default. Deleted or moved files drop off the list and rewritten ones show their new date. Available when connected to a server (hidden in This Mac mode)
