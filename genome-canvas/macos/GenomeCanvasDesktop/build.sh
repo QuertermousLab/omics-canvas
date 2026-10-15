@@ -58,7 +58,9 @@ if ! env \
     -mmacosx-version-min=13.0 \
     -framework AppKit \
     -framework WebKit \
-    "${source_file}" \
+    -framework Security \
+    -I "${script_dir}/../../../desktop/Shared" \
+    "${source_file}" "${script_dir}/../../../desktop/Shared/OCConnection.m" \
     -o "${compiled_binary}" 2>"${compile_log}"; then
   cat "${compile_log}" >&2
   echo >&2

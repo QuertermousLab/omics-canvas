@@ -1,0 +1,114 @@
+name: macOS connection test
+
+# Both Mac apps reach a test server only through SSH port forwarding: the runner's own SSH server, a test account
+# with a password (handed to ssh from the Keychain by the app itself), then with an SSH key instead. The gateway
+# listens on 127.0.0.1 like a server that is only reachable through port forwarding.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "mac-ui-*"
+
+permissions:
+  contents: read
+
+jobs:
+  tunnel:
+    runs-on: macos-15
+    env:
+      TEST_USER: octunnel
+      TEST_PASSWORD: Port-Forwarding-Test-42
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Test server (Genome Canvas, hub, gateway on 127.0.0.1:8892)
+        shell: bash
+        run: |
+          pip install --quiet fastapi uvicorn
+          (cd hub/web && npm ci --no-audit --no-fund && node build.mjs)
+          mkdir -p "${RUNNER_TEMP}/data"
+          cat > hub/config.json <<EOF
+          {"host": "127.0.0.1", "port": 8893, "publicUrl": "http://127.0.0.1:8892", "roots": [{"label": "Data", "path": "${RUNNER_TEMP}/data"}],
+           "workspaceApi": "http://127.0.0.1:8000/api/workspaces",
+           "services": [{"id": "genome-canvas", "name": "Genome Canvas", "url": "/genome-canvas/", "health": "http://127.0.0.1:8000/api/health"}]}
+          EOF
+          GENOME_CANVAS_STATE_DIR="${RUNNER_TEMP}/gc-state" python3 genome-canvas/server.py --host 127.0.0.1 --port 8000 > "${RUNNER_TEMP}/gc.log" 2>&1 &
+          (cd hub && python -m uvicorn server:app --host 127.0.0.1 --port 8893 > "${RUNNER_TEMP}/hub.log" 2>&1 &)
+          python3 gateway/dev_gateway.py --host 127.0.0.1 --port 8892 > "${RUNNER_TEMP}/gateway.log" 2>&1 &
+          for attempt in $(seq 1 60); do curl -sf http://127.0.0.1:8892/hub/api/health >/dev/null && curl -sf http://127.0.0.1:8892/genome-canvas/api/health >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8892/hub/api/health
+      - name: SSH server and a test account with a password
+        shell: bash
+        run: |
+          sudo systemsetup -f -setremotelogin on 2>/dev/null || sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist || true
+          sudo sysadminctl -addUser "${TEST_USER}" -fullName "Port forwarding test" -password "${TEST_PASSWORD}" -home "/Users/${TEST_USER}"
+          sudo createhomedir -c -u "${TEST_USER}" >/dev/null 2>&1 || true
+          sudo dseditgroup -o edit -a "${TEST_USER}" -t user com.apple.access_ssh 2>/dev/null || true
+          for attempt in $(seq 1 30); do nc -z 127.0.0.1 22 && break; sleep 1; done
+          nc -z 127.0.0.1 22
+      - name: Build both apps
+        shell: bash
+        run: |
+          (cd desktop/OmicsCanvasDesktop && ./build.sh dist/test)
+          (cd genome-canvas/macos/GenomeCanvasDesktop && ./build.sh dist/test)
+      - name: Omics Canvas through SSH port forwarding (password)
+        shell: bash
+        run: |
+          shots="${RUNNER_TEMP}/shots"; mkdir -p "${shots}"
+          d=edu.stanford.quertermouslab.omicscanvas; p=OmicsCanvasConnection
+          defaults write $d ${p}Host 127.0.0.1; defaults write $d ${p}Port -int 8892; defaults write $d ${p}Scheme http
+          defaults write $d ${p}Path /; defaults write $d ${p}UseTunnel -bool true; defaults write $d ${p}SSHHost localhost
+          defaults write $d ${p}SSHPort -int 22; defaults write $d ${p}SSHUser "${TEST_USER}"; defaults write $d ${p}LocalPort -int 0
+          env OMICS_CANVAS_SNAPSHOT_DIR="${shots}" OMICS_CANVAS_SNAPSHOT_SSH_PASSWORD="${TEST_PASSWORD}" OMICS_CANVAS_SNAPSHOT_PAGES="omics-password=/spatial/" \
+            "desktop/OmicsCanvasDesktop/dist/test/Omics Canvas.app/Contents/MacOS/OmicsCanvasDesktop" > "${shots}/omics-password.log" 2>&1 &
+          for attempt in $(seq 1 60); do [[ -f "${shots}/omics-password.png" ]] && break; sleep 2; done
+          cat "${shots}/omics-password.log"
+          grep -E "connected: http://127\.0\.0\.1:[0-9]+/ \(127\.0\.0\.1:8892 · SSH ${TEST_USER}@localhost\)" "${shots}/omics-password.log"
+          ! grep -q "connected: http://127.0.0.1:8892/" "${shots}/omics-password.log"
+          test -f "${shots}/omics-password.png"
+      - name: Genome Canvas through SSH port forwarding (password)
+        shell: bash
+        run: |
+          shots="${RUNNER_TEMP}/shots/genome-canvas"; mkdir -p "${shots}"
+          d=org.genomecanvas.desktop; p=GenomeCanvasConnection
+          defaults write $d ${p}Host 127.0.0.1; defaults write $d ${p}Port -int 8892; defaults write $d ${p}Scheme http
+          defaults write $d ${p}Path /genome-canvas/; defaults write $d ${p}UseTunnel -bool true; defaults write $d ${p}SSHHost localhost
+          defaults write $d ${p}SSHPort -int 22; defaults write $d ${p}SSHUser "${TEST_USER}"; defaults write $d ${p}LocalPort -int 0
+          env GENOME_CANVAS_SNAPSHOT_DIR="${shots}" GENOME_CANVAS_SNAPSHOT_SERVER=saved GENOME_CANVAS_SNAPSHOT_SSH_PASSWORD="${TEST_PASSWORD}" \
+            "genome-canvas/macos/GenomeCanvasDesktop/dist/test/Genome Canvas.app/Contents/MacOS/GenomeCanvasDesktop" > "${shots}/genome-canvas.log" 2>&1 &
+          for attempt in $(seq 1 60); do [[ -f "${shots}/window-dark.png" ]] && break; sleep 2; done
+          cat "${shots}/genome-canvas.log"
+          grep -E "connected: http://127\.0\.0\.1:[0-9]+/genome-canvas/ \(127\.0\.0\.1:8892 · SSH ${TEST_USER}@localhost\)" "${shots}/genome-canvas.log"
+          test -f "${shots}/window-light.png"
+      - name: Omics Canvas through SSH port forwarding (SSH key, no password)
+        shell: bash
+        run: |
+          shots="${RUNNER_TEMP}/shots"
+          ssh-keygen -q -t ed25519 -N '' -f "${HOME}/.ssh/octunnel_test"
+          printf 'Host localhost\n  IdentityFile %s\n' "${HOME}/.ssh/octunnel_test" >> "${HOME}/.ssh/config"
+          sudo mkdir -p "/Users/${TEST_USER}/.ssh"
+          sudo cp "${HOME}/.ssh/octunnel_test.pub" "/Users/${TEST_USER}/.ssh/authorized_keys"
+          sudo chown -R "${TEST_USER}" "/Users/${TEST_USER}/.ssh"
+          sudo chmod 700 "/Users/${TEST_USER}/.ssh"; sudo chmod 600 "/Users/${TEST_USER}/.ssh/authorized_keys"
+          security delete-generic-password -s edu.stanford.quertermouslab.omicscanvas.ssh >/dev/null 2>&1 || true
+          env OMICS_CANVAS_SNAPSHOT_DIR="${shots}" OMICS_CANVAS_SNAPSHOT_PAGES="omics-key=/crispr/" \
+            "desktop/OmicsCanvasDesktop/dist/test/Omics Canvas.app/Contents/MacOS/OmicsCanvasDesktop" > "${shots}/omics-key.log" 2>&1 &
+          for attempt in $(seq 1 60); do [[ -f "${shots}/omics-key.png" ]] && break; sleep 2; done
+          cat "${shots}/omics-key.log"
+          grep -E "connected: http://127\.0\.0\.1:[0-9]+/ " "${shots}/omics-key.log"
+      - name: Logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/shots"
+          cp "${RUNNER_TEMP}"/*.log "${RUNNER_TEMP}/shots/" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: connection-test
+          path: ${{ runner.temp }}/shots

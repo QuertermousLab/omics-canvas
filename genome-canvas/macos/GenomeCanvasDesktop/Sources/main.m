@@ -1,6 +1,7 @@
 #import <AppKit/AppKit.h>
 #import <CoreText/CoreText.h>
 #import <WebKit/WebKit.h>
+#import "OCConnection.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -428,7 +429,9 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 @property(nonatomic, strong) NSMapTable<WKDownload *, NSURL *> *downloadDestinations;
 @property(nonatomic, copy) NSArray<NSDictionary *> *tracks;
 @property(nonatomic, copy) NSArray<NSDictionary *> *workspaces;
-@property(nonatomic, copy) NSString *serverAddress;
+@property(nonatomic, copy) NSString *serverAddress;  // what server mode loads: the server, or the SSH tunnel's local end
+@property(nonatomic, strong) OCConnection *connection;
+@property(nonatomic) NSInteger tunnelRetries;
 @property(nonatomic) BOOL localMode;
 @property(nonatomic) BOOL snapshotScheduled;
 @property(nonatomic, strong) NSTask *localServerTask;
@@ -446,7 +449,12 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.workspaces = @[];
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *savedAddress = [defaults stringForKey:GCServerDefaultsKey];
-    self.serverAddress = savedAddress ?: GCDefaultServerAddress;
+    // server and port, optionally through SSH port forwarding (Connect to Server…); a 1.x address is taken over
+    self.connection = [OCConnection connectionWithDefaultsPrefix:@"GenomeCanvasConnection" defaultAddress:GCDefaultServerAddress legacyAddress:savedAddress];
+    __weak GCAppDelegate *weakSelf = self;
+    self.connection.onTunnelClosed = ^(NSString *message) { [weakSelf tunnelClosed:message]; };
+    self.serverAddress = self.connection.useTunnel ? GCDefaultServerAddress : self.connection.directURL.absoluteString;
+    BOOL testServer = NO;
     self.localMode = NO;
     // Preview builds capture the window in both themes (see macos-preview.yml);
     // they use the bundled backend so no server is needed, or GENOME_CANVAS_SNAPSHOT_SERVER (a test server on
@@ -454,7 +462,11 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     if ([self snapshotDirectory].length) {
         NSString *server = [self snapshotServerAddress];
         self.localMode = !server.length;
-        if (server.length) self.serverAddress = server;
+        // "saved": the saved connection settings (CI's SSH port forwarding test) instead of a test server address
+        if ([server isEqualToString:@"saved"]) { self.localMode = NO; server = nil; }
+        if (server.length) { self.serverAddress = server; testServer = YES; }
+        NSString *testPassword = NSProcessInfo.processInfo.environment[@"GENOME_CANVAS_SNAPSHOT_SSH_PASSWORD"];
+        if (testPassword.length) [self.connection setPassword:testPassword];
     }
     [self buildApplicationMenu];
 
@@ -493,7 +505,39 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     [NSApp activateIgnoringOtherApps:YES];
     [self updateConnectionUI];
     if (self.localMode) [self startLocalBackend];
-    else [self loadServerAddress:self.serverAddress remember:NO];
+    else if (testServer) [self loadServerAddress:self.serverAddress remember:NO];
+    else [self connectAndLoad];
+}
+
+/** Server mode: open the connection (starting the SSH tunnel when one is configured) and load the canvas. */
+- (void)connectAndLoad {
+    [self setStatus:self.connection.useTunnel ? @"Opening SSH port forwarding" : @"Connecting" state:@"busy"];
+    [self.connection openWithCompletion:^(NSURL *url, NSString *error) {
+        if (self.localMode) return;
+        if (!url) { NSLog(@"not connected: %@ (%@)", error, self.connection.summary); [self setStatus:@"Not connected" state:@"error"]; self.statusLabel.toolTip = error; return; }
+        self.tunnelRetries = 0;
+        self.serverAddress = url.absoluteString;
+        NSLog(@"connected: %@ (%@)", url.absoluteString, self.connection.summary);
+        [self updateConnectionUI];
+        [self loadServerAddress:self.serverAddress remember:NO];
+    }];
+}
+
+/** The tunnel dropped (network change, sleep): reopen it on the same local port, so the canvas carries on. */
+- (void)tunnelClosed:(NSString *)message {
+    if (self.localMode) return;
+    if (self.tunnelRetries >= 3) { [self setStatus:@"SSH port forwarding closed" state:@"error"]; self.statusLabel.toolTip = message; return; }
+    self.tunnelRetries += 1;
+    [self setStatus:@"Reconnecting SSH port forwarding" state:@"busy"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self.connection openWithCompletion:^(NSURL *url, NSString *error) {
+            if (self.localMode) return;
+            if (!url) { [self setStatus:@"Not connected" state:@"error"]; self.statusLabel.toolTip = error; return; }
+            self.tunnelRetries = 0;
+            if (![url.absoluteString isEqualToString:self.serverAddress]) { self.serverAddress = url.absoluteString; [self loadServerAddress:self.serverAddress remember:NO]; }
+            else [self setStatus:@"Ready" state:@"ready"];
+        }];
+    });
 }
 
 #pragma mark - Sidebar (mirrors the web track rail)
@@ -1098,6 +1142,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
     [self stopLocalBackend];
+    [self.connection close];
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"genomeCanvas"];
 }
 
@@ -1209,6 +1254,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.localBackendMenuItem.state = self.localMode ? NSControlStateValueOn : NSControlStateValueOff;
     self.remoteServerMenuItem.state = self.localMode ? NSControlStateValueOff : NSControlStateValueOn;
     self.window.subtitle = self.localMode ? @"Local genomics workbench" : @"Server-connected genomics workbench";
+    self.serverModeButton.toolTip = [NSString stringWithFormat:@"Server: %@ — click to change (also SSH port forwarding)", self.connection.summary];
 }
 
 - (NSString *)localPythonPath {
@@ -1682,17 +1728,14 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 - (void)removeSelectedTrack:(id)sender { NSInteger row = self.trackTable.selectedRow; if (row >= 0) [self callDesktopMethod:@"removeTrack" arguments:@[@(row)]]; }
 
 - (void)editServerAddress:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Connect to Genome Canvas Server";
-    alert.informativeText = @"Enter a LAN server address. The local backend will stop after the connection is accepted.";
-    [alert addButtonWithTitle:@"Connect"];
-    [alert addButtonWithTitle:@"Cancel"];
-    NSTextField *input = [NSTextField textFieldWithString:self.serverAddress ?: GCDefaultServerAddress];
-    input.frame = NSMakeRect(0, 0, 390, 26);
-    alert.accessoryView = input;
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
-        if (result == NSAlertFirstButtonReturn) [self connectToRemoteServer:input.stringValue];
-        else [self updateConnectionUI];
+    [self.connection editInWindow:self.window title:@"Connect to Genome Canvas Server"
+                          message:@"The gateway's address and port (default 171.65.68.140:8892, the lab server THOR; Genome Canvas is at /genome-canvas/). From outside Stanford connect the VPN — or use SSH port forwarding with your account on the server. The local backend stops when you connect."
+                             done:^(BOOL connect) {
+        if (!connect) { [self updateConnectionUI]; return; }
+        [self stopLocalBackend];
+        self.localMode = NO;
+        [self updateConnectionUI];
+        [self connectAndLoad];
     }];
 }
 
@@ -1783,6 +1826,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 @end
 
 int main(int argc, const char *argv[]) {
+    OCRunAskpassIfRequested();  // ssh asking this app for the SSH password (port forwarding)
     @autoreleasepool {
         NSApplication *application = [NSApplication sharedApplication];
         application.activationPolicy = NSApplicationActivationPolicyRegular;

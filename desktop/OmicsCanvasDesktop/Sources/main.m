@@ -5,6 +5,7 @@
 #import <AppKit/AppKit.h>
 #import <CoreText/CoreText.h>
 #import <WebKit/WebKit.h>
+#import "OCConnection.h"
 #include <math.h>
 
 static NSString * const TVDefaultServerAddress = @"http://171.65.68.140:8892/";
@@ -445,7 +446,9 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 @property(nonatomic, strong) NSMapTable<WKDownload *, NSURL *> *downloadDestinations;
 @property(nonatomic, copy) NSArray<NSDictionary *> *datasets;
 @property(nonatomic, copy) NSArray<NSDictionary *> *workspaces;
-@property(nonatomic, copy) NSString *serverAddress;
+@property(nonatomic, copy) NSString *serverAddress;  // the address pages load from: the server, or the SSH tunnel's local end
+@property(nonatomic, strong) OCConnection *connection;
+@property(nonatomic) NSInteger tunnelRetries;
 @property(nonatomic, copy) NSString *kind;
 @property(nonatomic, copy) NSString *currentPath;
 @property(nonatomic) BOOL updatingSelection;
@@ -467,7 +470,15 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     self.datasets = @[];
     self.workspaces = @[];
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    self.serverAddress = [defaults stringForKey:TVServerDefaultsKey] ?: TVDefaultServerAddress;
+    // server and port, optionally through SSH port forwarding (Server…); an address saved by 1.x is taken over
+    self.connection = [OCConnection connectionWithDefaultsPrefix:@"OmicsCanvasConnection" defaultAddress:TVDefaultServerAddress
+                                                   legacyAddress:[defaults stringForKey:TVServerDefaultsKey]];
+    __weak TVAppDelegate *weakSelf = self;
+    self.connection.onTunnelClosed = ^(NSString *message) { [weakSelf tunnelClosed:message]; };
+    // CI: the SSH test account's password goes to the Keychain the way the settings sheet stores it
+    NSString *testPassword = NSProcessInfo.processInfo.environment[@"OMICS_CANVAS_SNAPSHOT_SSH_PASSWORD"];
+    if ([self snapshotDirectory].length && testPassword.length) [self.connection setPassword:testPassword];
+    self.serverAddress = self.connection.useTunnel ? @"" : self.connection.directURL.absoluteString;
     self.kind = TVViewerForKind([defaults stringForKey:TVViewerDefaultsKey] ?: @"singlecell")[@"kind"];
     [self buildApplicationMenu];
 
@@ -502,7 +513,63 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
     [self updateServerLabel];
-    [self showViewer:self.kind];
+    [self connectAndShowViewer];
+}
+
+/** Open the connection (starting the SSH tunnel when one is configured), then the current viewer. */
+- (void)connectAndShowViewer {
+    if (self.connection.useTunnel) [self setStatus:@"Opening SSH port forwarding" state:@"busy"];
+    [self.connection openWithCompletion:^(NSURL *url, NSString *error) {
+        if (!url) { [self showConnectionError:error]; return; }
+        self.tunnelRetries = 0;
+        self.serverAddress = url.absoluteString;
+        NSLog(@"connected: %@ (%@)", url.absoluteString, self.connection.summary);
+        [self updateServerLabel];
+        [self showViewer:self.kind];
+    }];
+}
+
+/** The tunnel dropped (network change, sleep): reopen it on the same local port, so the open page carries on. */
+- (void)tunnelClosed:(NSString *)message {
+    if (self.tunnelRetries >= 3) { [self showConnectionError:[NSString stringWithFormat:@"SSH port forwarding closed: %@", message]]; return; }
+    self.tunnelRetries += 1;
+    [self setStatus:@"Reconnecting SSH port forwarding" state:@"busy"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self.connection openWithCompletion:^(NSURL *url, NSString *error) {
+            if (!url) { [self showConnectionError:error]; return; }
+            self.tunnelRetries = 0;
+            if (![url.absoluteString isEqualToString:self.serverAddress]) { self.serverAddress = url.absoluteString; [self showViewer:self.kind]; }
+            [self setStatus:@"Connected" state:@"ready"];
+        }];
+    });
+}
+
+- (void)showConnectionError:(NSString *)message {
+    NSLog(@"not connected: %@ (%@)", message, self.connection.summary);
+    [self setStatus:@"Not connected" state:@"error"];
+    self.statusLabel.toolTip = message;
+    NSString *html = [NSString stringWithFormat:
+        @"<!doctype html><meta charset=utf-8><style>:root{color-scheme:light dark;--bg:#e5e9f0;--text:#2e3440;--muted:#69728a}"
+        "@media (prefers-color-scheme:dark){:root{--bg:#242933;--text:#eceff4;--muted:#9aa5b8}}"
+        "html,body{margin:0;height:100%%;background:var(--bg);color:var(--text);font:14px -apple-system,sans-serif}"
+        "main{height:100%%;display:grid;place-content:center;text-align:center;gap:6px;padding:24px}h1{font:600 19px Georgia,serif;margin:0 0 4px}"
+        "p{margin:0;color:var(--muted);max-width:460px}code{font:12px ui-monospace,monospace}</style>"
+        "<main><h1>Could not connect</h1><p><code>%@</code></p><p>%@</p>"
+        "<p>Check the address, port and SSH account under <b>Server…</b> in the sidebar.</p></main>",
+        [self htmlEscape:self.connection.summary], [self htmlEscape:message ?: @""]];
+    self.showingErrorPage = YES;
+    [self.webView loadHTMLString:html baseURL:nil];
+    [self scheduleSnapshotCaptureIfRequested];
+}
+
+- (NSString *)htmlEscape:(NSString *)text {
+    NSMutableString *out = [NSMutableString stringWithCapacity:text.length];
+    for (NSUInteger i = 0; i < text.length; i++) {
+        unichar c = [text characterAtIndex:i];
+        if (c == '<') [out appendString:@"&lt;"]; else if (c == '>') [out appendString:@"&gt;"]; else if (c == '&') [out appendString:@"&amp;"];
+        else [out appendFormat:@"%C", c];
+    }
+    return out;
 }
 
 #pragma mark Sidebar
@@ -855,9 +922,10 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 }
 
 - (void)updateServerLabel {
-    NSURL *root = [self serverRoot];
-    self.serverLabel.stringValue = root ? [root.absoluteString stringByReplacingOccurrencesOfString:@"http://" withString:@""] : @"no server";
-    self.serverLabel.toolTip = root.absoluteString;
+    self.serverLabel.stringValue = self.connection.summary;
+    self.serverLabel.toolTip = self.connection.useTunnel
+        ? [NSString stringWithFormat:@"SSH port forwarding: pages load from %@", [self serverRoot].absoluteString ?: @"(not connected)"]
+        : self.connection.directURL.absoluteString;
 }
 
 - (void)selectCardForKind:(NSString *)kind {
@@ -904,22 +972,12 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
 }
 
 - (void)editServerAddress:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Connect to an Omics Canvas Server";
-    alert.informativeText = @"Enter the address of the hub's gateway (the viewers are at /spatial/, /single-cell/ and /crispr/). From outside Stanford, connect the VPN first.";
-    [alert addButtonWithTitle:@"Connect"];
-    [alert addButtonWithTitle:@"Cancel"];
-    NSTextField *input = [NSTextField textFieldWithString:self.serverAddress ?: TVDefaultServerAddress];
-    input.frame = NSMakeRect(0, 0, 390, 26);
-    alert.accessoryView = input;
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
-        if (result != NSAlertFirstButtonReturn) return;
-        NSString *previous = self.serverAddress;
-        self.serverAddress = input.stringValue;
-        if (![self serverRoot]) { self.serverAddress = previous; [self setStatus:@"Invalid server address" state:@"error"]; NSBeep(); return; }
-        [[NSUserDefaults standardUserDefaults] setObject:self.serverAddress forKey:TVServerDefaultsKey];
+    [self.connection editInWindow:self.window title:@"Connect to an Omics Canvas Server"
+                          message:@"The gateway's address and port (default 171.65.68.140:8892, the lab server THOR). From outside Stanford connect the VPN — or reach the server through SSH port forwarding with your account on it."
+                             done:^(BOOL connect) {
+        if (!connect) return;
         [self updateServerLabel];
-        [self showViewer:self.kind];
+        [self connectAndShowViewer];
     }];
 }
 
@@ -1466,6 +1524,7 @@ static NSArray *TVSamples(NSDictionary *dataset) {
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender { return YES; }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
+    [self.connection close];
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"vizhub"];
 }
 
@@ -1617,7 +1676,7 @@ static NSArray *TVSamples(NSDictionary *dataset) {
 - (void)showNavigationError:(NSError *)error {
     if (error.code == NSURLErrorCancelled) return;
     [self setStatus:@"Server unavailable" state:@"error"];
-    self.statusLabel.toolTip = [error.localizedDescription stringByAppendingString:@" — from outside Stanford, connect the VPN."];
+    self.statusLabel.toolTip = [error.localizedDescription stringByAppendingString:@" — from outside Stanford, connect the VPN or use SSH port forwarding (Server…)."];
     self.progressBar.hidden = YES;
     // a themed explanation instead of an empty white page; its colors follow the window (prefers-color-scheme)
     NSString *retry = [self pageURL:[NSString stringWithFormat:@"/%@/", TVViewerForKind(self.kind)[@"path"]]].absoluteString ?: @"";
@@ -1629,7 +1688,7 @@ static NSArray *TVSamples(NSDictionary *dataset) {
         "main{height:100%%;display:grid;place-content:center;text-align:center;gap:6px;padding:24px}h1{font:600 19px Georgia,serif;margin:0 0 4px}"
         "p{margin:0;color:var(--muted);max-width:440px}code{font:12px ui-monospace,monospace}a{color:var(--accent);font-weight:600}</style>"
         "<main><h1>The Omics Canvas server is not reachable</h1><p>Could not connect to <code>%@</code>.</p>"
-        "<p>From outside Stanford, connect the VPN first. Use <b>Server…</b> in the sidebar for another address.</p>"
+        "<p>From outside Stanford, connect the VPN first, or set up SSH port forwarding under <b>Server…</b> in the sidebar (also for another address).</p>"
         "<p style='margin-top:10px'><a href='%@'>Try again</a></p></main>",
         server, retry];
     self.showingErrorPage = YES;
@@ -1800,6 +1859,7 @@ static NSArray *TVSamples(NSDictionary *dataset) {
 @end
 
 int main(int argc, const char *argv[]) {
+    OCRunAskpassIfRequested();  // ssh asking this app for the SSH password (port forwarding)
     @autoreleasepool {
         NSApplication *application = [NSApplication sharedApplication];
         application.activationPolicy = NSApplicationActivationPolicyRegular;
