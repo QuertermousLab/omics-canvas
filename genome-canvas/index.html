@@ -18,14 +18,14 @@
     })();
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261014.1">
+  <link rel="stylesheet" href="styles.css?v=20261014.2">
   <!-- Start the large engine download and the module graph in parallel with
        the stylesheet. Keep these hrefs identical to the import specifiers in
        app.js (including ?v=) so the preloaded responses are reused. -->
   <link rel="preload" href="vendor/fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/igv.min.js?v=20261005-reference-cache" as="script">
-  <link rel="modulepreload" href="app.js?v=20261014.2">
+  <link rel="modulepreload" href="app.js?v=20261014.3">
   <link rel="modulepreload" href="track-colors.mjs?v=20260821.4">
   <link rel="modulepreload" href="signal-style.mjs?v=20261007.2">
   <link rel="modulepreload" href="annotation-style.mjs?v=20260821.3">
@@ -275,6 +275,7 @@
       <div class="file-toolbar shared-toolbar">
         <label class="search-field"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="shared-search" type="search" placeholder="Filter by name, folder, format or person" aria-label="Filter shared tracks"></label>
         <label class="shared-genome-toggle"><input id="shared-genome-only" type="checkbox" checked><span>Only <b id="shared-genome-label">hg38</b></span></label>
+        <label class="shared-genome-toggle"><input id="shared-new-only" type="checkbox" checked><span>Not in this view</span></label>
         <button class="icon-button ghost small" id="shared-refresh-button" type="button" title="Check the files again" aria-label="Check the files again"><svg class="icon"><use href="#i-refresh"/></svg></button>
         <p class="shared-note">Every file a workspace has loaded from the shared server folders (Home folders stay private). Files that were deleted or moved drop off the list; rewritten files show their new date.</p>
       </div>
@@ -436,6 +437,6 @@
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
   <script defer src="vendor/igv.min.js?v=20261005-reference-cache"></script>
-  <script type="module" src="app.js?v=20261014.2"></script>
+  <script type="module" src="app.js?v=20261014.3"></script>
 </body>
 </html>

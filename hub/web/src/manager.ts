@@ -1,9 +1,10 @@
 // Data management for one viewer (spatial, single-cell or CRISPR), shown at /spatial/, /single-cell/, /crispr/
 // when no dataset is open: the workspace's datasets, its conversions with live progress, and the /nfs file
 // browser with format detection and conversion options. Datasets belong to the Genome Canvas workspace
-// that added them; other workspaces neither see nor change them (their links still open). "Shared in the lab"
-// lists what any workspace has loaded, converted or combined (the hub's shared library), to add in one click.
+// that added them; other workspaces neither see nor change them (their links still open). "Shared datasets" (a
+// button by the datasets, also #shared) opens the lab's shared library (shared.ts) to add others' datasets in one click.
 import { api, chooseWorkspace, esc, fmtAgo, fmtBytes, fmtDuration, loadWorkspace, onWorkspace, toast, workspace } from './common';
+import { bindShared, openShared, sharedButton, showCount } from './shared';
 
 export type Kind = 'spatial' | 'singlecell' | 'crispr';
 interface Dataset {
@@ -27,16 +28,6 @@ interface Job {
   notices?: string[];
   /** times the job continued from its checkpoints after a restart */
   resumes?: number;
-}
-/** a shared library entry: a dataset some workspace loaded, converted or combined (server: library_public) */
-interface Shared {
-  key: string; kind: Kind; title: string; root: string; source?: string; layout: string; combined?: boolean; description?: string;
-  slides: (Dataset['slides'][number] & { root?: string })[]; nSamples: number; nCells?: number; nGenes?: number; technology?: string; species?: string; bytes?: number;
-  screenKind?: string; stats?: Record<string, number>; ownerName?: string; users: string[]; added: number; updated: number;
-  /** the caller has it (myUrl), a link that opens it now (any workspace's), the caller added it first */
-  mine: boolean; myUrl: string | null; openUrl: string | null; author: boolean;
-  /** being converted again; its source file changed or was removed since the conversion */
-  updating?: boolean; sourceChanged?: boolean; sourceMissing?: boolean;
 }
 interface Entry { name: string; path: string; dir: boolean; size: number | null; mtime: number; hint: string | null; converted?: boolean }
 interface Listing { path: string; parent: string | null; entries: Entry[] }
@@ -102,16 +93,10 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     <div data-m-body hidden>
       <section class="card mgr__list">
         <div class="mgr__bar"><h2>Datasets</h2>
+          ${sharedButton(kind)}
           <button type="button" class="btn btn--light btn--sm" data-m-combine title="${kind === 'crispr' ? 'One dataset made of several of your screens' : 'One dataset made of samples of your datasets — time points, conditions, sections'}"><svg class="icon"><use href="#i-layers"/></svg>Combine ${kind === 'crispr' ? 'screens' : 'datasets'}</button>
           <input class="input" type="search" placeholder="Filter" data-m-q aria-label="Filter datasets" /></div>
         <div class="table-wrap"><table class="table ds" data-m-table></table></div>
-      </section>
-      <section class="card mgr__list mgr__shared" id="shared">
-        <div class="mgr__bar"><h2>Shared in the lab</h2>
-          <span class="muted small">Every ${kind === 'crispr' ? 'screen' : 'dataset'} anyone has loaded, converted or combined here. Add one to yours without looking for its files — nothing is copied or converted again. Kept up to date with the files.</span>
-          <label class="check small mgr__right"><input type="checkbox" data-m-lhide /> Hide those in your workspace</label>
-          <input class="input" type="search" placeholder="Filter by name, person, path" data-m-lq aria-label="Filter shared datasets" /></div>
-        <div class="table-wrap"><table class="table ds" data-m-ltable><tbody><tr><td class="empty">Loading…</td></tr></tbody></table></div>
       </section>
       <dialog class="ws-dialog" data-m-cdialog>
         <form method="dialog" class="ws-card combine" data-m-cform>
@@ -228,7 +213,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
   async function loadDatasets() {
     datasets = await api<Dataset[]>(`/hub/api/datasets?kind=${kind}`);
     renderDatasets();
-    loadShared().catch((e) => { $('ltable').innerHTML = `<tbody><tr><td class="empty err">${esc(e.message)}</td></tr></tbody>`; });
+    showCount(root.querySelector('[data-shared-count]'), kind);
   }
 
   $('table').addEventListener('click', async (e) => {
@@ -265,69 +250,10 @@ export function mountManager(root: HTMLElement, kind: Kind) {
   });
   $<HTMLInputElement>('q').oninput = renderDatasets;
 
-  // ---------------------------------------------------------------- shared in the lab (the hub's shared library)
-  let shared: Shared[] = [];
-  const LHIDE = `vizhub-shared-hide-${kind}`;
-  try { $<HTMLInputElement>('lhide').checked = localStorage.getItem(LHIDE) === '1'; } catch { /* private window */ }
-
-  function renderShared() {
-    const q = $<HTMLInputElement>('lq').value.trim().toLowerCase(), hide = $<HTMLInputElement>('lhide').checked;
-    const text = (e: Shared) => `${e.title} ${e.source ?? ''} ${e.root} ${e.ownerName ?? ''} ${e.users.join(' ')} ${e.technology ?? ''} ${e.species ?? ''} ${e.description ?? ''} ${e.slides.map((s) => s.title).join(' ')}`.toLowerCase();
-    const shown = shared.filter((e) => (!hide || !e.mine) && (!q || text(e).includes(q)));
-    if (!shared.length) {
-      $('ltable').innerHTML = `<tbody><tr><td class="empty">Nothing shared yet: ${P.noun} that anyone adds show here.</td></tr></tbody>`;
-      return;
-    }
-    $('ltable').innerHTML = `<thead><tr><th>Dataset</th><th>Shared by</th><th>Source</th><th></th></tr></thead><tbody>${shown.map((e) => {
-      const others = e.users.filter((u) => u !== e.ownerName);
-      const flags = [e.updating ? '<span class="chip chip--warn" title="Its files are being written again right now">converting again</span>' : '',
-        e.sourceChanged ? '<span class="chip chip--warn" title="The source file changed after this conversion: select it under Add data to convert it again">source changed</span>' : '',
-        e.sourceMissing ? '<span class="chip" title="The source file was moved or deleted; the converted files still open">source removed</span>' : ''].join('');
-      const samples = e.slides.length > 1 ? `${e.slides.length} ${kind === 'crispr' ? 'screens' : 'samples'}: ${e.slides.map((s) => s.title).join(', ')}` : '';
-      const link = e.myUrl ?? e.openUrl;
-      return `<tr data-key="${esc(e.key)}">
-        <td class="ds__title">${link ? `<a href="${esc(link)}">${esc(e.title)}</a>` : `<b>${esc(e.title)}</b>`} ${flags}
-          <div class="small muted">${esc(facts(e as unknown as Dataset))}</div>
-          ${samples ? `<div class="small muted ds__samples" title="${esc(samples)}">${esc(samples)}</div>` : ''}</td>
-        <td><b class="small">${esc(e.ownerName ?? '?')}</b>${others.length ? `<span class="small muted" title="${esc(others.join(', '))}"> + ${others.length} other${others.length === 1 ? '' : 's'}</span>` : ''}
-          <div class="small muted">${e.updated > e.added + 60 ? `updated ${fmtAgo(e.updated)}` : `added ${fmtAgo(e.added)}`}</div></td>
-        <td class="ds__src">${e.combined ? `<div class="small muted" title="${esc(e.slides.map((s) => s.root).join('\n'))}">combines ${e.slides.length} folders</div>`
-          : `<span class="mono small" title="${esc(e.source ?? e.root)}">&lrm;${esc(e.source ?? e.root)}&lrm;</span>`}</td>
-        <td class="nowrap ds__acts">${e.mine ? `<a class="btn btn--light btn--sm" href="${esc(e.myUrl!)}">Open</a><span class="chip chip--ok">in yours</span>`
-          : `${e.openUrl ? `<a class="btn btn--light btn--sm" href="${esc(e.openUrl)}" title="Open ${esc(e.ownerName ?? '')}'s link without adding it">Open</a>` : ''}
-             <button type="button" class="btn btn--primary btn--sm" data-lact="add">Add to mine</button>`}
-          ${e.author ? '<button type="button" class="btn btn--quiet btn--sm" data-lact="hide" title="Take it off the shared list (your own dataset is kept)">Unshare</button>' : ''}</td>
-      </tr>`;
-    }).join('') || '<tr><td colspan="4" class="empty">Nothing matches the filter.</td></tr>'}</tbody>`;
-  }
-
-  async function loadShared() {
-    shared = await api<Shared[]>(`/hub/api/library?kind=${kind}`);
-    renderShared();
-  }
-
-  $('ltable').addEventListener('click', async (ev) => {
-    const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-lact]');
-    const e = btn && shared.find((x) => x.key === btn.closest<HTMLElement>('tr')!.dataset.key);
-    if (!btn || !e) return;
-    btn.setAttribute('disabled', '');
-    try {
-      if (btn.dataset.lact === 'add') {
-        const r = await api<{ dataset: Dataset; existing?: boolean }>('/hub/api/library/add', { method: 'POST', body: { key: e.key } });
-        toast(`${r.existing ? 'Already in your workspace' : 'Added'}: <a href="${esc(r.dataset.url)}">${esc(r.dataset.title)}</a>`, 6000);
-        await loadDatasets();
-      } else if (btn.dataset.lact === 'hide') {
-        if (!confirm(`Take “${e.title}” off the shared list?\n\nOthers no longer see it here (those who added it keep it). Your own dataset is kept; it is shared again when you add it again.`)) { btn.removeAttribute('disabled'); return; }
-        await api('/hub/api/library/hide', { method: 'POST', body: { key: e.key } });
-      }
-    } catch (err) { toast(esc((err as Error).message), 8000); }
-    loadShared().catch(() => {});
-  });
-  $<HTMLInputElement>('lq').oninput = renderShared;
-  $<HTMLInputElement>('lhide').onchange = () => {
-    try { localStorage.setItem(LHIDE, $<HTMLInputElement>('lhide').checked ? '1' : '0'); } catch { /* private window */ }
-    renderShared();
-  };
+  // ---------------------------------------------------------------- shared datasets (the lab's library: shared.ts)
+  const sharedOpts = { onAdded: () => { loadDatasets(); } };
+  bindShared(root, kind, sharedOpts);
+  window.addEventListener('hashchange', () => { if (location.hash === '#shared' && workspace()) openShared(kind, sharedOpts); });
 
   // ---------------------------------------------------------------- combined datasets
   let editing: Dataset | null = null;
@@ -715,6 +641,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
     jobs = [];
     await Promise.all([loadDatasets().catch((e) => { $('table').innerHTML = `<tbody><tr><td class="empty err">${esc(e.message)}</td></tr></tbody>`; }), loadJobs().catch(() => {})]);
     // ?combine=1 / ?edit=<dataset>: open the samples dialog (the Mac app's "Combine Datasets…" / "Edit Samples…")
+    if (location.hash === '#shared') openShared(kind, sharedOpts);  // a link to the list (e.g. from the Mac app)
     if (params.has('combine') || params.has('edit')) {
       const d = datasets.find((x) => x.id === params.get('edit'));
       if (params.has('combine') || d) openCombine(d ?? null);

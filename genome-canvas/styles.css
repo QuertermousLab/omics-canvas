@@ -348,7 +348,7 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .file-selection-controls > span { min-width: 104px; color: var(--text-2); }
 /* Shared tracks: the lab's list of loaded server files (same table as the file browser) */
 .shared-source-card .source-glyph { background: var(--green-soft); color: var(--green-text); box-shadow: none; }
-.file-toolbar.shared-toolbar { grid-template-columns: minmax(240px, 1fr) auto auto; align-items: center; }
+.file-toolbar.shared-toolbar { grid-template-columns: minmax(240px, 1fr) auto auto auto; align-items: center; }
 .shared-toolbar .search-field { height: 34px; }
 .shared-genome-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 12.5px; white-space: nowrap; cursor: pointer; }
 .shared-genome-toggle input { accent-color: var(--accent); }
@@ -547,7 +547,7 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
   .file-row > small:nth-of-type(2), .file-row > small:nth-of-type(3) { display: none; }
   .file-row.shared-row { grid-template-columns: 28px minmax(0, 1fr) 88px; }
   .file-row.shared-row > small { display: none; }
-  .file-toolbar.shared-toolbar { grid-template-columns: 1fr auto auto; }
+  .file-toolbar.shared-toolbar { grid-template-columns: 1fr auto auto auto; }
   .form-grid { grid-template-columns: 1fr; }
   .span-2 { grid-column: auto; }
   .url-modal { height: calc(100vh - 18px); }

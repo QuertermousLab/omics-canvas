@@ -15,7 +15,7 @@ await build({
 });
 
 const read = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
-const css = { hub: ['theme', 'nav', 'hub'], viewer: ['theme', 'nav', 'manager', 'viewer'], crispr: ['theme', 'nav', 'manager', 'crispr'] };
+const css = { hub: ['theme', 'nav', 'hub'], viewer: ['theme', 'nav', 'manager', 'shared', 'viewer'], crispr: ['theme', 'nav', 'manager', 'shared', 'crispr'] };
 for (const [name, parts] of Object.entries(css)) writeFileSync(`${out}${name}.css`, parts.map((p) => read(`src/${p}.css`)).join('\n'));
 
 const hash = createHash('sha1');

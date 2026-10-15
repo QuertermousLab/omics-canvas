@@ -114,6 +114,7 @@ const ui = {
   sharedBrowser: $("#shared-browser"),
   sharedSearch: $("#shared-search"),
   sharedGenomeOnly: $("#shared-genome-only"),
+  sharedNewOnly: $("#shared-new-only"),
   sharedGenomeLabel: $("#shared-genome-label"),
   sharedSelectionSummary: $("#shared-selection-summary"),
   loadShared: $("#load-shared-button"),
@@ -1550,10 +1551,31 @@ async function loadSharedTracks(refresh) {
   }
 }
 
+// root:path of the server files shown now, from their /data/[<workspace>/]<root>/<path> URLs
+function serverFilesInView() {
+  const keys = new Set();
+  for (const view of trackViews()) {
+    const url = view.track?.config?.url || view.track?.url;
+    if (typeof url !== "string") continue;
+    let path;
+    try { path = new URL(url, location.href).pathname; } catch { continue; }
+    const at = path.indexOf("/data/");
+    if (at < 0) continue;
+    const parts = path.slice(at + 6).split("/").filter(Boolean).map((part) => {
+      try { return decodeURIComponent(part); } catch { return part; }
+    });
+    if (/^(home|manual)-[0-9a-f]{18}$|^local$/.test(parts[0] || "")) parts.shift();
+    if (parts.length > 1) keys.add(`${parts[0]}:${parts.slice(1).join("/")}`);
+  }
+  return keys;
+}
+
 function visibleSharedTracks() {
   const query = ui.sharedSearch.value.trim().toLowerCase();
   const genomeOnly = ui.sharedGenomeOnly.checked;
+  const inView = ui.sharedNewOnly.checked ? serverFilesInView() : new Set();
   return state.sharedTracks.filter((item) => {
+    if (inView.has(sharedKey(item))) return false;
     if (genomeOnly && item.kind !== "reference" && item.genomes.length && !item.genomes.includes(state.currentGenome)) return false;
     if (!query) return true;
     return [item.name, item.path, item.format, item.rootLabel, item.ownerName, ...item.users, ...item.genomes]
@@ -1578,7 +1600,7 @@ function renderSharedTracks() {
     empty.className = "browser-message";
     const filtered = state.sharedTracks.length > 0;
     empty.innerHTML = `<div><b>∅</b><span>${filtered
-      ? `No shared track matches${ui.sharedGenomeOnly.checked ? ` for ${escapeHTML(state.currentGenome)}` : ""}.`
+      ? `No shared track matches${ui.sharedGenomeOnly.checked ? ` for ${escapeHTML(state.currentGenome)}` : ""}${ui.sharedNewOnly.checked ? " that is not in this view already" : ""}.`
       : "Nothing shared yet: server files that anyone loads show up here."}</span></div>`;
     ui.sharedBrowser.append(empty);
     updateSharedSelection();
@@ -2634,6 +2656,7 @@ function bindEvents() {
   $("#shared-tracks-button").addEventListener("click", openSharedTracks);
   ui.sharedSearch.addEventListener("input", renderSharedTracks);
   ui.sharedGenomeOnly.addEventListener("change", renderSharedTracks);
+  ui.sharedNewOnly.addEventListener("change", renderSharedTracks);
   $("#shared-refresh-button").addEventListener("click", () => loadSharedTracks(true));
   ui.sharedSelectAll.addEventListener("click", () => {
     for (const item of visibleSharedTracks()) state.selectedShared.set(sharedKey(item), item);

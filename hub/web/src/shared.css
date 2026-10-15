@@ -1,0 +1,70 @@
+/* Shared datasets dialog (shared.ts): the look of Genome Canvas's Shared tracks */
+.sh-dialog { border: 0; padding: 0; background: transparent; max-width: calc(100vw - 28px); max-height: calc(100vh - 28px); }
+.sh-dialog::backdrop { background: rgba(36, 41, 51, .45); backdrop-filter: blur(4px); }
+.sh-card { width: min(1040px, calc(100vw - 28px)); height: min(720px, calc(100vh - 28px)); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto;
+  border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); overflow: hidden; }
+.sh-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 12px 22px; }
+.sh-head h2 { margin: 2px 0 0; font-size: 19px; }
+.sh-head .icon-btn { font-size: 20px; line-height: 1; }
+.sh-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; align-items: center; gap: 8px 12px; padding: 12px 22px 10px;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.sh-search { height: 34px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface);
+  padding: 0 10px; color: var(--text-3); }
+.sh-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring, var(--accent-soft)); }
+.sh-search .icon { width: 15px; height: 15px; }
+.sh-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; }
+.sh-toggle { font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+.sh-toolbar .icon-btn { font-size: 16px; }
+.sh-note { grid-column: 1 / -1; margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.45; }
+.sh-list { min-height: 0; overflow-y: auto; padding: 0 12px 12px; }
+.sh-row { display: grid; grid-template-columns: 34px minmax(240px, 1fr) minmax(120px, 230px) 110px 128px; align-items: center; gap: 10px; min-height: 46px;
+  padding: 0 6px; border-bottom: 1px solid var(--surface-3); border-radius: var(--radius-sm, 6px); color: var(--text-2); font-size: 13px; }
+.sh-row:not(.sh-row--head):hover { background: var(--surface-2); }
+.sh-row.on { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.sh-row--head { position: sticky; top: 0; z-index: 1; min-height: 36px; border-bottom: 1px solid var(--border); background: var(--surface); color: var(--text-3);
+  font-size: 11px; font-weight: 600; letter-spacing: .05em; border-radius: 0; }
+.sh-row--mine .sh-name strong, .sh-row--mine > small { color: var(--text-3); }
+.sh-row > span:first-child { display: grid; place-items: center; }
+.sh-row input[type=checkbox] { width: 15px; height: 15px; }
+.sh-row > small { overflow: hidden; color: var(--text-3); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.sh-name { min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: var(--text); padding: 6px 0; text-align: left; cursor: pointer; }
+.sh-row--mine .sh-name { cursor: default; }
+.sh-name__text { min-width: 0; display: grid; gap: 1px; }
+.sh-name strong { overflow: hidden; font-size: 13px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.sh-name strong .chip { height: 18px; padding: 0 6px; font-size: 10px; margin-left: 4px; vertical-align: 1px; }
+.sh-name small { overflow: hidden; color: var(--text-3); font: 11px var(--mono); text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.sh-name:hover strong { color: var(--accent-text); }
+.sh-icon { flex: none; width: 44px; height: 24px; display: grid; place-items: center; border-radius: var(--radius-sm, 6px); background: var(--surface-3); color: var(--text-2);
+  font: 650 9px var(--mono); letter-spacing: .02em; }
+.sh-end { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.sh-end small { color: var(--text-3); font-size: 12px; white-space: nowrap; }
+.sh-end .chip { height: 20px; font-size: 10.5px; padding: 0 7px; }
+.sh-peek { color: var(--accent-text); font-size: 12px; font-weight: 600; text-decoration: none; }
+.sh-peek:hover { text-decoration: underline; }
+.sh-empty { min-height: 260px; display: grid; place-items: center; color: var(--text-3); font-size: 13px; text-align: center; }
+.sh-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-height: 58px; padding: 10px 18px 10px 22px;
+  border-top: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: 12.5px; }
+.sh-foot > div { display: flex; align-items: center; gap: 8px; }
+.sh-foot > div:first-child > span { min-width: 120px; }
+.sh-count { height: 18px; padding: 0 6px; margin-left: 6px; font-size: 10.5px; background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+
+/* the viewers' side panel: a source card as in Genome Canvas's track library */
+.sh-source { width: 100%; display: grid; grid-template-columns: 32px 1fr 14px; align-items: center; gap: 10px; margin-top: 10px; padding: 9px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg, 10px); background: var(--surface); color: var(--text); text-align: left; cursor: pointer;
+  transition: border-color .12s, box-shadow .12s; }
+.sh-source:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.sh-source__glyph { width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius); background: var(--green-soft); color: var(--green-text); }
+.sh-source__glyph .icon { width: 17px; height: 17px; }
+.sh-source__text { display: grid; gap: 1px; min-width: 0; }
+.sh-source__text strong { font-size: 13px; font-weight: 600; display: flex; align-items: center; }
+.sh-source__text small { color: var(--text-3); font-size: 11.5px; }
+.sh-source__arrow { width: 14px; height: 14px; color: var(--text-4); transform: rotate(-90deg); }
+.sh-source:hover .sh-source__arrow { color: var(--accent); }
+.cx-head [data-shared-open] { height: 34px; }
+
+@media (max-width: 760px) {
+  .sh-toolbar { grid-template-columns: 1fr auto; }
+  .sh-row { grid-template-columns: 28px minmax(0, 1fr) 96px; }
+  .sh-row > small { display: none; }
+  .sh-row--head > span:nth-child(3), .sh-row--head > span:nth-child(4) { display: none; }
+}

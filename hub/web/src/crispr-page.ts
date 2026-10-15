@@ -3,6 +3,7 @@
   // adapted to the hub (screen in the URL path /crispr/<screen>/, /hub/api/projects, no sign-in).
   import { css, esc, initChrome, loadWorkspace } from './common';
   import { mountManager } from './manager';
+  import { bindShared, sharedButton } from './shared';
   import { canvasGenome, canvasURL, enhancerArcTracks, geneLinks, region, listScreens, loadTests, PerturbSeq, SIGNIFICANT, type Screen, type Test } from './crispr/data';
   import { Scatter } from './crispr/plots';
   import { listProjects, type Project } from './spatial/data';
@@ -245,6 +246,9 @@
       return;
     }
     await loadWorkspace();
+    // other workspaces' screens: add one and open it here (shared.ts)
+    $('screen').insertAdjacentHTML('afterend', sharedButton('crispr'));
+    bindShared(document.querySelector('.cx-head')!, 'crispr', { addLabel: 'Add & open', onAdded: (added) => { location.href = added[0].url; } });
     listProjects('singlecell').then((p) => (singleCell = p)).catch(() => {});
     let screens: Screen[];
     try { screens = await listScreens(screenId); } catch (e) { fail(esc((e as Error).message)); return; }

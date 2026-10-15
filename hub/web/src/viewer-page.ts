@@ -3,6 +3,7 @@
   // adapted to the hub (dataset in the URL path, /hub/api/projects, no Cloudflare Access sign-in).
   import { css, esc, initChrome, loadWorkspace } from './common';
   import { mountManager } from './manager';
+  import { bindShared, sharedCard } from './shared';
   import { colormapGradient } from './spatial/colors';
   import { listProjects, Slide, type Kind, type Project } from './spatial/data';
   import { Viewer, type Region, type Tool } from './spatial/viewer';
@@ -501,6 +502,10 @@
       return;
     }
     await loadWorkspace();
+    // other workspaces' datasets: add one and open it here (shared.ts)
+    const head = document.querySelector<HTMLElement>('.sv-head')!;
+    head.insertAdjacentHTML('beforeend', sharedCard(kind));
+    bindShared(head, kind, { addLabel: 'Add & open', onAdded: (added) => { location.href = added[0].url; } });
     let projects: Project[];
     try {
       projects = await listProjects(kind, projectId);
