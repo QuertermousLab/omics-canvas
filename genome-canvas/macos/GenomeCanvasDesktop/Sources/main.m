@@ -268,8 +268,9 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 }
 @end
 
-// The web rail's "Open server files" card: icon tile, title, detail, chevron.
+// The web rail's "Open server files" / "Shared tracks" cards: icon tile, title, detail, chevron.
 @interface GCCardButton : NSButton
+@property(nonatomic, strong) NSImageView *glyph;
 @property(nonatomic, strong) NSTextField *titleLabel;
 @property(nonatomic, strong) NSTextField *detailLabel;
 @property(nonatomic, strong) NSImageView *chevron;
@@ -290,6 +291,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     glyph.translatesAutoresizingMaskIntoConstraints = NO;
     glyph.contentTintColor = GCHex(0xeceff4, 1);
     [tile addSubview:glyph];
+    self.glyph = glyph;
     self.titleLabel = [NSTextField labelWithString:@""];
     self.titleLabel.font = GCUIFont(13.5, 650);
     self.titleLabel.textColor = GCTextColor();
@@ -404,6 +406,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 @property(nonatomic, strong) NSPopUpButton *workspacePopup;
 @property(nonatomic, strong) GCButton *deleteWorkspaceButton;
 @property(nonatomic, strong) GCCardButton *filesButton;
+@property(nonatomic, strong) GCCardButton *sharedButton;
+@property(nonatomic, strong) NSMenuItem *sharedTracksMenuItem;
 @property(nonatomic, strong) NSMenuItem *openFilesMenuItem;
 @property(nonatomic, strong) NSMenuItem *localBackendMenuItem;
 @property(nonatomic, strong) NSMenuItem *remoteServerMenuItem;
@@ -445,8 +449,13 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.serverAddress = savedAddress ?: GCDefaultServerAddress;
     self.localMode = NO;
     // Preview builds capture the window in both themes (see macos-preview.yml);
-    // they use the bundled backend so no server is needed.
-    if ([self snapshotDirectory].length) self.localMode = YES;
+    // they use the bundled backend so no server is needed, or GENOME_CANVAS_SNAPSHOT_SERVER (a test server on
+    // the runner) for the server-mode sidebar.
+    if ([self snapshotDirectory].length) {
+        NSString *server = [self snapshotServerAddress];
+        self.localMode = !server.length;
+        if (server.length) self.serverAddress = server;
+    }
     [self buildApplicationMenu];
 
     NSRect frame = NSMakeRect(0, 0, 1480, 900);
@@ -561,6 +570,15 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.filesButton = [[GCCardButton alloc] initWithFrame:NSZeroRect];
     self.filesButton.target = self;
     self.filesButton.action = @selector(openServerFiles:);
+    // Files anyone in the lab has loaded from the server (the web rail's "Shared tracks" card); server mode only
+    self.sharedButton = [[GCCardButton alloc] initWithFrame:NSZeroRect];
+    self.sharedButton.target = self;
+    self.sharedButton.action = @selector(openSharedTracks:);
+    self.sharedButton.glyph.image = GCSymbol(@"person.2", 15, @"Shared tracks");
+    self.sharedButton.titleLabel.stringValue = @"Shared tracks";
+    self.sharedButton.detailLabel.stringValue = @"Files anyone in the lab has loaded";
+    self.sharedButton.accessibilityLabel = @"Shared tracks";
+    self.sharedButton.identifier = @"SharedTracksButton";
     GCButton *publicButton = [GCButton buttonWithLabel:@"Public data" symbol:@"globe" style:GCButtonStyleSecondary target:self action:@selector(openPublicData:)];
     GCButton *referenceButton = [GCButton buttonWithLabel:@"Reference" symbol:@"scope" style:GCButtonStyleSecondary target:self action:@selector(openCustomReference:)];
     publicButton.font = GCUIFont(12.5, 550);
@@ -626,7 +644,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 
     NSArray<NSView *> *rows = @[
         brand, sourceLabel, segments, self.workspaceLabel, self.workspaceControls, firstDivider,
-        libraryHeading, self.filesButton, sourceActions, secondDivider, currentHeading, trackScroll, tips, status
+        libraryHeading, self.filesButton, self.sharedButton, sourceActions, secondDivider, currentHeading, trackScroll, tips, status
     ];
     NSStackView *column = [NSStackView stackViewWithViews:rows];
     column.translatesAutoresizingMaskIntoConstraints = NO;
@@ -640,6 +658,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     [column setCustomSpacing:14 afterView:firstDivider];
     [column setCustomSpacing:12 afterView:libraryHeading];
     [column setCustomSpacing:8 afterView:self.filesButton];
+    [column setCustomSpacing:8 afterView:self.sharedButton];
     [column setCustomSpacing:16 afterView:sourceActions];
     [column setCustomSpacing:12 afterView:secondDivider];
     [column setCustomSpacing:12 afterView:trackScroll];
@@ -655,7 +674,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
         [trackScroll.heightAnchor constraintGreaterThanOrEqualToConstant:96],
         [self.statusDot.widthAnchor constraintEqualToConstant:7], [self.statusDot.heightAnchor constraintEqualToConstant:7],
     ]];
-    for (NSView *row in @[segments, self.workspaceControls, firstDivider, self.filesButton, sourceActions, secondDivider, currentHeading, trackScroll, tips]) {
+    for (NSView *row in @[segments, self.workspaceControls, firstDivider, self.filesButton, self.sharedButton, sourceActions, secondDivider, currentHeading, trackScroll, tips]) {
         [constraints addObject:[row.widthAnchor constraintEqualToAnchor:column.widthAnchor]];
     }
     [NSLayoutConstraint activateConstraints:constraints];
@@ -981,6 +1000,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 #pragma mark - Preview snapshots (CI only)
 
 - (NSString *)snapshotDirectory { return [NSProcessInfo processInfo].environment[@"GENOME_CANVAS_SNAPSHOT_DIR"]; }
+- (NSString *)snapshotServerAddress { return [NSProcessInfo processInfo].environment[@"GENOME_CANVAS_SNAPSHOT_SERVER"]; }
 
 - (void)scheduleSnapshotCaptureIfRequested {
     NSString *directory = [self snapshotDirectory];
@@ -994,6 +1014,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 }
 
 - (void)captureThemes:(NSArray<NSString *> *)themes directory:(NSString *)directory {
+    if (!themes.count && self.snapshotServerAddress.length) { [self captureSharedTracksToDirectory:directory]; return; }
     if (!themes.count) { [NSApp terminate:nil]; return; }
     [self setAppearancePreference:themes.firstObject];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -1001,6 +1022,14 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
         [self captureWindowToPath:path completion:^{
             [self captureThemes:[themes subarrayWithRange:NSMakeRange(1, themes.count - 1)] directory:directory];
         }];
+    });
+}
+
+// Server mode: the sidebar's Shared tracks card opens the web dialog through the bridge.
+- (void)captureSharedTracksToDirectory:(NSString *)directory {
+    [(NSButton *)GCFindView(self.window.contentView, @"SharedTracksButton") performClick:nil];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self captureWindowToPath:[directory stringByAppendingPathComponent:@"shared-tracks-dark.png"] completion:^{ [NSApp terminate:nil]; }];
     });
 }
 
@@ -1107,6 +1136,10 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     NSMenuItem *publicData = [[NSMenuItem alloc] initWithTitle:@"Connect Public Data…" action:@selector(openPublicData:) keyEquivalent:@"d"];
     publicData.target = self;
     [fileMenu addItem:publicData];
+    self.sharedTracksMenuItem = [[NSMenuItem alloc] initWithTitle:@"Shared Tracks…" action:@selector(openSharedTracks:) keyEquivalent:@"l"];
+    self.sharedTracksMenuItem.target = self;
+    self.sharedTracksMenuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    [fileMenu addItem:self.sharedTracksMenuItem];
     [fileMenu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *export = [[NSMenuItem alloc] initWithTitle:@"Export PNG…" action:@selector(exportPNG:) keyEquivalent:@"e"];
     export.target = self;
@@ -1170,6 +1203,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.filesButton.titleLabel.stringValue = self.localMode ? @"Open local files" : @"Open server files";
     self.filesButton.detailLabel.stringValue = self.localMode ? @"Browse files on this Mac without uploading" : @"Browse data directories without uploading";
     self.filesButton.accessibilityLabel = self.filesButton.titleLabel.stringValue;
+    self.sharedButton.hidden = self.localMode; // the lab list lives on the server
+    self.sharedTracksMenuItem.hidden = self.localMode;
     self.openFilesMenuItem.title = self.localMode ? @"Open Local Files…" : @"Open Server Files…";
     self.localBackendMenuItem.state = self.localMode ? NSControlStateValueOn : NSControlStateValueOff;
     self.remoteServerMenuItem.state = self.localMode ? NSControlStateValueOff : NSControlStateValueOn;
@@ -1639,6 +1674,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 - (void)clearHighlights:(id)sender { [self callDesktopMethod:@"clearHighlights" arguments:@[]]; }
 - (void)openServerFiles:(id)sender { [self callDesktopMethod:@"openServerFiles" arguments:@[]]; }
 - (void)openPublicData:(id)sender { [self callDesktopMethod:@"openPublicData" arguments:@[]]; }
+- (void)openSharedTracks:(id)sender { if (!self.localMode) [self callDesktopMethod:@"openSharedTracks" arguments:@[]]; }
 - (void)openCustomReference:(id)sender { [self callDesktopMethod:@"openCustomReference" arguments:@[]]; }
 - (void)openFavorites:(id)sender { [self callDesktopMethod:@"openFavorites" arguments:@[]]; }
 - (void)shareView:(id)sender { [self callDesktopMethod:@"share" arguments:@[]]; }

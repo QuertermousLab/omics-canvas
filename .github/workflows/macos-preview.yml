@@ -51,6 +51,30 @@ jobs:
           ls -la "${shots}"
           test -f "${shots}/window-light.png"
           test -f "${shots}/window-dark.png"
+      - name: Capture Genome Canvas connected to a server
+        if: matrix.app == 'genome-canvas'
+        working-directory: ${{ matrix.dir }}
+        shell: bash
+        run: |
+          # Server mode shows what This Mac hides (workspaces, Shared tracks); a test server on the runner stands
+          # in for the lab server, and the app then opens the Shared tracks dialog from its sidebar card.
+          shots="${RUNNER_TEMP}/shots/server"
+          mkdir -p "${shots}" "${RUNNER_TEMP}/gc-state"
+          GENOME_CANVAS_STATE_DIR="${RUNNER_TEMP}/gc-state" GENOME_DATA_ROOTS="${GITHUB_WORKSPACE}/genome-canvas/tests" \
+            python3 "${GITHUB_WORKSPACE}/genome-canvas/server.py" --host 127.0.0.1 --port 8000 > "${shots}/server.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl -fs http://127.0.0.1:8000/ > /dev/null && break
+            sleep 1
+          done
+          env GENOME_CANVAS_SNAPSHOT_DIR="${shots}" GENOME_CANVAS_SNAPSHOT_SERVER="http://127.0.0.1:8000/" \
+            "dist/preview/${{ matrix.bundle }}/Contents/MacOS/${{ matrix.binary }}" > "${shots}/app.log" 2>&1 &
+          for attempt in $(seq 1 60); do
+            [[ -f "${shots}/shared-tracks-dark.png" ]] && break
+            sleep 2
+          done
+          ls -la "${shots}"
+          test -f "${shots}/window-light.png"
+          test -f "${shots}/shared-tracks-dark.png"
       - name: Launch Genome Canvas from a genomecanvas:// link
         if: matrix.app == 'genome-canvas'
         working-directory: ${{ matrix.dir }}

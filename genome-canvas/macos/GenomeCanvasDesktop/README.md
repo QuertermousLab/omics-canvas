@@ -78,6 +78,8 @@ selects its bundled compiler automatically.
   There is no browser-style address bar in the main window.
 - Cookies use WebKit's persistent data store, so the selected workspace remains
   selected between launches.
+- **Shared tracks** (sidebar card, **File → Shared Tracks…**, **⇧⌘L**; server mode only) opens the
+  list of files anyone in the lab has loaded.
 - Workspaces and loaded tracks are shown in the native sidebar. Tracks can be
   reordered by dragging full rows. Hover a row and click **×** to remove it, or
   select it and press **⌘⌫** (**Edit → Remove Selected Track**).
