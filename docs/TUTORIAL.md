@@ -17,9 +17,16 @@ atlas and mouse SMC time course, IGVF HCASMC CRISPR screens, UCSC hg38 annotatio
 
 ## 1. Getting started
 
-Open **http://171.65.68.140:8892** (THOR; from outside Stanford connect the VPN first). The home page links the four
-modules and shows how many datasets your workspace has in each (*yours*) and how many the lab shares
-([section 6](#6-shared-data)).
+Open **http://171.65.68.140:8892** (THOR). From outside Stanford connect the VPN first — or, without the VPN, forward
+the port over SSH and open **http://localhost:8892** instead (the Mac apps can do this for you,
+[section 8](#8-mac-apps)):
+
+```bash
+ssh -N -L 8892:127.0.0.1:8892 yourname@171.65.68.140
+```
+
+The home page links the four modules and shows how many datasets your workspace has in each (*yours*) and how many
+the lab shares ([section 6](#6-shared-data)).
 
 ![Home page, light and dark](images/hub.png)
 
@@ -244,12 +251,20 @@ opens with a click. Right-click a dataset for **Open**, **Edit Samples…**, **R
 - Genome Canvas links (from the CRISPR explorer) open in **Genome Canvas.app** when it is installed — in place if it
   is already open, keeping its tracks — otherwise in your browser.
 
-**Server and port forwarding** (both apps: **Server…** / **Connect to Server…**, ⌘,) — the server address and port
-(default THOR, 171.65.68.140 port 8892), and **Connect through SSH port forwarding** for servers you cannot reach
-directly (off campus without VPN, or a server that only listens on 127.0.0.1): the SSH host and port, your account
-and, optionally, your password — kept in the macOS Keychain; leave it empty to use your SSH key. The app opens the
-tunnel itself, keeps it while it runs and reconnects after sleep or a network change; **Use Default** goes back to
-THOR. The sidebar shows the connection (e.g. `171.65.68.140:8892 · SSH you@171.65.68.140`).
+**Server and port forwarding** — both apps connect to THOR (171.65.68.140, port 8892) by default. **Server…** in
+Omics Canvas's sidebar, **Connect to Server…** / the **Server** button in Genome Canvas (⌘, in both) change it:
+
+![Connection settings with SSH port forwarding](images/app-connection-sheet.png)
+
+1. **Server** and **Port**: the Omics Canvas gateway. For another lab server use the address and port its
+   administrator gives you (`./vizhubctl status` on the server prints them).
+2. Off campus without the VPN, or for a server that only listens on its own machine: tick **Connect through SSH port
+   forwarding**, then **SSH host** (empty: the server itself) and its **Port** (usually 22), your **Account** on it and,
+   optionally, your **Password**. The password is kept in the macOS Keychain; leave it empty to log in with your SSH
+   key. The first time, macOS may ask whether the app may use its Keychain item — choose **Always Allow**.
+3. **Connect**. The app opens the tunnel itself (like the `ssh -L` command in [section 1](#1-getting-started)), keeps
+   it while it runs and reconnects after sleep or a network change. The sidebar shows the connection, e.g.
+   `171.65.68.140:8892 · SSH yourname@171.65.68.140`; **Use Default** goes back to THOR without a tunnel.
 
 ## 9. Tips
 
