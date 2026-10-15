@@ -94,6 +94,14 @@ static BOOL OCPortAnswers(NSInteger port) {
     return ok;
 }
 
+/** A control target that runs a block (kept alive as an associated object of its control). */
+@interface OCControlBlock : NSObject
+@property(nonatomic, copy) void (^block)(void);
+@end
+@implementation OCControlBlock
+- (void)run:(id)sender { if (self.block) self.block(); }
+@end
+
 @interface OCConnection ()
 @property(nonatomic, copy) NSString *prefix;
 @property(nonatomic, copy) NSString *defaultAddress;
@@ -289,13 +297,6 @@ static BOOL OCPortAnswers(NSInteger port) {
 
 #pragma mark Settings sheet
 
-/** A control target that runs a block (kept alive as an associated object of its control). */
-@interface OCControlBlock : NSObject
-@property(nonatomic, copy) void (^block)(void);
-@end
-@implementation OCControlBlock
-- (void)run:(id)sender { if (self.block) self.block(); }
-@end
 
 static NSTextField *OCLabel(NSString *text) {
     NSTextField *label = [NSTextField labelWithString:text];
