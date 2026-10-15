@@ -334,6 +334,7 @@ static NSTextField *OCField(NSString *value, NSString *placeholder, CGFloat widt
     note.font = [NSFont systemFontOfSize:11];
     note.textColor = NSColor.secondaryLabelColor;
     [note.widthAnchor constraintEqualToConstant:400].active = YES;
+    note.preferredMaxLayoutWidth = 400;  // so the fitting size counts its wrapped lines
 
     NSStackView *(^row)(NSArray<NSView *> *) = ^NSStackView *(NSArray<NSView *> *views) {
         NSStackView *stack = [NSStackView stackViewWithViews:views];
@@ -355,7 +356,7 @@ static NSTextField *OCField(NSString *value, NSString *placeholder, CGFloat widt
     grid.translatesAutoresizingMaskIntoConstraints = NO;
     // the accessory view is exactly as tall as its fields, so no gap opens above the buttons
     NSSize fit = grid.fittingSize;
-    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, ceil(MAX(fit.width, 420)), ceil(fit.height))];
+    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, ceil(MAX(fit.width, 420)), ceil(fit.height) + 8)];
     [container addSubview:grid];
     [NSLayoutConstraint activateConstraints:@[
         [grid.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
