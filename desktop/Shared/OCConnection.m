@@ -353,7 +353,9 @@ static NSTextField *OCField(NSString *value, NSString *placeholder, CGFloat widt
     grid.columnSpacing = 8;
     [grid columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;
     grid.translatesAutoresizingMaskIntoConstraints = NO;
-    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 480, 230)];
+    // the accessory view is exactly as tall as its fields, so no gap opens above the buttons
+    NSSize fit = grid.fittingSize;
+    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, ceil(MAX(fit.width, 420)), ceil(fit.height))];
     [container addSubview:grid];
     [NSLayoutConstraint activateConstraints:@[
         [grid.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
