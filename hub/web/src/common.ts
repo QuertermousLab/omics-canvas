@@ -131,7 +131,14 @@ const PAGE_TITLE: Record<string, string> = { hub: '', spatial: 'Spatial viewer',
 /** Top bar: page title, theme toggle, workspace chip; the desktop app bridge. */
 export function initChrome(navId: string) {
   const title = document.querySelector<HTMLElement>('[data-page-title]');
-  if (title) title.textContent = PAGE_TITLE[navId] ?? '';
+  if (title) {
+    title.textContent = PAGE_TITLE[navId] ?? '';
+    // the viewer's name leads back to its main page (your datasets)
+    if (PAGE_TITLE[navId]) {
+      title.setAttribute('href', `/${navId}/`);
+      title.title = `Your ${navId === 'crispr' ? 'CRISPR screens' : `${PAGE_TITLE[navId].replace(' viewer', '').toLowerCase()} datasets`}`;
+    } else title.removeAttribute('href');
+  }
   // Omics Canvas desktop app (desktop/): the native window calls these and listens to postToDesktop
   (window as any).VizHubDesktop = {
     setTheme(theme: string) { applyTheme(theme === 'dark' ? 'dark' : 'light'); return true; },
