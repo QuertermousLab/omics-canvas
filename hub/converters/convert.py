@@ -38,7 +38,7 @@ sys.path.insert(0, str(HERE))
 from detect import EMBEDDING_HINTS, SPATIAL_KEYS, source_stamp  # noqa: E402
 from xenium_to_viewer import Columns, default_label  # noqa: E402  (ATHENA's annotation encoding)
 
-CONVERTER_VERSION = 1
+CONVERTER_VERSION = 2  # 2: tissue coordinates kept whichever viewer asked (detect.CELL_DATA_VERSION)
 
 
 def progress(pct, msg):
@@ -294,7 +294,8 @@ def write_slide(adata, out: Path, a, *, spatial_xy=None, groups=None, technology
     computed_umap = None
     has_category = any((isinstance(adata.obs[c].dtype, pd.CategoricalDtype) or adata.obs[c].dtype == object)
                        and 2 <= adata.obs[c].nunique(dropna=True) <= 200 for c in adata.obs.columns)
-    if not embeddings_wanted and (spatial_xy is None or a.compute_umap) and not a.no_umap:
+    # a UMAP when there is no embedding: always for single-cell data, and for tissue data added as single-cell
+    if not embeddings_wanted and (spatial_xy is None or a.compute_umap or a.kind == 'singlecell') and not a.no_umap:
         computed_umap, clusters = compute_umap(counts, integer, n, want_clusters=not has_category or a.compute_umap)
         if clusters is not None:
             adata.obs['leiden'] = pd.Categorical(clusters, categories=sorted(set(clusters), key=lambda x: int(x)))
@@ -564,6 +565,28 @@ def add_tissue_image(out: Path, slide, tissue):
         notice(f'The tissue image could not be added ({e}); the spots are shown without it.')
 
 
+def distinct_sections(d: Path, images):
+    """Seurat images that are different sections: an image whose cells are mostly in an image already kept (crops,
+    copies of one FOV) is left out, the one with most cells first; disjoint ones are laid out side by side."""
+    if len(images) < 2:
+        return images
+    cells = {}
+    for img in images:
+        try:
+            cells[img['name']] = set(pd.read_csv(d / img['file'], usecols=['cell'], dtype={'cell': str})['cell'])
+        except Exception:
+            cells[img['name']] = set()
+    kept, seen = [], set()
+    for img in sorted(images, key=lambda i: -len(cells[i['name']])):
+        c = cells[img['name']]
+        if c and len(c & seen) >= 0.5 * len(c):
+            log(f'  image {img["name"]}: the same cells as another image, not shown separately')
+            continue
+        kept.append(img)
+        seen |= c
+    return [i for i in images if i in kept]  # keep the object's order
+
+
 def read_rds_export(d: Path, a):
     """The files written by rds_export.R -> (AnnData, spatial xy or None, technology, annotation groups)."""
     import anndata as ad
@@ -601,7 +624,10 @@ def read_rds_export(d: Path, a):
     groups = {c: 'Seurat' if info['type'] == 'seurat' else 'colData' for c in meta.columns}
     images = info.get('images') or []
     xy, technology = None, None
-    if images and a.kind != 'singlecell':
+    # tissue coordinates are kept whichever viewer asked: one conversion serves both (the single-cell viewer opens
+    # such a dataset on its embedding). FOVs that hold the same cells (e.g. Seurat crops of one section) count once.
+    images = distinct_sections(d, images)
+    if images:
         parts, offset, tissue = [], 0.0, []
         for img in images:
             df = pd.read_csv(d / img['file'], dtype={'cell': str}).drop_duplicates('cell').set_index('cell')
@@ -654,6 +680,10 @@ def read_rds_export(d: Path, a):
                     technology = 'Visium-style spots'
             if not a.spot_diameter and a.pixel_size:
                 a.spot_diameter = float(spot) * a.pixel_size
+        if cls == 'FOV' and 'xenium' in assay_name.lower():
+            technology = 'Xenium'
+            if not a.pixel_size:
+                a.pixel_size = 1.0  # Seurat's LoadXenium keeps cell centroids in µm
         technology = technology or {'FOV': 'Imaging-based (FOV)', 'SlideSeq': 'Slide-seq', 'STARmap': 'STARmap'}.get(cls, cls or None)
     return adata, xy, technology, groups, info
 
@@ -944,7 +974,7 @@ def main():
                     raise SystemExit(f'unsupported file type: {src.name}')
                 progress(15, f'Read {adata.n_obs:,} cells x {adata.n_vars:,} genes')
                 key = next((k for k in SPATIAL_KEYS if k in adata.obsm), None)
-                if key and a.kind != 'singlecell':
+                if key:  # kept for either viewer (see read_rds_export)
                     spatial_xy = np.asarray(adata.obsm[key])
                 if a.kind == 'spatial' and spatial_xy is None:
                     raise SystemExit('no spatial coordinates (obsm["spatial"]) in this file: choose the single-cell viewer')

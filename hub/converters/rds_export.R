@@ -226,7 +226,17 @@ export_chromatin <- function(obj, cells) {
 export_seurat <- function(obj) {
   if (has("SeuratObject")) obj <- tryCatch(suppressWarnings(SeuratObject::UpdateSeuratObject(obj)), error = function(e) obj)
   assays <- names(obj@assays)
+  # the main (first) assay: RNA, else the active one — unless that is a control or a handful of features (Xenium objects
+  # often have niche, BlankCodeword, ControlProbe … active): then the largest expression assay. Controls go last.
+  control <- function(a) grepl("codeword|control|blank|genomic|negative|unassigned|deprecated|^niche", a, ignore.case = TRUE)
+  nfeat <- function(a) tryCatch(nrow(obj@assays[[a]]), error = function(e) 0L)
+  usable <- function(a) !control(a) && nfeat(a) >= 50
   assay <- if (nzchar(assay_arg)) assay_arg else if ("RNA" %in% assays) "RNA" else obj@active.assay
+  if (!nzchar(assay_arg) && !usable(assay)) {
+    expr <- Filter(usable, assays)
+    if (length(expr)) assay <- expr[[which.max(vapply(expr, nfeat, numeric(1)))]]
+  }
+  assays <- c(Filter(function(a) !control(a), assays), Filter(control, assays))
   if (!assay %in% assays) stop(sprintf("assay %s not found (assays: %s)", assay, paste(assays, collapse = ", ")))
   progress(20, sprintf("Seurat object, assays: %s (first: %s)", paste(assays, collapse = ", "), assay))
   pick <- function(a) {

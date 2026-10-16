@@ -527,6 +527,8 @@
       document.title = `${slide.meta.title} · ${viewerName} · Omics Canvas`;
       msg.hidden = true;
       v = new Viewer(canvas, slide);
+      // tissue data opened in the single-cell viewer starts on its embedding (Display → Layout has Spatial too)
+      if (kind !== 'spatial' && slide.meta.spatial !== false && slide.meta.embeddings.length) v.setLayout(slide.meta.embeddings[0].key);
       applyBackground();
     } catch (e) {
       fail(esc((e as Error).message));

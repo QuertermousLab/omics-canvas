@@ -112,7 +112,10 @@ folder; the page only offers what that viewer reads and points to the right one 
   (`.tsv/.csv/.parquet` or an `.rds` sceptre_object / data.frame: SCEPTRE, IGVF, generic target/gene/log2FC/p).
   Raw integer counts are used when present (`layers["counts"]`, `raw.X`, `X`); otherwise values are shown as stored.
   A UMAP (+ Leiden clusters if there is no annotation) is computed when a single-cell dataset has no embedding.
-  Selecting a source again reuses a finished conversion unless the source changed.
+  Tissue coordinates are always kept, whichever viewer converts the data: one conversion serves both (the single-cell
+  viewer opens it on its embedding, computing a UMAP if there is none), and the same folder can be in your spatial
+  and your single-cell lists. Selecting a source again reuses a finished conversion unless the source changed (or it
+  was made by an older converter). Seurat's main assay skips control assays (BlankCodeword, ControlProbe, niche …).
 - **Combine datasets** (all three pages): pick samples from your datasets — single sections, slides of multi-sample
   projects, or CRISPR screens — order and name them, and they become one dataset with one link and a sample (screen)
   picker, like *Mouse SMC atherosclerosis timecourse* or *Mouse Xenium 5K*. Datasets that went into it are listed inside

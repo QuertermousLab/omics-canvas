@@ -68,7 +68,7 @@ def _slide_meta(d: Path):
         m = json.loads((d / 'slide.json').read_text())
         return dict(id=m.get('id'), title=m.get('title'), spatial=m.get('spatial', True) is not False,
                     nCells=m.get('nCells'), nGenes=len(m.get('genes') or []), technology=m.get('technology'),
-                    species=m.get('species'))
+                    species=m.get('species'), embeddings=len(m.get('embeddings') or []))
     except Exception:
         return None
 
@@ -313,6 +313,10 @@ def inspect_file(path: Path):
     return dict(type='unsupported', ready=False, kind=None, details=dict(reason='Unsupported file type'), **base)
 
 
+# convert.py's CONVERTER_VERSION from which cell-data conversions are reused (2: tissue coordinates always kept)
+CELL_DATA_VERSION = 2
+
+
 def inspect(path):
     p = Path(path)
     if not p.exists():
@@ -324,7 +328,9 @@ def inspect(path):
         m = read_manifest(out)
         st = source_stamp(p)
         converted = bool(m and m.get('status') == 'done' and m.get('sourceSize') == st['sourceSize']
-                         and m.get('sourceMtime') == st['sourceMtime'])
+                         and m.get('sourceMtime') == st['sourceMtime']
+                         # cell data converted before version 2 lost tissue coordinates when added as single-cell
+                         and not (m.get('kind') in ('spatial', 'singlecell') and (m.get('version') or 1) < CELL_DATA_VERSION))
         info['output'] = dict(path=str(out), exists=out.exists(), converted=converted, manifest=m,
                               writable=os.access(p.parent, os.W_OK))
     return info

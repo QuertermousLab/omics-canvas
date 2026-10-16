@@ -193,13 +193,28 @@ def folder_facts(root: Path, info):
     return {k: v for k, v in facts.items() if v is not None}
 
 
-def register_folder(root: Path, owner, *, title=None, source=None, job=None, id_=None):
-    """Register one ready viewer folder (slide, project or CRISPR screen) for a workspace. Returns the dataset."""
+def viewer_kind(info, wanted):
+    """The viewer a ready folder is listed in: `wanted` (the page it was added from) when the data suits it — a slide
+    with tissue coordinates and an embedding opens in either viewer — else what the folder is."""
+    if wanted in ('spatial', 'singlecell') and info['type'] == 'viewer-slide' and info['kind'] in ('spatial', 'singlecell'):
+        meta = info.get('details') or {}
+        if wanted == 'spatial' and meta.get('spatial', True) is not False:
+            return 'spatial'
+        if wanted == 'singlecell' and meta.get('embeddings'):
+            return 'singlecell'
+    return info['kind']
+
+
+def register_folder(root: Path, owner, *, title=None, source=None, job=None, id_=None, kind=None):
+    """Register one ready viewer folder (slide, project or CRISPR screen) for a workspace, in the viewer `kind` asks
+    for when the data suits it (viewer_kind). Returns the dataset."""
     info = detect.inspect_folder(root)
     if info['type'] == 'viewer-collection' or not info.get('ready'):
         raise HTTPException(400, f'{root} is not a viewer dataset ({info["type"]})')
+    info['kind'] = viewer_kind(info, kind)
     with lock:
-        existing = next((d for d in registry['datasets'] if d['root'] == str(root) and d.get('owner') == owner['id']), None)
+        existing = next((d for d in registry['datasets'] if d['root'] == str(root) and d.get('owner') == owner['id']
+                         and d['kind'] == info['kind']), None)
         if existing:
             facts = folder_facts(root, info)
             if existing.get('descriptionEdited'):
@@ -549,7 +564,7 @@ def run_job(jid):
             return
         try:
             d = register_folder(Path(j['out']), {'id': j.get('owner'), 'name': j.get('ownerName')}, title=j.get('title'),
-                                source=j['source'], job=jid, id_=j['datasetId'])
+                                source=j['source'], job=jid, id_=j['datasetId'], kind=j.get('kind'))
             j.update(status='done', progress=100, finished=int(time.time()), message='Converted and loaded', datasetId=d['id'],
                      url=view_url(d))
         except Exception as e:
@@ -827,11 +842,11 @@ async def add_dataset(request: Request):
         added = [public(register_folder(Path(it['path']), ws)) for it in info['details']['items'] if it['path'] in picked]
         return {'datasets': added}
     if info.get('ready'):
-        return {'datasets': [public(register_folder(src, ws, title=title))]}
+        return {'datasets': [public(register_folder(src, ws, title=title, kind=body.get('kind')))]}
     out = info.get('output') or {}
     if out.get('converted') and not body.get('reconvert'):
         m = out.get('manifest') or {}
-        d = register_folder(Path(out['path']), ws, title=title or m.get('title'), source=str(src), id_=None)
+        d = register_folder(Path(out['path']), ws, title=title or m.get('title'), source=str(src), id_=None, kind=body.get('kind'))
         return {'datasets': [public(d)], 'reused': True}
     running = next((j for j in jobs.values() if j['source'] == str(src) and j['status'] in ('queued', 'running')), None)
     if running:
