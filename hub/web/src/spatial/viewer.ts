@@ -30,6 +30,10 @@ export class Viewer {
   groupBy: string;
   catColors = new Map<string, string[]>();
   catVisible = new Map<string, boolean[]>();
+  /** Filters: annotation key -> categories kept. They apply whichever annotation the cells are colored by
+   *  (cells must pass every filter), unlike catVisible, which belongs to one annotation. */
+  filters = new Map<string, boolean[]>();
+  private passing: Uint8Array | null = null;  // cells passing every filter (null: no filter)
   colorBy: ColorBy = { kind: 'group' };
   colormap = 'viridis';
   range: [number, number] = [0, 1];
@@ -215,6 +219,27 @@ export class Viewer {
     this.update();
   }
 
+  /** Keep only cells whose `key` category is in `keep` (null: remove that filter). */
+  setFilter(key: string, keep: boolean[] | null) {
+    if (keep && keep.some((k) => !k)) this.filters.set(key, keep.slice());
+    else this.filters.delete(key);
+    this.passing = null;
+    this.update();
+  }
+
+  /** Cells passing every filter, or null when there is none. */
+  passMask() {
+    if (!this.filters.size) return null;
+    if (this.passing) return this.passing;
+    const pass = new Uint8Array(this.slide.n).fill(1);
+    for (const [key, keep] of this.filters) {
+      const codes = this.slide.obs(key);
+      if (!codes) continue;
+      for (let i = 0; i < pass.length; i++) if (pass[i] && !keep[codes[i]]) pass[i] = 0;
+    }
+    return (this.passing = pass);
+  }
+
   /** Recompute per-cell colors and visibility, then redraw. */
   update() {
     const n = this.slide.n;
@@ -228,8 +253,10 @@ export class Viewer {
     const span = hi - lo || 1;
     const vals = this.colorBy.kind === 'group' ? null : this.values;
     const sel = this.selection;
+    const pass = this.passMask();
     for (let i = 0; i < n; i++) {
       let show = codes ? visible[codes[i]] !== false : true;
+      if (pass && !pass[i]) show = false;
       if (this.cropped && sel && !sel[i]) show = false;
       let r: number, g: number, b: number;
       if (!vals) {
@@ -277,7 +304,8 @@ export class Viewer {
     const spec = this.slide.spec(key)!;
     const codes = this.slide.obs(key);
     const counts = new Array(spec.categories!.length).fill(0);
-    for (let i = 0; i < codes.length; i++) if (!onlySelected || this.selection?.[i]) counts[codes[i]]++;
+    const pass = this.passMask();  // counts of the cells the filters keep
+    for (let i = 0; i < codes.length; i++) if ((!onlySelected || this.selection?.[i]) && (!pass || pass[i])) counts[codes[i]]++;
     return counts;
   }
 

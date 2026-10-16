@@ -46,13 +46,70 @@
     const colors = v.catColors.get(spec.key)!, vis = v.catVisible.get(spec.key)!;
     const counts = v.categoryCounts(spec.key);
     const order = spec.categories!.map((_, i) => i).sort((a, b) => counts[b] - counts[a]);
-    legend.innerHTML = order.map((i) => `<li class="${vis[i] ? '' : 'off'}" data-i="${i}">
+    const kept = v.filters.get(spec.key);  // categories this annotation's own filter removed
+    legend.innerHTML = order.map((i) => {
+      const out = kept && !kept[i];
+      return `<li class="${out ? 'filtered' : vis[i] ? '' : 'off'}" data-i="${i}">
         <label class="swatch" style="--c:${colors[i]}" title="Change color"><input type="color" value="${colors[i]}" data-c="${i}"></label>
-        <button type="button" class="name" data-t="${i}" title="Click to show/hide · Alt-click to show only this">${esc(spec.categories![i])}</button>
+        <button type="button" class="name" data-t="${i}" ${out ? 'disabled title="Removed by the filter on this annotation"' : 'title="Click to show/hide · Alt-click to show only this"'}>${esc(spec.categories![i])}</button>
         <span class="n">${counts[i].toLocaleString()}</span>
-      </li>`).join('');
+      </li>`;
+    }).join('');
     $('color-group').hidden = v.colorBy.kind === 'group';
+    // some categories hidden: they can become a filter that stays when another annotation is chosen
+    $('keep').hidden = !vis.some((x, i) => !x && !(kept && !kept[i])) || vis.every((x) => !x);
+    renderFilters();
   }
+
+  // ------------------------------------------------------------- filters (kept across annotations)
+
+  function renderFilters() {
+    const box = $('filters');
+    box.hidden = !v.filters.size;
+    box.innerHTML = v.filters.size ? `<span class="lbl">Only</span>${[...v.filters].map(([key, keep]) => {
+      const spec = v.slide.spec(key)!, names = spec.categories!.filter((_, i) => keep[i]);
+      const text = `${spec.label}: ${names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} +${names.length - 2}`}`;
+      return `<span class="chip chip--accent" title="${esc(`${spec.label}: ${names.join(', ')}`)}"><span>${esc(text)}</span>
+        <button type="button" data-unfilter="${esc(key)}" aria-label="Remove this filter" title="Remove this filter">×</button></span>`;
+    }).join('')}${v.filters.size > 1 ? '<button type="button" class="x" data-unfilter="">Clear</button>' : ''}` : '';
+  }
+
+  /** filters in the address (?f=), by category name, so a filtered view can be shared */
+  function saveFilters() {
+    const url = new URL(location.href);
+    if (v.filters.size) {
+      url.searchParams.set('f', JSON.stringify(Object.fromEntries([...v.filters].map(([key, keep]) =>
+        [key, v.slide.spec(key)!.categories!.filter((_, i) => keep[i])]))));
+    } else url.searchParams.delete('f');
+    history.replaceState(null, '', url);
+  }
+  function loadFilters() {
+    try {
+      const f = JSON.parse(new URLSearchParams(location.search).get('f') || '{}') as Record<string, string[]>;
+      for (const [key, names] of Object.entries(f)) {
+        const spec = v.slide.spec(key);
+        if (spec?.type !== 'category' || !Array.isArray(names)) continue;
+        const set = new Set(names.map(String));
+        v.filters.set(key, spec.categories!.map((c) => set.has(String(c))));
+      }
+      if (v.filters.size) v.setFilter([...v.filters.keys()][0], v.filters.get([...v.filters.keys()][0])!);
+    } catch { /* a malformed ?f= is ignored */ }
+  }
+
+  $('keep').onclick = () => {
+    const key = v.groupBy, vis = v.catVisible.get(key)!, prev = v.filters.get(key);
+    const keep = vis.map((x, i) => x && (!prev || prev[i]));
+    vis.fill(true);  // the filter now does the hiding
+    v.setFilter(key, keep);
+    saveFilters();
+  };
+  $('filters').addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-unfilter]');
+    if (!b) return;
+    if (b.dataset.unfilter) v.setFilter(b.dataset.unfilter, null);
+    else { v.filters.clear(); v.setFilter('', null); }
+    saveFilters();
+  });
 
   function saveColors() {
     const spec = v.slide.spec(v.groupBy);
@@ -485,7 +542,7 @@
 
   function renderStatus() {
     const shown = v.visibleCount();
-    $('status').textContent = `${shown.toLocaleString()} of ${v.slide.n.toLocaleString()} cells shown`;
+    $('status').textContent = `${shown.toLocaleString()} of ${v.slide.n.toLocaleString()} cells shown${v.filters.size ? ` · filtered by ${[...v.filters.keys()].map((k) => v.slide.spec(k)?.label ?? k).join(', ')}` : ''}`;
   }
 
   // ------------------------------------------------------------- start
@@ -567,6 +624,7 @@
 
     const panelRefresh = debounce(() => panel?.refresh(), 80);
     v.onChange = () => { renderLegend(); renderScale(); renderRegions(); renderStatus(); panelRefresh(); };
+    loadFilters();
     updatePanel();
     renderChannels();
     v.update();

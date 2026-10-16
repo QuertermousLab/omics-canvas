@@ -9,11 +9,13 @@
 
       <details open>
         <summary>Cell annotation</summary>
+        <div class="filters" data-filters hidden></div>
         <select class="input" data-group aria-label="Annotation"></select>
         <div class="legend-tools">
           <button type="button" data-all>Show all</button>
           <button type="button" data-none>Hide all</button>
           <button type="button" data-color-group hidden>Color by annotation</button>
+          <button type="button" data-keep hidden title="Keep only the cells of the categories shown, whichever annotation you color by">Keep only these cells</button>
         </div>
         <ul class="legend" data-legend></ul>
       </details>
