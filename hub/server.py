@@ -1201,6 +1201,10 @@ def forget_job(jid: str, request: Request):
         with lock:
             jobs.pop(jid, None)
             save_jobs()
+        try:  # its log goes with it
+            (STATE / 'jobs' / f'{jid}.log').unlink()
+        except OSError:
+            pass
     return {'ok': True}
 
 
