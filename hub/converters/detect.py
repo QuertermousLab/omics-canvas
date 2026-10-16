@@ -27,7 +27,7 @@ CRISPR_COLUMNS = {
     'gene': ['gene_symbol', 'response_id', 'gene', 'gene_name', 'readout_gene', 'feature', 'response'],
     'log2fc': ['sceptre_log2_fc', 'log_2_fold_change', 'log2_fc', 'log2fc', 'log2FoldChange', 'avg_log2FC', 'logFC', 'lfc'],
     'p': ['sceptre_p_value', 'p_value', 'pvalue', 'p_val', 'P.Value', 'pval', 'p'],
-    'padj': ['sceptre_adj_p_value', 'adj_p_value', 'padj', 'p_val_adj', 'adj.P.Val', 'fdr', 'FDR', 'qvalue', 'q_value'],
+    'padj': ['sceptre_adj_p_value', 'adj_p_value', 'p_adj_global', 'p_adj', 'padj', 'p_val_adj', 'adj.P.Val', 'fdr', 'FDR', 'qvalue', 'q_value'],
 }
 
 

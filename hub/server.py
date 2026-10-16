@@ -581,9 +581,12 @@ def start_job(src: Path, info, body, owner):
     if not os.access(src.parent, os.W_OK):
         out = STATE / 'converted' / f'{slugify(src.name)}-{uuid.uuid4().hex[:6]}'
     title = (body.get('title') or '').strip() or info.get('title') or src.name
-    did = unique_id(title, f'{title}-{KIND_PATH.get(body.get("kind") or info.get("kind") or "", "data")}')
     o = body.get('options') or {}
     kind = body.get('kind') or 'auto'
+    # converting again keeps the workspace's dataset (its link) for this output folder
+    prev = next((d for d in registry['datasets'] if d.get('owner') == owner['id'] and d['root'] == str(out)
+                 and (kind == 'auto' or d['kind'] == kind)), None)
+    did = prev['id'] if prev else unique_id(title, f'{title}-{KIND_PATH.get(body.get("kind") or info.get("kind") or "", "data")}')
     cmd = [PYTHON, '-u', str(HERE / 'converters' / 'convert.py'), str(src), str(out), '--id', did, '--title', title,
            '--kind', kind, '--rscript', ','.join(CONFIG.get('rscript') or ['Rscript'])]
     flag = {'default': '--default', 'pixelSize': '--pixel-size', 'spotDiameter': '--spot-diameter', 'assay': '--assay',
@@ -950,6 +953,7 @@ async def edit_dataset(id_: str, request: Request):
     if 'slides' in body and not editable:
         raise HTTPException(400, 'Only datasets with several samples can be edited this way; use Combine datasets')
     slides = combined_slides(body['slides'], workspace_of(request), d['kind']) if 'slides' in body else None
+    old_title = d['title']
     with lock:
         for k, n in (('title', 300), ('description', 2000)):
             if k in body:
@@ -972,9 +976,59 @@ async def edit_dataset(id_: str, request: Request):
             if not d.get('combined'):
                 facts.pop('source')
             d.update(facts)
+        if d['title'] != old_title:
+            rename_in_combined(d, old_title)
         save_registry()
         record_library(d)
     return public(d)
+
+
+def rename_in_combined(d, old_title):
+    """A renamed dataset is renamed where it is a sample: combined (and edited) datasets of its workspace show it by
+    its name. A sample still called by the old name takes the new one; one renamed inside the combined dataset keeps
+    its own name. Call with the lock held."""
+    single = len(samples_of(d)) <= 1
+    for c in registry['datasets']:
+        if c is d or c.get('owner') != d.get('owner') or not (c.get('combined') or c.get('edited')):
+            continue
+        changed = False
+        for sl in c['slides']:
+            if sl.get('fromDataset') != d['id']:
+                continue
+            if single and sl.get('title') == (sl.get('fromTitle') or old_title) == old_title:
+                sl['title'] = d['title']
+            sl['fromTitle'] = d['title']
+            changed = True
+        if changed:
+            if c.get('combined'):
+                c['source'] = combined_facts(c['slides'])['source']
+            record_library(c)
+
+
+def sync_sample_names():
+    """At start: samples still named after a dataset renamed before renames reached combined datasets (2026-10-16)."""
+    by = {d['id']: d for d in registry['datasets']}
+    with lock:
+        any_change = False
+        for c in registry['datasets']:
+            if not (c.get('combined') or c.get('edited')):
+                continue
+            changed = False
+            for sl in c['slides']:
+                m = by.get(sl.get('fromDataset'))
+                if not m or m is c or sl.get('fromTitle') in (None, m['title']):
+                    continue
+                if len(samples_of(m)) <= 1 and sl.get('title') == sl.get('fromTitle'):
+                    sl['title'] = m['title']
+                sl['fromTitle'] = m['title']
+                changed = True
+            if changed:
+                any_change = True
+                if c.get('combined'):
+                    c['source'] = combined_facts(c['slides'])['source']
+                record_library(c)
+        if any_change:
+            save_registry()
 
 
 @app.post('/hub/api/datasets/{id_}/restore')
@@ -1322,6 +1376,9 @@ for _jid in interrupted:  # conversions cut off by a restart continue from their
 
 library_seed()
 _library_hourly(check=False)
+
+
+sync_sample_names()
 
 
 if __name__ == '__main__':

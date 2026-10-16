@@ -109,7 +109,9 @@ folder; the page only offers what that viewer reads and points to the right one 
   `.h5ad` (spatial if `obsm["spatial"]`), Seurat v3–v5 / SingleCellExperiment `.rds` (Visium, Visium HD, Slide-seq and
   FOV/Xenium images become spatial), Space Ranger output folders (Visium, or a Visium HD bin folder such as
   `binned_outputs/square_008um`: `spatial/` + matrix), 10x `.h5`, `.loom`, Xenium output folders, and CRISPR results
-  (`.tsv/.csv/.parquet` or an `.rds` sceptre_object / data.frame: SCEPTRE, IGVF, generic target/gene/log2FC/p).
+  (`.tsv/.csv/.parquet` or an `.rds` sceptre_object / data.frame: SCEPTRE, IGVF, generic target/gene/log2FC/p;
+  readout genes given as Ensembl ids, like SCEPTRE's `response_id`, are named by symbol from GENCODE
+  (`hub/resources/gene_symbols.tsv.gz`, human and mouse), which is also how each target's knockdown is found).
   Raw integer counts are used when present (`layers["counts"]`, `raw.X`, `X`); otherwise values are shown as stored.
   A UMAP (+ Leiden clusters if there is no annotation) is computed when a single-cell dataset has no embedding.
   Tissue coordinates are always kept, whichever viewer converts the data: one conversion serves both (the single-cell

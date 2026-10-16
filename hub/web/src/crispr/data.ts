@@ -45,6 +45,8 @@ export async function loadTests(base: string): Promise<Test[]> {
 
 export class PerturbSeq {
   genes: string[] = [];
+  /** Ensembl ids of the readout genes when the source named them by id ('' where unknown) */
+  geneIds: string[] = [];
   targets: Target[] = [];
   private idx: Record<'de' | 'bygene', Float64Array> = { de: new Float64Array(0), bygene: new Float64Array(0) };
   private cache = new Map<string, Promise<Effects>>();
@@ -59,6 +61,7 @@ export class PerturbSeq {
       fetchOk(url(this.screen, 'bygene.idx')).then((r) => r.arrayBuffer()),
     ]);
     this.genes = t.genes;
+    this.geneIds = t.geneIds ?? [];
     this.targets = t.targets;
     this.idx = { de: new Float64Array(de), bygene: new Float64Array(bygene) };
     return this;

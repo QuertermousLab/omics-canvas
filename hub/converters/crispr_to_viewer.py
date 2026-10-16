@@ -19,6 +19,27 @@ import pandas as pd
 
 from detect import CRISPR_COLUMNS, find_column, guess_screen_kind
 
+ENSEMBL_ID = re.compile(r'^ENS[A-Z]*G\d{6,}(\.\d+)?$')
+SYMBOLS = Path(__file__).resolve().parents[1] / 'resources' / 'gene_symbols.tsv.gz'  # Ensembl gene id -> symbol (GENCODE)
+
+
+def ensembl_to_symbols(gene: pd.Series):
+    """Readout genes given as Ensembl ids (SCEPTRE's response_id) -> (symbol labels, ids without version), or None when
+    they are not ids. A symbol two ids share is kept for the first and written "SYMBOL (ENSG…)" for the others;
+    ids without a symbol stay ids. Targets are named by symbol, so this is what finds each target's knockdown."""
+    text = gene.astype(str)
+    if text.str.match(ENSEMBL_ID).mean() < 0.5:
+        return None
+    ids = text.str.replace(r'\.\d+$', '', regex=True)
+    table = pd.read_csv(SYMBOLS, sep='\t', comment='#', header=None, names=['id', 'symbol'], dtype=str).set_index('id')['symbol']
+    pairs = pd.DataFrame({'id': ids.unique()})
+    pairs['symbol'] = pairs['id'].map(table)
+    shared = pairs['symbol'].notna() & pairs.duplicated('symbol', keep='first')
+    label = pairs['symbol'].where(pairs['symbol'].notna(), pairs['id'])
+    label[shared] = pairs['symbol'][shared] + ' (' + pairs['id'][shared] + ')'
+    print(f'  readout genes are Ensembl ids: {int(pairs["symbol"].notna().sum()):,} of {len(pairs):,} named by symbol (GENCODE)', flush=True)
+    return ids.map(dict(zip(pairs['id'], label))), ids
+
 LOG10_MAX = 300.0
 
 
@@ -116,9 +137,14 @@ def convert_file(src: Path, out: Path, a, progress, source_label=None):
     gene = df[cols['gene']]
     if 'gene_id' in df.columns and cols['gene'] != 'gene_id':  # a few readouts have no symbol: use the id
         gene = gene.where(gene.notna(), df['gene_id'])
+    mapped = ensembl_to_symbols(gene)
+    if mapped is not None:
+        gene, ids = mapped
+        df = df.assign(gene_id=ids)
     df = df.assign(_t=df[cols['target']].astype(object).fillna('NA').astype(str),
                    _g=gene.astype(object).fillna('NA').astype(str), _lfc=lfc.astype(float),
                    _p=p.astype(float), _q=padj.astype(float))
+    df = df.assign(_gid=df['gene_id'].astype(str) if 'gene_id' in df.columns else '')
     kind = a.screen_kind if getattr(a, 'screen_kind', 'auto') != 'auto' else guess_screen_kind(df, cols)
     fdr = getattr(a, 'fdr', 0.1)
     print(f'  screen kind: {kind}; significance FDR < {fdr}', flush=True)
@@ -161,6 +187,8 @@ def enhancer(df, out: Path, fdr):
 def perturbseq(g, out: Path, fdr, progress):
     genes = sorted(g['_g'].unique())
     gene_ix = {s: i for i, s in enumerate(genes)}
+    id_of = dict(zip(g['_g'], g['_gid'])) if '_gid' in g.columns else {}
+    gene_ids = [id_of.get(x, '') for x in genes]
     names = sorted(g['_t'].unique())
     g = g.assign(t=g['_t'].map({n: i for i, n in enumerate(names)}).astype(np.int64),
                  gi=g['_g'].map(gene_ix).astype(np.int64), lp=nlog10(g['_p']), lq=nlog10(g['_q']))
@@ -182,7 +210,8 @@ def perturbseq(g, out: Path, fdr, progress):
             own = rows[rows['_g'].str.lower() == base.lower()]
         k = own.iloc[0] if len(own) else None
         targets.append(dict(
-            name=n, geneId=str(f.get('Intended_target_gene_id', '')) if 'Intended_target_gene_id' in first.columns else '',
+            name=n, geneId=str(f.get('Intended_target_gene_id', '')) if 'Intended_target_gene_id' in first.columns
+            else (str(k['_gid']) if k is not None and '_gid' in k else ''),
             chrom=str(f['_chrom'] or ''), start=int(f['_start']), end=int(f['_end']), guides=int(f['_guides']),
             knockdown=None if k is None else dict(log2fc=round(float(k['_lfc']), 3), nlog10padj=round(float(nlog10([k['_q']])[0]), 1),
                                                   significant=bool(k['_q'] < fdr)),
@@ -205,6 +234,7 @@ def perturbseq(g, out: Path, fdr, progress):
     n = blocks('t', 'gi', len(names), 'de')
     progress(80, 'Writing per-gene results')
     blocks('gi', 't', len(genes), 'bygene')
-    write_json(out / 'targets.json', dict(genes=genes, targets=targets, threshold=f'FDR < {fdr}'))
+    extra = dict(geneIds=gene_ids) if any(gene_ids) else {}
+    write_json(out / 'targets.json', dict(genes=genes, **extra, targets=targets, threshold=f'FDR < {fdr}'))
     print(f'  {len(names)} targets, {len(genes)} readout genes, {n:,} tested pairs, {int(sig.sum()):,} at FDR < {fdr}', flush=True)
     return dict(targets=len(names), genes=len(genes), tested=n, significant=int(sig.sum()))

@@ -201,8 +201,10 @@
           ${sig.slice(0, 200).map((k) => `<tr data-g="${esc(ps.genes[e.index[k]])}"><td><b>${esc(ps.genes[e.index[k]])}</b></td><td>${lfc(e.log2fc[k])}</td><td>${p10(e.nlog10padj[k])}</td></tr>`).join('')}
           </tbody></table></div>` : '<p class="muted">None at FDR < 0.1.</p>'}`;
       $('detail').querySelector<HTMLElement>('[data-csv]')!.onclick = () => {
-        save(csv(['gene', 'log2fc', 'p_value', 'adj_p_value', 'significant'], Array.from({ length: e.index.length }, (_, k) =>
-          [ps.genes[e.index[k]], e.log2fc[k], pOf(e.nlog10p[k]), pOf(e.nlog10padj[k]), e.nlog10padj[k] >= SIGNIFICANT])), `${fileBase()}_${t.name}.csv`);
+        const ids = ps.geneIds.length > 0;
+        save(csv(['gene', ...(ids ? ['gene_id'] : []), 'log2fc', 'p_value', 'adj_p_value', 'significant'], Array.from({ length: e.index.length }, (_, k) =>
+          [ps.genes[e.index[k]], ...(ids ? [ps.geneIds[e.index[k]]] : []), e.log2fc[k], pOf(e.nlog10p[k]), pOf(e.nlog10padj[k]), e.nlog10padj[k] >= SIGNIFICANT])),
+          `${fileBase()}_${t.name}.csv`);
       };
       $('detail').querySelector('tbody')?.addEventListener('click', (ev) => {
         const g = (ev.target as HTMLElement).closest<HTMLElement>('tr[data-g]')?.dataset.g;
