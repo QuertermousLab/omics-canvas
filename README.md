@@ -112,6 +112,9 @@ folder; the page only offers what that viewer reads and points to the right one 
   (`.tsv/.csv/.parquet` or an `.rds` sceptre_object / data.frame: SCEPTRE, IGVF, generic target/gene/log2FC/p;
   readout genes given as Ensembl ids, like SCEPTRE's `response_id`, are named by symbol from GENCODE
   (`hub/resources/gene_symbols.tsv.gz`, human and mouse), which is also how each target's knockdown is found).
+  A screen's interactive reports — a PerturbNMF gene program explorer next to its results
+  (`…/perturbnmf/gene_program_explorer/report/*.html`, found on its own) or any HTML page added with **Reports…** on the
+  CRISPR datasets page — open from buttons next to the explorer's screen picker, for everyone who has the screen.
   Raw integer counts are used when present (`layers["counts"]`, `raw.X`, `X`); otherwise values are shown as stored.
   A UMAP (+ Leiden clusters if there is no annotation) is computed when a single-cell dataset has no embedding.
   Tissue coordinates are always kept, whichever viewer converts the data: one conversion serves both (the single-cell

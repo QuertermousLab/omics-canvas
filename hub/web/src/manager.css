@@ -130,3 +130,9 @@
 .ds__child .ds__title { padding-left: 46px; position: relative; }
 .ds__child .ds__title::before { content: ""; position: absolute; left: 26px; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--border-strong); }
 .combine__restore { margin-right: auto; }
+.reports__list { max-height: none; }
+.reports__row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.reports__row a { text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reports__row .mono { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reports__row .chip { grid-column: 1; justify-self: start; }
+.reports__row button { grid-column: 2; grid-row: 1; }

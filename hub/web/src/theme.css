@@ -21,7 +21,7 @@
   --canvas: #ffffff; --topbar-bg: #f8f9fb; --topbar-border: #d8dee9; --topbar-chip: #eceff4; --topbar-chip-border: #d8dee9;
   --tip-bg: #2e3440; --tip-text: #eceff4;
   /* data colors that read on both themes (Nord aurora) */
-  --down: #bf616a; --up: #5f8a6a; --ns: #c0c8d4;
+  --down: #5e81ac; --up: #bf616a; --ns: #c0c8d4;  /* up-regulated red, down-regulated blue */
   color-scheme: light;
 
   /* ATHENA names -> Genome Canvas tokens */
@@ -45,7 +45,7 @@ html[data-theme="dark"] {
   --shadow: 0 6px 18px rgba(0, 0, 0, .25); --shadow-lg: 0 24px 70px rgba(0, 0, 0, .45);
   --canvas: #2e3440; --topbar-bg: #2e3440; --topbar-border: #3b4252; --topbar-chip: #3b4252; --topbar-chip-border: #434c5e;
   --tip-bg: #4c566a; --tip-text: #eceff4;
-  --down: #d08770; --up: #a3be8c; --ns: #4c566a;
+  --down: #81a1c1; --up: #e07b84; --ns: #4c566a;
   color-scheme: dark;
 }
 

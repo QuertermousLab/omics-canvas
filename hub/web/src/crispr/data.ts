@@ -11,6 +11,8 @@ export interface Screen {
   sample?: string; group?: string; groupDescription?: string;
   /** /hub/api/arcs/<dataset>[/<screen>]: enhancer-gene loops */
   arcs?: string;
+  /** interactive HTML reports of the screen (e.g. PerturbNMF gene program explorer): added in the hub or found */
+  reports?: { title: string; url: string; found: boolean }[];
 }
 
 /** One enhancer–gene test (TAP-seq). p values as -log10. */

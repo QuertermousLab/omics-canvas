@@ -98,6 +98,16 @@ export function mountManager(root: HTMLElement, kind: Kind) {
           <input class="input" type="search" placeholder="Filter" data-m-q aria-label="Filter datasets" /></div>
         <div class="table-wrap"><table class="table ds" data-m-table></table></div>
       </section>
+      ${kind === 'crispr' ? `<dialog class="ws-dialog" data-m-rdialog>
+        <form method="dialog" class="ws-card combine" data-m-rform>
+          <div class="ws-head"><div><b data-m-rtitle>Reports</b><small>Interactive HTML pages that belong to this screen, e.g. a PerturbNMF gene program explorer. They open from the CRISPR explorer, for everyone who has the screen; the files stay where they are.</small></div></div>
+          <ul class="combine__pool reports__list" data-m-rlist></ul>
+          <label class="lbl">HTML file on /nfs <input class="input mono" name="path" placeholder="/nfs/baldar/…/report/GeneProgramExplorer.html" /></label>
+          <label class="lbl">Name <input class="input" name="title" placeholder="optional — the page's own title" /></label>
+          <p class="err ws-err" data-m-rerr hidden></p>
+          <div class="ws-foot"><button type="button" class="btn btn--quiet" data-m-rclose>Close</button><button type="submit" class="btn btn--primary">Add report</button></div>
+        </form>
+      </dialog>` : ''}
       <dialog class="ws-dialog" data-m-cdialog>
         <form method="dialog" class="ws-card combine" data-m-cform>
           <div class="ws-head"><div><b data-m-ctitle>Combine datasets</b><small>${kind === 'crispr' ? 'One link with a screen picker, e.g. the screens of one study.' : 'One link with a sample picker, like a time course or several sections.'} The ${kind === 'crispr' ? 'screens' : 'samples'} stay where they are; nothing is copied.</small></div></div>
@@ -189,6 +199,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
         <td class="nowrap"><a class="mono small" href="${esc(url)}">${esc(url)}</a></td>
         <td class="ds__src">${member ? `<span class="mono small" title="${esc(member.source)}">&lrm;${esc(member.source)}&lrm;</span>` : ''}</td>
         <td class="nowrap ds__acts"><a class="btn btn--light btn--sm" href="${esc(url)}">Open</a>
+          ${member && member.kind === 'crispr' ? '<button type="button" class="btn btn--quiet btn--sm" data-act="reports">Reports…</button>' : ''}
           ${member ? `<button type="button" class="btn btn--quiet btn--sm" data-act="rename" title="Rename the dataset “${esc(member.title)}”">Rename</button>
           <button type="button" class="btn btn--quiet btn--sm" data-act="remove" title="Remove the dataset “${esc(member.title)}” from your workspace">Remove</button>` : ''}</td>
       </tr>`;
@@ -204,6 +215,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
         <td class="ds__src"><span class="mono small" title="${esc(d.source)}">&lrm;${esc(d.source)}&lrm;</span><div class="small muted">added ${fmtAgo(d.added)}</div></td>
         <td class="nowrap ds__acts"><a class="btn btn--primary btn--sm" href="${esc(d.url)}">Open</a>
           ${d.combined || d.layout === 'project' ? '<button type="button" class="btn btn--quiet btn--sm" data-act="samples">Edit samples</button>' : ''}
+          ${d.kind === 'crispr' && !d.combined ? '<button type="button" class="btn btn--quiet btn--sm" data-act="reports">Reports…</button>' : ''}
           <button type="button" class="btn btn--quiet btn--sm" data-act="rename">Rename</button>
           <button type="button" class="btn btn--quiet btn--sm" data-act="remove">Remove</button></td>
       </tr>${open ? children(d) : ''}`;
@@ -235,6 +247,7 @@ export function mountManager(root: HTMLElement, kind: Kind) {
       if (title && title !== d.title) { await api(`/hub/api/datasets/${d.id}`, { method: 'PATCH', body: { title } }).catch((err) => toast(esc(err.message))); loadDatasets(); }
     }
     if (btn.dataset.act === 'samples') openCombine(d);
+    if (btn.dataset.act === 'reports') openReports(d);
     if (btn.dataset.act === 'remove') {
       const usedBy = datasets.filter((x) => x.combined && x.id !== d.id && x.slides.some((sl) => sl.fromDataset === d.id));
       if (!confirm(`Remove “${d.title}” from your workspace?\n\nIts link ${d.url} stops working. Source data is never deleted.${d.combined ? '\nThe datasets it combines are kept and show in the list again.' : ''}${usedBy.length ? `\nIts files stay for ${usedBy.map((x) => `“${x.title}”`).join(', ')}, which combines it.` : ''}`)) return;
@@ -254,6 +267,41 @@ export function mountManager(root: HTMLElement, kind: Kind) {
   const sharedOpts = { onAdded: () => { loadDatasets(); } };
   bindShared(root, kind, sharedOpts);
   window.addEventListener('hashchange', () => { if (location.hash === '#shared' && workspace()) openShared(kind, sharedOpts); });
+
+  // ---------------------------------------------------------------- reports of a CRISPR screen
+  interface Report { path: string; title: string; found: boolean; url: string }
+  let reportsOf: Dataset | null = null;
+  function renderReports(list: Report[]) {
+    $('rlist').innerHTML = list.length ? list.map((r) => `<li class="reports__row"><a href="${esc(r.url)}" target="_blank" rel="noopener"><b>${esc(r.title)}</b> ↗</a>
+        <span class="mono small muted" title="${esc(r.path)}">${esc(r.path)}</span>${r.found ? '<span class="chip">found next to the results</span>' : ''}
+        <button type="button" class="btn btn--quiet btn--xs" data-rpath="${esc(r.path)}">Remove</button></li>`).join('')
+      : '<li class="muted small">No reports yet. A PerturbNMF report next to the screen\'s results (…/perturbnmf/gene_program_explorer/report/) is found on its own.</li>';
+  }
+  async function openReports(d: Dataset) {
+    reportsOf = d;
+    $('rtitle').textContent = `Reports of “${d.title}”`;
+    $('rerr').hidden = true;
+    $<HTMLFormElement>('rform').reset();
+    renderReports(await api<Report[]>(`/hub/api/datasets/${d.id}/reports`).catch(() => []));
+    $<HTMLDialogElement>('rdialog').showModal();
+  }
+  if (kind === 'crispr') {
+    $('rclose').onclick = () => $<HTMLDialogElement>('rdialog').close();
+    $('rform').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = new FormData($<HTMLFormElement>('rform'));
+      try {
+        renderReports(await api<Report[]>(`/hub/api/datasets/${reportsOf!.id}/reports`, { method: 'POST', body: { path: String(f.get('path') ?? '').trim(), title: String(f.get('title') ?? '').trim() } }));
+        $<HTMLFormElement>('rform').reset();
+        $('rerr').hidden = true;
+      } catch (err) { $('rerr').textContent = (err as Error).message; $('rerr').hidden = false; }
+    });
+    $('rlist').addEventListener('click', async (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-rpath]');
+      if (!b || !reportsOf) return;
+      renderReports(await api<Report[]>(`/hub/api/datasets/${reportsOf.id}/reports?path=${encodeURIComponent(b.dataset.rpath!)}`, { method: 'DELETE' }));
+    });
+  }
 
   // ---------------------------------------------------------------- combined datasets
   let editing: Dataset | null = null;

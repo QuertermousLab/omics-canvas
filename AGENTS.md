@@ -37,6 +37,9 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
   Canvas's counterpart is the `shared_tracks` table (files loaded from shared data roots, never Home folders).
 - Combined datasets (`combined: true`, `root: "combined:<id>"`) exist only in `state/registry.json`: each slide has its
   own `root` (a slide folder of another dataset). Use `slide_dir()` for slide folders, never `root / dir`.
+- CRISPR screen reports (HTML pages opened from the explorer) are kept per data folder in `state/reports.json`
+  (`add` / `hide` lists) and also found next to a screen's source (`found_reports`); `/hub/api/reports/<id>/…` serves
+  a report's own folder only.
 - Never delete or overwrite source data on `/nfs`; conversions write to `<source>.vizhub/` next to it.
 - Data colors in the viewers are data: change the interface theme tokens (`hub/web/src/theme.css`,
   Genome Canvas's Nord palette), not dataset colors.

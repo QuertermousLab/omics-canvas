@@ -9,6 +9,7 @@ is converted by converters/convert.py in a background job (progress shown in the
 
 Run: venv/bin/python server.py   (the Apache gateway on :8892 proxies /hub/, /spatial/, /single-cell/, /crispr/ here)
 """
+import hashlib
 import json
 import os
 import posixpath
@@ -23,6 +24,7 @@ import urllib.request
 import uuid
 from collections import deque
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
@@ -1229,10 +1231,11 @@ def projects(kind: str, request: Request, include: str = ''):
                     pj = json.loads((Path(sl['root']) / 'project.json').read_text())
                 except Exception:
                     continue
+                src = registry_get(sl.get('fromDataset')) or {}
                 out.append({**pj, 'id': d['id'], 'sample': sl['id'], 'group': d['title'], 'groupDescription': d.get('description') or '',
                             'title': sl['title'], 'url': f'{view_url(d)}?s={sl["id"]}', 'base': f'{base}/{sl["id"]}',
                             'arcs': f'/hub/api/arcs/{d["id"]}/{sl["id"]}', 'mine': own(d, ws), 'ownerName': d.get('ownerName'),
-                            'slides': [], 'downloads': []})
+                            'reports': report_links(sl['root'], src.get('source')), 'slides': [], 'downloads': []})
             continue
         if d['layout'] == 'screen':
             try:
@@ -1249,6 +1252,8 @@ def projects(kind: str, request: Request, include: str = ''):
                 extra = {}
             if d.get('description'):  # edited in the hub (starts as project.json's)
                 extra['description'] = d['description']
+        if d['layout'] == 'screen':
+            extra['reports'] = report_links(d['root'], d.get('source'))
         out.append({**extra, 'id': d['id'], 'title': d['title'], 'url': view_url(d), 'base': base, 'arcs': f'/hub/api/arcs/{d["id"]}', 'mine': own(d, ws),
                     'ownerName': d.get('ownerName'),
                     'technology': extra.get('technology') or d.get('technology'), 'species': extra.get('species') or d.get('species'),
@@ -1259,6 +1264,146 @@ def projects(kind: str, request: Request, include: str = ''):
 
 
 RANGE = re.compile(r'bytes=(\d*)-(\d*)')
+
+
+# --------------------------------------------------------------- reports (e.g. PerturbNMF gene program explorer)
+# Interactive HTML pages that belong to a CRISPR screen, opened from the explorer. Kept per data folder in
+# state/reports.json ({root: {"add": [{path, title}], "hide": [path]}}), so every workspace with the screen (and every
+# combined dataset holding it) sees them; PerturbNMF reports next to the SCEPTRE results are found on their own.
+
+reports = _load('reports.json', {})
+_report_cache = {}  # source -> (time, [paths]) for found reports
+_report_paths = {}  # report id -> path (filled when reports are listed)
+REPORT_GLOBS = ['perturbnmf/gene_program_explorer/report/*.html', 'perturbnmf/**/report/*.html', '*/report/*GeneProgramExplorer*.html']
+
+
+def found_reports(source):
+    """PerturbNMF report pages near a screen's source file: in the folders up to three levels above it."""
+    if not source or not source.startswith('/'):
+        return []
+    hit = _report_cache.get(source)
+    if hit and time.time() - hit[0] < 300:
+        return hit[1]
+    paths = []
+    folder = Path(source).parent
+    for _ in range(4):
+        for pattern in REPORT_GLOBS:  # the most specific first; the recursive one only when it finds nothing
+            try:
+                paths = [str(p) for p in sorted(folder.glob(pattern)) if p.is_file()]
+            except OSError:
+                paths = []
+            if paths:
+                break
+        if paths or folder.parent == folder:
+            break
+        folder = folder.parent
+    paths = list(dict.fromkeys(paths))[:20]
+    _report_cache[source] = (time.time(), paths)
+    return paths
+
+
+def report_title(path):
+    """The page's <title> and what its file name adds (e.g. "Gene Program Explorer · Combined G1 G2"), else the name."""
+    stem = Path(path).stem.replace('_', ' ')
+    try:
+        with open(path, 'rb') as f:
+            m = re.search(rb'<title[^>]*>(.*?)</title>', f.read(65536), re.I | re.S)
+    except OSError:
+        m = None
+    title = re.sub(r'\s+', ' ', m.group(1).decode('utf-8', 'replace')).strip() if m else ''
+    if not title:
+        return stem[:120]
+    squash = lambda t: re.sub(r'[^a-z0-9]', '', t.lower())
+    extra = stem
+    for word in re.findall(r'[A-Za-z0-9]+', title):  # the file name without the title's words
+        extra = re.sub(rf'(?i){re.escape(word)}', '', extra)
+    extra = re.sub(r'\s+', ' ', extra).strip(' -·')
+    return (f'{title} · {extra}' if extra and squash(extra) not in squash(title) else title)[:120]
+
+
+def report_list(root, source):
+    """[{path, title, found}] for a screen folder: those added in the hub, then those found, minus hidden ones."""
+    entry = reports.get(str(root)) or {}
+    hidden = set(entry.get('hide') or [])
+    out = [dict(path=r['path'], title=r.get('title') or report_title(r['path']), found=False) for r in entry.get('add') or []
+           if os.path.isfile(r['path'])]
+    seen = {r['path'] for r in out}
+    out += [dict(path=p, title=report_title(p), found=True) for p in found_reports(source) if p not in seen and p not in hidden]
+    return out
+
+
+def report_id(path):
+    rid = hashlib.sha1(path.encode()).hexdigest()[:12]
+    _report_paths[rid] = path
+    return rid
+
+
+def report_links(root, source):
+    return [dict(title=r['title'], url=f'/hub/api/reports/{report_id(r["path"])}/{quote(Path(r["path"]).name)}', found=r['found'])
+            for r in report_list(root, source)]
+
+
+@app.get('/hub/api/reports/{rid}/{rest:path}')
+def report_file(rid: str, rest: str, request: Request):
+    """A report page and the files next to it (its folder only)."""
+    path = _report_paths.get(rid)
+    if not path:  # not listed since the hub started: look through the screens
+        for d in registry['datasets']:
+            if d['kind'] == 'crispr':
+                for sl in (d['slides'] or [dict(root=d['root'])]):
+                    report_links(sl.get('root') or d['root'], (registry_get(sl.get('fromDataset')) or d).get('source'))
+        path = _report_paths.get(rid)
+    if not path:
+        raise HTTPException(404, 'no such report')
+    folder = Path(path).parent
+    rel = posixpath.normpath(rest or Path(path).name)
+    if rel.startswith(('..', '/')):
+        raise HTTPException(400, 'bad path')
+    target = folder / rel
+    if not target.is_file():
+        raise HTTPException(404, f'{rel} not found')
+    return FileResponse(target, headers={'cache-control': 'private, max-age=300'})
+
+
+@app.get('/hub/api/datasets/{id_}/reports')
+def dataset_reports(id_: str, request: Request):
+    d = dataset(id_)
+    require_owner(d, workspace_of(request))
+    return [dict(r, url=f'/hub/api/reports/{report_id(r["path"])}/{quote(Path(r["path"]).name)}') for r in report_list(d['root'], d.get('source'))]
+
+
+@app.post('/hub/api/datasets/{id_}/reports')
+async def add_report(id_: str, request: Request):
+    """Link an HTML report to a screen (for everyone who has the screen)."""
+    d = dataset(id_)
+    require_owner(d, workspace_of(request))
+    if d['kind'] != 'crispr' or d.get('combined'):
+        raise HTTPException(400, 'Reports belong to a CRISPR screen (add them to the screens a combined dataset holds)')
+    body = await request.json()
+    p = checked_path(str(body.get('path') or '').strip())
+    if not p.is_file() or p.suffix.lower() not in ('.html', '.htm'):
+        raise HTTPException(400, 'Give an HTML file (.html)')
+    title = str(body.get('title') or '').strip()[:120]
+    with lock:
+        entry = reports.setdefault(d['root'], {})
+        entry['add'] = [r for r in entry.get('add') or [] if r['path'] != str(p)] + [dict(path=str(p), **({'title': title} if title else {}))]
+        entry['hide'] = [h for h in entry.get('hide') or [] if h != str(p)]
+        _save('reports.json', reports)
+    return dataset_reports(id_, request)
+
+
+@app.delete('/hub/api/datasets/{id_}/reports')
+def remove_report(id_: str, path: str, request: Request):
+    """Unlink a report (a found one is hidden). The HTML file is never deleted."""
+    d = dataset(id_)
+    require_owner(d, workspace_of(request))
+    with lock:
+        entry = reports.setdefault(d['root'], {})
+        entry['add'] = [r for r in entry.get('add') or [] if r['path'] != path]
+        if path in found_reports(d.get('source')):
+            entry['hide'] = list(dict.fromkeys((entry.get('hide') or []) + [path]))
+        _save('reports.json', reports)
+    return dataset_reports(id_, request)
 
 
 # --------------------------------------------------------------- enhancer arcs for Genome Canvas

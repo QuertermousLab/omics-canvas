@@ -115,7 +115,10 @@ spatial viewer (annotation, gene, regions, display, PNG); the layout menu switch
 ## 5. CRISPR explorer
 
 `/crispr/` — enhancer screens (e.g. TAP-seq) and Perturb-seq, from SCEPTRE, IGVF or any target / gene / log2FC /
-p-value table. The menu at the top switches screens (combined screens are listed under their name).
+p-value table. The menu at the top switches screens (combined screens are listed under their name). A screen's
+interactive reports, such as a PerturbNMF gene program explorer, open from buttons next to it: one next to the screen's
+results (`…/perturbnmf/gene_program_explorer/report/`) is found on its own, others are added with **Reports…** on the
+CRISPR datasets page. Volcano plots: up-regulated red, down-regulated blue.
 
 **Enhancer screens** — every enhancer–gene test:
 

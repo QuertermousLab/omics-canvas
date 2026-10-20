@@ -305,6 +305,11 @@
     ].join('');
     $<HTMLSelectElement>('screen').onchange = (e) => { location.href = (e.target as HTMLSelectElement).value; };
     $('facts').textContent = [screen.species, screen.cell, screen.assembly, screen.method].filter(Boolean).join(' · ');
+    // the screen's interactive reports (PerturbNMF gene program explorer …), each opened as its own page
+    const reports = screen.reports ?? [];
+    $('reports').hidden = !reports.length;
+    $('reports').innerHTML = reports.map((r) => `<a class="btn btn--light btn--sm" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.title)} — opens the report">
+      <svg class="icon"><use href="#i-file"/></svg><span>${esc(r.title)}</span> ↗</a>`).join('');
     $('source').innerHTML = `${screen.group ? `<b>${esc(screen.group)}</b>${screen.groupDescription ? ` — ${esc(screen.groupDescription)}` : ''}<br>` : ''}${esc(screen.description ?? '')}${screen.citation ? ` <em>${esc(screen.citation)}</em>.` : ''}
       Data: ${(screen.sources ?? []).map((s) => s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">IGVF ${esc(s.accession)}</a>` : `<span class="mono">${esc(s.path ?? s.accession)}</span>`).join(', ')}`;
     document.title = `${screen.title} · CRISPR explorer · Omics Canvas`;
