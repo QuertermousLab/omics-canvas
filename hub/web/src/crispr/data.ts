@@ -13,6 +13,8 @@ export interface Screen {
   arcs?: string;
   /** interactive HTML reports of the screen (e.g. PerturbNMF gene program explorer): added in the hub or found */
   reports?: { title: string; url: string; found: boolean }[];
+  /** the dataset whose reports these are (a combined dataset's screen: the screen it came from), and whether you may change them */
+  reportsOf?: string | null; reportsEditable?: boolean;
 }
 
 /** One enhancer–gene test (TAP-seq). p values as -log10. */

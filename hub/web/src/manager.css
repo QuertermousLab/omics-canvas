@@ -136,3 +136,6 @@
 .reports__row .mono { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reports__row .chip { grid-column: 1; justify-self: start; }
 .reports__row button { grid-column: 2; grid-row: 1; }
+.reports__bar { display: flex; gap: 6px; align-items: center; }
+.reports__bar .input { flex: 1; min-width: 0; }
+.reports__files { max-height: 240px; margin-top: 6px; border: 1px solid var(--border); border-radius: var(--radius); }

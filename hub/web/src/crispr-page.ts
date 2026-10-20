@@ -4,6 +4,7 @@
   import { css, esc, initChrome, loadWorkspace } from './common';
   import { mountManager } from './manager';
   import { bindShared, sharedButton } from './shared';
+  import { openReportsDialog } from './reports-dialog';
   import { canvasGenome, canvasURL, enhancerArcTracks, geneLinks, region, listScreens, loadTests, PerturbSeq, SIGNIFICANT, type Screen, type Test } from './crispr/data';
   import { Scatter } from './crispr/plots';
   import { listProjects, type Project } from './spatial/data';
@@ -305,11 +306,24 @@
     ].join('');
     $<HTMLSelectElement>('screen').onchange = (e) => { location.href = (e.target as HTMLSelectElement).value; };
     $('facts').textContent = [screen.species, screen.cell, screen.assembly, screen.method].filter(Boolean).join(' · ');
-    // the screen's interactive reports (PerturbNMF gene program explorer …), each opened as its own page
-    const reports = screen.reports ?? [];
-    $('reports').hidden = !reports.length;
-    $('reports').innerHTML = reports.map((r) => `<a class="btn btn--light btn--sm" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.title)} — opens the report">
-      <svg class="icon"><use href="#i-file"/></svg><span>${esc(r.title)}</span> ↗</a>`).join('');
+    // the screen's interactive reports (PerturbNMF gene program explorer …), each opened as its own page; the
+    // screen's owner locates and manages them (reports-dialog.ts)
+    const showReports = (sc: Screen) => {
+      const reports = sc.reports ?? [];
+      const manage = sc.reportsEditable && sc.reportsOf;
+      $('reports').hidden = !reports.length && !manage;
+      $('reports').innerHTML = reports.map((r) => `<a class="btn btn--light btn--sm" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(r.title)} — opens the report">
+        <svg class="icon"><use href="#i-file"/></svg><span>${esc(r.title)}</span> ↗</a>`).join('')
+        + (manage ? (reports.length
+          ? '<button type="button" class="icon-btn sm" data-manage title="Locate and manage the Gene Program Explorer HTML" aria-label="Manage reports"><svg class="icon"><use href="#i-folder"/></svg></button>'
+          : '<button type="button" class="btn btn--quiet btn--sm" data-manage title="Locate the PerturbNMF Gene Program Explorer HTML of this screen"><svg class="icon"><use href="#i-folder"/></svg><span>Link Gene Program Explorer…</span></button>') : '');
+      const b = document.querySelector<HTMLElement>('[data-reports] [data-manage]');
+      if (b) b.onclick = () => openReportsDialog(sc.reportsOf!, sc.title, async () => {
+        const fresh = (await listScreens(screenId).catch(() => [] as Screen[])).find((x) => x.id === sc.id && (x.sample ?? '') === (sc.sample ?? ''));
+        if (fresh) { sc.reports = fresh.reports; showReports(sc); }
+      }, sc.sources?.find((x) => x.path)?.path);
+    };
+    showReports(screen);
     $('source').innerHTML = `${screen.group ? `<b>${esc(screen.group)}</b>${screen.groupDescription ? ` — ${esc(screen.groupDescription)}` : ''}<br>` : ''}${esc(screen.description ?? '')}${screen.citation ? ` <em>${esc(screen.citation)}</em>.` : ''}
       Data: ${(screen.sources ?? []).map((s) => s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">IGVF ${esc(s.accession)}</a>` : `<span class="mono">${esc(s.path ?? s.accession)}</span>`).join(', ')}`;
     document.title = `${screen.title} · CRISPR explorer · Omics Canvas`;

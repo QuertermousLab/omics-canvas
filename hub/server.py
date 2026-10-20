@@ -1235,7 +1235,11 @@ def projects(kind: str, request: Request, include: str = ''):
                 out.append({**pj, 'id': d['id'], 'sample': sl['id'], 'group': d['title'], 'groupDescription': d.get('description') or '',
                             'title': sl['title'], 'url': f'{view_url(d)}?s={sl["id"]}', 'base': f'{base}/{sl["id"]}',
                             'arcs': f'/hub/api/arcs/{d["id"]}/{sl["id"]}', 'mine': own(d, ws), 'ownerName': d.get('ownerName'),
-                            'reports': report_links(sl['root'], src.get('source')), 'slides': [], 'downloads': []})
+                            'reports': report_links(sl['root'], src.get('source')),
+                            # reports belong to the screen the sample comes from; its owner manages them
+                            'reportsOf': src.get('id') if src.get('layout') == 'screen' else None,
+                            'reportsEditable': bool(src) and own(src, ws) and src.get('layout') == 'screen',
+                            'slides': [], 'downloads': []})
             continue
         if d['layout'] == 'screen':
             try:
@@ -1253,7 +1257,7 @@ def projects(kind: str, request: Request, include: str = ''):
             if d.get('description'):  # edited in the hub (starts as project.json's)
                 extra['description'] = d['description']
         if d['layout'] == 'screen':
-            extra['reports'] = report_links(d['root'], d.get('source'))
+            extra.update(reports=report_links(d['root'], d.get('source')), reportsOf=d['id'], reportsEditable=own(d, ws))
         out.append({**extra, 'id': d['id'], 'title': d['title'], 'url': view_url(d), 'base': base, 'arcs': f'/hub/api/arcs/{d["id"]}', 'mine': own(d, ws),
                     'ownerName': d.get('ownerName'),
                     'technology': extra.get('technology') or d.get('technology'), 'species': extra.get('species') or d.get('species'),
@@ -1303,22 +1307,14 @@ def found_reports(source):
 
 
 def report_title(path):
-    """The page's <title> and what its file name adds (e.g. "Gene Program Explorer · Combined G1 G2"), else the name."""
-    stem = Path(path).stem.replace('_', ' ')
+    """The page's own <title> (a PerturbNMF report: "Gene Program Explorer"), else its file name."""
     try:
         with open(path, 'rb') as f:
             m = re.search(rb'<title[^>]*>(.*?)</title>', f.read(65536), re.I | re.S)
     except OSError:
         m = None
     title = re.sub(r'\s+', ' ', m.group(1).decode('utf-8', 'replace')).strip() if m else ''
-    if not title:
-        return stem[:120]
-    squash = lambda t: re.sub(r'[^a-z0-9]', '', t.lower())
-    extra = stem
-    for word in re.findall(r'[A-Za-z0-9]+', title):  # the file name without the title's words
-        extra = re.sub(rf'(?i){re.escape(word)}', '', extra)
-    extra = re.sub(r'\s+', ' ', extra).strip(' -·')
-    return (f'{title} · {extra}' if extra and squash(extra) not in squash(title) else title)[:120]
+    return (title or Path(path).stem.replace('_', ' '))[:120]
 
 
 def report_list(root, source):
@@ -1402,6 +1398,8 @@ def remove_report(id_: str, path: str, request: Request):
         entry['add'] = [r for r in entry.get('add') or [] if r['path'] != path]
         if path in found_reports(d.get('source')):
             entry['hide'] = list(dict.fromkeys((entry.get('hide') or []) + [path]))
+        if not entry['add'] and not entry.get('hide'):
+            reports.pop(d['root'], None)
         _save('reports.json', reports)
     return dataset_reports(id_, request)
 
