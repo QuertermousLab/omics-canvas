@@ -2,7 +2,7 @@
 // segmentation polygons, colored by an annotation, a numeric column or a gene, plus
 // rectangle/lasso selection. The page (src/pages/data/spatial/view.astro) owns the controls.
 import { Deck, OrthographicView, type OrthographicViewState, type PickingInfo } from '@deck.gl/core';
-import { BitmapLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer } from '@deck.gl/layers';
+import { BitmapLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from '@deck.gl/layers';
 import { TileLayer } from '@deck.gl/geo-layers';
 import { DataFilterExtension } from '@deck.gl/extensions';
 import { categoryColors, colormapLut, hexToRgb } from './colors';
@@ -46,6 +46,11 @@ export class Viewer {
   shape: 'auto' | 'points' | 'polygons' = 'auto';
   layout: 'spatial' | string = 'spatial';
   showImage = true;
+  /** names of the annotation's categories drawn on an embedding (UMAP …) at their cells' center; 0 = off, else px */
+  labelSize = 0;
+  /** label text and its outline (the page picks them for the plot background) */
+  labelInk: [number, number, number] = [46, 52, 64];
+  labelHalo: [number, number, number, number] = [255, 255, 255, 220];
   channels: Channel[];
   tool: Tool = 'pan';
 
@@ -68,6 +73,7 @@ export class Viewer {
   private layoutPos!: Float32Array;
   private layoutBounds: [number, number, number, number] = [0, 0, 1, 1];
   private ids: string[] | null = null;
+  private labelData: { key: string; items: { text: string; position: [number, number] }[] } | null = null;
   private overlay: SVGSVGElement;
   private scalebar: HTMLElement;
   private draft: [number, number][] | null = null;
@@ -652,8 +658,62 @@ export class Viewer {
       } as never));
     }
 
+    if (this.labelSize && this.labelsPossible()) {
+      layers.push(new TextLayer({
+        id: 'labels',
+        data: this.labels(),
+        getText: (d: { text: string }) => d.text,
+        getPosition: (d: { position: [number, number] }) => d.position,
+        getSize: this.labelSize,
+        sizeUnits: 'pixels',
+        getColor: this.labelInk,
+        fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif',
+        fontWeight: 600,
+        characterSet: 'auto',
+        // the outline is measured on the 64 px font atlas: ~2 px around a 14 px label
+        fontSettings: { sdf: true, fontSize: 64, buffer: 16, radius: 16 },
+        outlineWidth: 9,
+        outlineColor: this.labelHalo,
+        getTextAnchor: 'middle',
+        getAlignmentBaseline: 'center',
+        updateTriggers: { getColor: this.labelInk.join(), getText: this.labelData?.key },
+      }));
+    }
+
     this.deck.setProps({ layers: layers as never });
     this.updateScalebar();
+  }
+
+  /** Labels can be drawn: an embedding (on the tissue a cell type is spread over many places). */
+  labelsPossible() { return this.layout !== 'spatial'; }
+
+  /** One label per category with cells shown: at the shown cell nearest the median of its cells. */
+  private labels() {
+    const key = `${this.colorVersion}:${this.layout}:${this.groupBy}`;
+    if (this.labelData?.key === key) return this.labelData.items;
+    const spec = this.slide.spec(this.groupBy), items: { text: string; position: [number, number] }[] = [];
+    if (spec?.type === 'category') {
+      const codes = this.slide.obs(this.groupBy), p = this.layoutPos, n = this.slide.n, k = spec.categories!.length;
+      // the shown cells of each category, grouped (counting sort)
+      const count = new Uint32Array(k + 1);
+      for (let i = 0; i < n; i++) if (this.filter[i] && Number.isFinite(p[i * 2])) count[codes[i] + 1]++;
+      for (let c = 0; c < k; c++) count[c + 1] += count[c];
+      const at = count.slice(0, k), idx = new Uint32Array(count[k]);
+      for (let i = 0; i < n; i++) if (this.filter[i] && Number.isFinite(p[i * 2])) idx[at[codes[i]]++] = i;
+      const median = (a: number[]) => { a.sort((x, y) => x - y); return a[a.length >> 1]; };
+      for (let c = 0; c < k; c++) {
+        const from = count[c], m = count[c + 1] - from;
+        if (!m) continue;
+        const step = Math.max(1, Math.floor(m / 4000)), xs: number[] = [], ys: number[] = [];
+        for (let j = from; j < from + m; j += step) { xs.push(p[idx[j] * 2]); ys.push(p[idx[j] * 2 + 1]); }
+        const mx = median(xs), my = median(ys);
+        let best = 0, bd = Infinity;  // a split cluster's median can fall between its parts: snap to a cell
+        for (let j = 0; j < xs.length; j++) { const d = (xs[j] - mx) ** 2 + (ys[j] - my) ** 2; if (d < bd) { bd = d; best = j; } }
+        items.push({ text: String(spec.categories![c]), position: [xs[best], ys[best]] });
+      }
+    }
+    this.labelData = { key, items };
+    return items;
   }
 
   private tooltip(info: PickingInfo) {

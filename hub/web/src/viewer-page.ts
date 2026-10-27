@@ -466,7 +466,25 @@
 
   // ------------------------------------------------------------- display + toolbar
 
-  $<HTMLSelectElement>('layout').onchange = (e) => { v.setLayout((e.target as HTMLSelectElement).value); v.update(); };
+  $<HTMLSelectElement>('layout').onchange = (e) => { v.setLayout((e.target as HTMLSelectElement).value); v.update(); renderLabelsRow(); };
+  // the annotation's category names on an embedding (remembered in this browser, like the background)
+  const LABEL_KEY = 'vizhub-plot-labels';
+  const savedLabels = () => { try { return localStorage.getItem(LABEL_KEY); } catch { return null; } };
+  function renderLabelsRow() {
+    if (!v) return;
+    const on = v.labelSize > 0;
+    $('labels-row').hidden = !v.labelsPossible();
+    $<HTMLInputElement>('labels').checked = on;
+    $('label-size').hidden = !on;
+  }
+  function setLabels(size: number) {
+    v.labelSize = size;
+    try { localStorage.setItem(LABEL_KEY, String(size || -(+$<HTMLInputElement>('label-size').value))); } catch { /* private window */ }
+    renderLabelsRow();
+    v.render();
+  }
+  $<HTMLInputElement>('labels').onchange = (e) => setLabels((e.target as HTMLInputElement).checked ? +$<HTMLInputElement>('label-size').value : 0);
+  $<HTMLInputElement>('label-size').oninput = (e) => setLabels(+(e.target as HTMLInputElement).value);
   $<HTMLSelectElement>('shape').onchange = (e) => { v.shape = (e.target as HTMLSelectElement).value as typeof v.shape; v.render(); };
   $<HTMLInputElement>('size').oninput = (e) => { v.pointScale = +(e.target as HTMLInputElement).value; v.render(); };
   $<HTMLInputElement>('opacity').oninput = (e) => { v.opacity = +(e.target as HTMLInputElement).value; v.render(); };
@@ -492,6 +510,8 @@
     $<HTMLInputElement>('bg-theme').checked = !customBg();
     if (v) {
       v.belowGray = dark ? [96, 103, 115] : [200, 205, 213];
+      v.labelInk = dark ? [236, 239, 244] : [46, 52, 64];
+      v.labelHalo = dark ? [20, 24, 31, 220] : [255, 255, 255, 220];
       v.update();
     }
   }
@@ -624,6 +644,11 @@
 
     const panelRefresh = debounce(() => panel?.refresh(), 80);
     v.onChange = () => { renderLegend(); renderScale(); renderRegions(); renderStatus(); panelRefresh(); };
+    // labels: a size (on), or minus the size last used (off)
+    const lab = +(savedLabels() ?? -16);
+    if (lab) $<HTMLInputElement>('label-size').value = String(Math.abs(lab));
+    v.labelSize = lab > 0 ? lab : 0;
+    renderLabelsRow();
     loadFilters();
     updatePanel();
     renderChannels();

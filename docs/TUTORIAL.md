@@ -76,7 +76,8 @@ coordinates. Without a dataset in the address the page lists your datasets ([sec
   while you look at another column, click **Keep only these cells** — e.g. show only *donor1* under *individual*,
   keep, then color by *cell type*: only donor1's cells are drawn and counted. Filters appear as chips
   (*Only individual: donor1 ×*), combine with each other, apply to gene coloring, regions and CSV export, and are kept
-  in the page address.
+  in the page address. On a UMAP or other embedding, **Labels on the plot** writes each shown category's name at the
+  center of its cells (the slider sets their size; they are also in PNG exports, and the choice is remembered).
 - **Gene expression**: type a gene (or pick a numeric annotation such as counts). Choose log-normalized or raw values,
   a colormap, the min / max range (histogram above), and whether cells at or below the minimum are gray, hidden or
   colored. With several assays (e.g. RNA, peaks, gene activity, chromVAR) choose it in **Assay**.

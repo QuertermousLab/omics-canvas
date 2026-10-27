@@ -17,6 +17,10 @@
           <button type="button" data-color-group hidden>Color by annotation</button>
           <button type="button" data-keep hidden title="Keep only the cells of the categories shown, whichever annotation you color by">Keep only these cells</button>
         </div>
+        <div class="plot-labels" data-labels-row hidden>
+          <label class="check"><input type="checkbox" data-labels /> Labels on the plot</label>
+          <input type="range" min="8" max="32" step="1" value="16" data-label-size aria-label="Label size" title="Label size" hidden />
+        </div>
         <ul class="legend" data-legend></ul>
       </details>
 
