@@ -2,7 +2,8 @@
 // tracks — everything any workspace has loaded, converted or combined for one viewer; tick some and add them
 // (nothing is copied or converted). "Not in my workspace" (on by default, like Genome Canvas's "Only hg38") leaves
 // out what the caller already has. Opened from the viewers' side panels, the CRISPR explorer's header and the dataset
-// pages. "Shared by you" lists the caller's own entries to unshare.
+// pages. "Shared by you" lists the caller's own entries to unshare. A combined dataset is listed with the data it
+// combines inside it (expand it, as on the dataset pages); those are not listed again on their own.
 import { api, esc, fmtAgo, fmtBytes, requireWorkspace, setSharedOpener, toast } from './common';
 
 export type Kind = 'spatial' | 'singlecell' | 'crispr';
@@ -44,8 +45,23 @@ export async function loadShared(kind: Kind) {
   return entries;
 }
 
-/** How many shared datasets the caller does not have yet. */
-export const newCount = (list: SharedEntry[]) => list.filter((e) => !e.mine).length;
+/** The shared data a combined dataset is made of (each sample's folder is, or is inside, one of them). */
+function membersOf(c: SharedEntry, list: SharedEntry[]) {
+  if (!c.combined) return [];
+  const inside = (root: string | undefined, e: SharedEntry) => !!root && (root === e.root || root.startsWith(`${e.root.replace(/\/+$/, '')}/`));
+  const found = c.slides.map((sl) => list.find((e) => !e.combined && inside(sl.root, e))).filter((e): e is SharedEntry => !!e);
+  return [...new Set(found)];
+}
+
+/** Top-level rows: combined datasets (with their members) and data not inside any of them. */
+function grouped(list: SharedEntry[]) {
+  const members = new Map(list.filter((e) => e.combined).map((c) => [c.key, membersOf(c, list)]));
+  const inside = new Set([...members.values()].flat().map((e) => e.key));
+  return list.filter((e) => !inside.has(e.key)).map((e) => ({ e, members: members.get(e.key) ?? [] }));
+}
+
+/** How many shared datasets the caller does not have yet (a combined one counts once). */
+export const newCount = (list: SharedEntry[]) => grouped(list).filter(({ e }) => !e.mine).length;
 
 /** Fill a count badge (e.g. on a button) with the number not in the caller's workspace. */
 export async function showCount(el: HTMLElement | null, kind: Kind) {
@@ -77,7 +93,9 @@ let dlg: HTMLDialogElement | null = null;
 let current: { kind: Kind; opts: Options } | null = null;
 const selected = new Set<string>();
 let yours = false;
-const NEW_KEY = 'vizhub-shared-new-only';
+const NEW_KEY = 'vizhub-shared-new-only', OPEN_KEY = 'vizhub-shared-expanded';
+const expanded = new Set<string>((() => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]; } catch { return []; } })());
+const saveExpanded = () => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...expanded])); } catch { /* private window */ } };
 
 function build() {
   dlg = document.createElement('dialog');
@@ -109,7 +127,7 @@ function build() {
     render();
   };
   q('refresh').onclick = () => refresh();
-  q('all').onclick = () => { visible().filter((e) => !e.mine).forEach((e) => selected.add(e.key)); render(); };
+  q('all').onclick = () => { visible().filter(({ e }) => !e.mine).forEach(({ e }) => selected.add(e.key)); render(); };
   q('clear').onclick = () => { selected.clear(); render(); };
   q('yours').onclick = () => { yours = !yours; render(); };
   q('add').onclick = () => addSelected();
@@ -123,7 +141,11 @@ function build() {
     const t = e.target as HTMLElement, row = t.closest<HTMLElement>('[data-key]');
     if (!row) return;
     const entry = entries.find((x) => x.key === row.dataset.key)!;
-    if (t.closest('[data-sh-unshare]')) {
+    if (t.closest('[data-sh-expand]')) {
+      expanded.has(entry.key) ? expanded.delete(entry.key) : expanded.add(entry.key);
+      saveExpanded();
+      render();
+    } else if (t.closest('[data-sh-unshare]')) {
       if (!confirm(`Take “${entry.title}” off the shared list?\n\nOthers no longer see it here (those who added it keep it). Your own dataset is kept; it is shared again when you add it again.`)) return;
       try { await api('/hub/api/library/hide', { method: 'POST', body: { key: entry.key } }); } catch (err) { toast(esc((err as Error).message), 8000); }
       refresh();
@@ -136,49 +158,63 @@ function build() {
 
 const text = (e: SharedEntry) => `${e.title} ${e.source ?? ''} ${e.root} ${e.ownerName ?? ''} ${e.users.join(' ')} ${e.technology ?? ''} ${e.species ?? ''} ${e.description ?? ''} ${e.slides.map((s) => s.title).join(' ')}`.toLowerCase();
 
+const query = () => dlg!.querySelector<HTMLInputElement>('[data-sh-q]')!.value.trim().toLowerCase();
+
+/** The top-level rows shown: a combined dataset also when only data inside it qualifies (it then opens). */
 function visible() {
-  const query = dlg!.querySelector<HTMLInputElement>('[data-sh-q]')!.value.trim().toLowerCase();
-  const onlyNew = dlg!.querySelector<HTMLInputElement>('[data-sh-new]')!.checked;
-  return entries.filter((e) => (yours ? e.author : !onlyNew || !e.mine) && (!query || text(e).includes(query)));
+  const q = query(), onlyNew = dlg!.querySelector<HTMLInputElement>('[data-sh-new]')!.checked;
+  const keep = (e: SharedEntry) => yours ? e.author : !onlyNew || !e.mine;
+  return grouped(entries).filter(({ e, members }) => (keep(e) || members.some(keep)) && (!q || text(e).includes(q) || members.some((m) => text(m).includes(q))));
 }
 
 function render() {
   if (!dlg || !current) return;
   const { kind } = current, [one, many] = NOUN[kind];
   const q = (s: string) => dlg!.querySelector<HTMLElement>(`[data-sh-${s}]`)!;
-  const shown = visible(), have = entries.filter((e) => e.mine).length, own = entries.filter((e) => e.author).length;
+  const shown = visible(), top = grouped(entries), have = top.filter(({ e }) => e.mine).length, own = top.filter(({ e }) => e.author).length;
   for (const k of [...selected]) if (!entries.some((e) => e.key === k && !e.mine)) selected.delete(k);
   q('title').textContent = yours ? 'Shared by you' : `Shared ${many}`;
   q('note').textContent = yours
     ? `The ${many} you added first: everyone else sees them here. Unshare takes one off the list; your own ${one} is kept.`
     : `Every ${one} anyone in the lab has loaded, converted or combined${have ? ` (${have} already in your workspace)` : ''}. Adding one copies and converts nothing. ${many[0].toUpperCase()}${many.slice(1)} whose files were deleted drop off the list; ones converted again or renamed by their author are updated.`;
   const head = `<div class="sh-row sh-row--head"><span></span><span>NAME</span><span>CONTENTS</span><span>SHARED BY</span><span>${yours ? '' : 'UPDATED'}</span></div>`;
-  const rows = shown.map((e) => {
+  const groups = shown.some(({ members }) => members.length);
+  const row = (e: SharedEntry, child: boolean, members: SharedEntry[], open: boolean) => {
     const others = e.users.filter((u) => u !== e.ownerName);
     const flags = [e.updating ? '<span class="chip chip--warn" title="Its files are being written again right now">converting again</span>' : '',
       e.sourceChanged ? '<span class="chip chip--warn" title="The source file changed after this conversion; select it under Add data to convert it again">source changed</span>' : '',
       e.sourceMissing ? '<span class="chip" title="The source file was moved or deleted; the converted files still open">source removed</span>' : ''].join('');
-    const where = e.combined ? `combines ${e.slides.length} folders: ${e.slides.map((s) => s.title).join(', ')}` : e.source ?? e.root;
+    const where = e.combined ? `combines ${e.slides.length} ${kind === 'crispr' ? 'screens' : 'samples'}: ${e.slides.map((s) => s.title).join(', ')}` : e.source ?? e.root;
     const on = selected.has(e.key), have = e.mine && !yours;
-    return `<div class="sh-row${on ? ' on' : ''}${have ? ' sh-row--mine' : ''}" data-key="${esc(e.key)}">
+    const toggle = members.length ? `<button type="button" class="icon-btn sm ghost ds__toggle sh-toggle-btn${open ? ' open' : ''}" data-sh-expand aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} the ${members.length} ${members.length === 1 ? one : many} it combines"><svg class="icon"><use href="#i-chevron-down"/></svg></button>`
+      : groups && !child ? '<span class="sh-toggle-btn"></span>' : '';
+    return `<div class="sh-row${on ? ' on' : ''}${have ? ' sh-row--mine' : ''}${child ? ' sh-row--child' : ''}" data-key="${esc(e.key)}">
       <span>${yours ? '' : have ? '<input type="checkbox" checked disabled title="Already in your workspace" />' : `<input type="checkbox" ${on ? 'checked' : ''} aria-label="Select ${esc(e.title)}" />`}</span>
-      <button type="button" class="sh-name" title="${esc(where)}"><span class="sh-icon">${e.combined ? 'SET' : e.slides.length > 1 ? 'PROJ' : kind === 'crispr' ? 'CRISPR' : 'DATA'}</span>
-        <span class="sh-name__text"><strong>${esc(e.title)} ${flags}</strong><small>&lrm;${esc(where)}&lrm;</small></span></button>
+      <span class="sh-namecell">${toggle}<button type="button" class="sh-name" title="${esc(where)}"><span class="sh-icon">${e.combined ? 'SET' : e.slides.length > 1 ? 'PROJ' : kind === 'crispr' ? 'CRISPR' : 'DATA'}</span>
+        <span class="sh-name__text"><strong>${esc(e.title)} ${flags}</strong><small>&lrm;${esc(where)}&lrm;</small></span></button></span>
       <small title="${esc(facts(e))}">${esc(facts(e))}</small>
       <small title="${esc(e.users.join(', '))}">${esc(e.author ? 'you' : e.ownerName ?? '?')}${others.length ? ` + ${others.length}` : ''}</small>
-      <span class="sh-end">${yours ? `${e.openUrl ? `<a class="btn btn--quiet btn--xs" href="${esc(e.myUrl ?? e.openUrl)}">Open</a>` : ''}<button type="button" class="btn btn--light btn--xs" data-sh-unshare>Unshare</button>`
+      <span class="sh-end">${yours ? (e.author ? `${e.openUrl ? `<a class="btn btn--quiet btn--xs" href="${esc(e.myUrl ?? e.openUrl)}">Open</a>` : ''}<button type="button" class="btn btn--light btn--xs" data-sh-unshare>Unshare</button>` : '')
         : have ? `<span class="chip chip--ok">in yours</span><a class="sh-peek" href="${esc(e.myUrl!)}">open</a>`
         : `<small>${esc(fmtAgo(e.updated > e.added + 60 ? e.updated : e.added))}</small>${e.openUrl ? `<a class="sh-peek" href="${esc(e.openUrl)}" title="Look at it first (${esc(e.ownerName ?? '')}'s link)">open</a>` : ''}`}</span>
     </div>`;
+  };
+  const qy = query();
+  const rows = shown.map(({ e, members }) => {
+    // opened by hand, or because only data inside it is new to you / matches the filter
+    const onlyNew = dlg!.querySelector<HTMLInputElement>('[data-sh-new]')!.checked;
+    const kept = yours ? e.author : !onlyNew || !e.mine;
+    const open = members.length > 0 && (expanded.has(e.key) || !kept || (!!qy && !e.title.toLowerCase().includes(qy) && members.some((m) => text(m).includes(qy))));
+    return row(e, false, members, open) + (open ? members.map((m) => row(m, true, [], false)).join('') : '');
   }).join('');
   const empty = yours ? `You have not shared any ${many} yet.`
-    : entries.some((e) => !e.mine) ? 'Nothing matches the filter.' : entries.length ? `You already have every shared ${one}.` : `Nothing shared yet: ${many} that anyone adds show up here.`;
+    : grouped(entries).some(({ e }) => !e.mine) ? 'Nothing matches the filter.' : entries.length ? `You already have every shared ${one}.` : `Nothing shared yet: ${many} that anyone adds show up here.`;
   q('list').innerHTML = head + (rows || `<div class="sh-empty">${esc(empty)}</div>`);
   const n = selected.size;
   q('sum').textContent = yours ? '' : n ? `${n} ${n === 1 ? one : many} selected` : 'Nothing selected';
   for (const k of ['all', 'clear', 'add']) q(k).hidden = yours;
   q('new').closest('label')!.hidden = yours;
-  const pickable = shown.filter((e) => !e.mine);
+  const pickable = shown.filter(({ e }) => !e.mine).map(({ e }) => e);
   (q('all') as HTMLButtonElement).disabled = !pickable.length || pickable.every((e) => selected.has(e.key));
   (q('clear') as HTMLButtonElement).disabled = !n;
   (q('add') as HTMLButtonElement).disabled = !n;

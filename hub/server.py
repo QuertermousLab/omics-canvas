@@ -826,8 +826,10 @@ def summary(request: Request):
         out[d['kind']]['all'] += 1
         out[d['kind']]['mine'] += own(d, ws)
     library_sync()
-    for e in library['entries']:
-        if not e.get('hidden') and e['kind'] in out:
+    shown = [e for e in library['entries'] if not e.get('hidden')]
+    members = library_members(shown)
+    for e in shown:
+        if e['kind'] in out and e['key'] not in members:
             out[e['kind']]['shared'] = out[e['kind']].get('shared', 0) + 1
     running = sum(1 for j in jobs.values() if j['status'] in ('queued', 'running') and ws and j.get('owner') == ws['id'])
     return {'kinds': out, 'running': running, 'workspace': ws}
@@ -1090,6 +1092,18 @@ def library_public(e, ws, reg):
     out = {k: v for k, v in e.items() if k not in ('stamp', 'owner', 'hidden')}
     out.update(nSamples=len(e.get('slides') or []), mine=bool(mine), myUrl=view_url(mine) if mine else None,
                openUrl=view_url(live) if live else None, author=bool(ws) and e.get('owner') == ws['id'])
+    return out
+
+
+def library_members(entries):
+    """Keys of the entries a combined entry is made of (listed inside it, as in shared.ts): a sample's folder is, or is
+    inside, their folder."""
+    folders = {e['root'].rstrip('/'): e['key'] for e in entries if not e.get('combined')}
+    out = set()
+    for c in entries:
+        for s in (c.get('slides') or []) if c.get('combined') else []:
+            r = str(s.get('root') or '')
+            out.update(k for f, k in folders.items() if r == f or r.startswith(f + '/'))
     return out
 
 

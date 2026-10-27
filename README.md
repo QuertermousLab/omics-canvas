@@ -134,7 +134,8 @@ folder; the page only offers what that viewer reads and points to the right one 
 - **Shared datasets** (a button on the dataset pages, in the viewers' side panel and the CRISPR explorer's header; a
   dialog like Genome Canvas's Shared tracks, `hub/web/src/shared.ts`): every dataset any workspace has loaded, converted
   or combined (`state/library.json`, kept when the datasets made from it are removed), with a **Not in my workspace**
-  switch (on by default). **Add selected** registers them in your workspace without copying or converting. Entries follow their files, checked when the list is read (at most every
+  switch (on by default). A combined dataset is listed once, with the data it combines inside it (expand it, as on the
+  dataset pages; each can still be added on its own). **Add selected** registers them in your workspace without copying or converting. Entries follow their files, checked when the list is read (at most every
   30 s) and hourly: a folder that is gone (or a combined dataset whose samples are all gone) is dropped; files written
   again (a new conversion) refresh its facts; a rename or new samples by the workspace that added it first are taken
   over; a source file that changed or went away after its conversion is flagged. Its first workspace can **Unshare** it.

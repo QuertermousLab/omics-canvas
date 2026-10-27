@@ -153,7 +153,7 @@ def convert_file(src: Path, out: Path, a, progress, source_label=None):
     stats = enhancer(df, out, fdr) if kind == 'enhancer' else perturbseq(df, out, fdr, progress)
     species = getattr(a, 'species', None) or guess_species_genes(df['_g'])
     meta = dict(title=a.title or Path(source_label or src).name, kind=kind, species=species,
-                description='Converted by the THOR visualization hub.',
+                description='Converted by Omics Canvas.',
                 method='SCEPTRE' if any(c.startswith('sceptre') for c in df.columns) or 'grna_target' in df.columns else None,
                 sources=[dict(accession=Path(source_label or src).name, url=None, path=str(source_label or src))],
                 stats=stats, slides=[], fdr=fdr)

@@ -68,3 +68,12 @@
   .sh-row > small { display: none; }
   .sh-row--head > span:nth-child(3), .sh-row--head > span:nth-child(4) { display: none; }
 }
+
+/* a combined dataset and, expanded, the data it combines */
+.sh-namecell { min-width: 0; display: flex; align-items: center; gap: 4px; }
+.sh-toggle-btn { flex: none; width: 26px; height: 26px; }
+.sh-row--child { background: var(--surface-2); border-bottom-color: var(--surface); }
+.sh-row--child .sh-namecell { position: relative; padding-left: 40px; }
+.sh-row--child .sh-namecell::before { content: ""; position: absolute; left: 13px; top: 6px; bottom: 6px; width: 2px; border-radius: 1px; background: var(--border-strong); }
+.sh-toggle-btn .icon { transition: transform .12s; transform: rotate(-90deg); }
+.sh-toggle-btn.open .icon { transform: none; }

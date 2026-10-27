@@ -156,7 +156,9 @@ many shared datasets you do not have yet.
 ![The Shared datasets card in the single-cell viewer](images/shared-card.png)
 
 It lists every dataset anyone has loaded, converted or combined in this viewer: name and source folder, contents
-(cells, samples, screen type), who shared it (+ how many others use it) and when it last changed.
+(cells, samples, screen type), who shared it (+ how many others use it) and when it last changed. A combined dataset
+is one row with the data it combines inside it, as on the dataset pages: the arrow next to its name opens it, and each
+of them can also be added on its own.
 
 ![Shared screens in the CRISPR explorer: one screen ticked](images/shared-dialog.png)
 
