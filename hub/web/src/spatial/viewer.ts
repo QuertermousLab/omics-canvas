@@ -484,7 +484,7 @@ export class Viewer {
       const w = this.scalebar.offsetWidth * dpr, x = 20 * dpr, y = out.height - 24 * dpr;
       ctx.fillStyle = ink;
       ctx.fillRect(x, y, w, 3 * dpr);
-      ctx.font = `${13 * dpr}px sans-serif`;
+      ctx.font = `${13 * dpr}px Arial, Helvetica, sans-serif`;  // exports are set in Arial
       ctx.fillText(this.scalebar.textContent ?? '', x, y - 6 * dpr);
     }
     return new Promise<Blob>((res) => out.toBlob((b) => res(b!), 'image/png'));
@@ -696,7 +696,7 @@ export class Viewer {
         getSize: this.labelSize,
         sizeUnits: 'pixels',
         getColor: this.labelInk,
-        fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif',
+        fontFamily: 'Arial, Helvetica, sans-serif',  // also in PNG exports, which are set in Arial
         fontWeight: 600,
         characterSet: 'auto',
         // the outline is measured on the 64 px font atlas: ~2 px around a 14 px label

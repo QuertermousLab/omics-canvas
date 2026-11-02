@@ -3,6 +3,7 @@ import { installGradientSignalRenderer } from "./signal-style.mjs?v=20261007.2";
 import { installRefSeqAllStyle } from "./annotation-style.mjs?v=20260821.3";
 import { configureHicHeatmap, installHicHeatmapRenderer } from "./hic-heatmap.mjs?v=20261008.1";
 import { installManhattanRenderer } from "./manhattan-style.mjs?v=20261007.2";
+import { locusCompareSVG, locusCompareTSV, snpTooltip } from "./locuscompare.mjs?v=20261103.1";
 import { DARK_CANVAS, LIGHT_CANVAS, canvasTheme, installDarkCanvasAdapter, setCanvasTheme } from "./canvas-theme.mjs?v=20261007.2";
 import { normalizeReferenceResources } from "./reference-resources.mjs?v=20261005.1";
 import {
@@ -1281,6 +1282,7 @@ async function initializeBrowser(configRequest) {
   state.browser.on("trackremoved", syncTracks);
   state.browser.on("trackorderchanged", syncTracks);
   state.browser.on("trackdragend", syncTracks);
+  installLocusCompareMenus();
   applyLoadedTrackStyles();
   installHighlightUI();
   updateLocus();
@@ -3070,6 +3072,14 @@ function transparentBackground(svgText, width) {
   });
 }
 
+/** Exported figures are set in Arial: IGV's own labels mix Arial, sans-serif, Verdana and monospace. */
+function arialFonts(svgText) {
+  return svgText
+    .replace(/font-family="[^"]*"/g, 'font-family="Arial"')
+    .replace(/font-family:\s*[^;"]+/g, "font-family: Arial")
+    .replace(/(\bfont(?:=|:\s*)"?[^";]*?\d+(?:\.\d+)?px\s+)[^";]+/g, "$1Arial");
+}
+
 async function exportPNG() {
   if (!state.browser || exportInProgress) return;
   exportInProgress = true;
@@ -3091,7 +3101,7 @@ async function exportPNG() {
       setCanvasTheme(screenPalette);
     }
     const { width, height } = svgRootSize(svgText);
-    svgText = transparentBackground(svgText, width);
+    svgText = arialFonts(transparentBackground(svgText, width));
     const scale = Math.min(2, 8192 / Math.max(width, height));
     const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
     const objectURL = URL.createObjectURL(blob);
@@ -3271,6 +3281,244 @@ function setDesktopHighlightColor(colorValue) {
   notifyDesktopHost();
 }
 
+// ---------------------------------------------------------------- LocusCompare
+// A GWAS track in view against the eQTLs of one gene (GTEx) in one region: /api/locuscompare matches the variants,
+// picks the lead SNP and computes LD; locuscompare.mjs draws the figure. Opened from a GWAS track's menu or a SNP's
+// popup (with that SNP as the lead) and from the sidebar. One plot is computed at a time.
+
+function gwasTrackViews() {
+  return trackViews().filter((view) => {
+    const track = view.track;
+    return (track?.type === "gwas" || String(track?.config?.format || "").toLowerCase() === "gwas") && serverFileOfTrack(track);
+  });
+}
+
+function locusCompareRegion(lead) {
+  const frame = state.browser?.referenceFrameList?.[0];
+  if (!frame) return "";
+  const chrom = frame.chr;
+  let start = Math.max(1, Math.round(frame.start) + 1);
+  let end = Math.round(frame.end);
+  const max = state.locusCompare?.maxRegion || 3_000_000;
+  if (lead?.position) {  // a SNP's popup: 1 Mb around it, unless the view is smaller
+    if (end - start > 1_000_000 || lead.position < start || lead.position > end) { start = Math.max(1, lead.position - 500_000); end = lead.position + 500_000; }
+  } else if (end - start > max) {
+    const mid = Math.round((start + end) / 2);
+    start = Math.max(1, mid - 500_000);
+    end = mid + 500_000;
+  }
+  return `${chrom}:${start.toLocaleString()}-${end.toLocaleString()}`;
+}
+
+async function openLocusCompare(track = null, lead = null) {
+  showDialog("locuscompare-dialog");
+  $("#lc-error").hidden = true;
+  const views = gwasTrackViews();
+  const select = $("#lc-gwas");
+  select.innerHTML = views.length
+    ? views.map((view, index) => `<option value="${index}">${escapeHTML(view.track.name)}</option>`).join("")
+    : '<option value="">No GWAS track from the server in view</option>';
+  select.views = views;
+  const at = track ? views.findIndex((view) => view.track === track) : 0;
+  select.value = String(Math.max(0, at));
+  $("#lc-region").value = locusCompareRegion(lead);
+  $("#lc-lead").value = lead?.id || "";
+  try {
+    state.locusCompare = state.locusCompare || await fetchJSON(appURL("api/locuscompare/sources"));
+  } catch (error) {
+    state.locusCompare = { available: false, sources: [], ld: { available: false, populations: [] }, error: error.message };
+  }
+  const info = state.locusCompare;
+  const sourceSelect = $("#lc-source");
+  const previous = sourceSelect.value;
+  sourceSelect.innerHTML = info.sources.map((source) => `<option value="${escapeHTML(source.id)}">${escapeHTML(source.label)}</option>`).join("");
+  if (info.sources.some((source) => source.id === previous)) sourceSelect.value = previous;
+  fillLocusCompareTissues();
+  const ld = $("#lc-ld");
+  const ldWas = ld.value;
+  ld.innerHTML = info.ld.populations.map((pop) => `<option value="${pop}">1000 Genomes ${pop}</option>`).join("")
+    + '<option value="study">The study\'s own LD (when the file has it)</option>';
+  ld.value = ldWas || (info.ld.populations.includes("EUR") ? "EUR" : "study");
+  $("#lc-subset-field").hidden = true;
+  $("#lc-go").disabled = !info.available || !views.length;
+  if (!info.available) {
+    showLocusCompareError(info.error || "LocusCompare is not set up on this server (eQTL files, see genome-canvas/README.md).");
+  } else if (!views.length) {
+    showLocusCompareError("Load a GWAS track (.gwas.gz with a Tabix index) from the server first, e.g. from Shared tracks.");
+  } else {
+    void runLocusCompare();
+  }
+}
+
+function fillLocusCompareTissues() {
+  const source = state.locusCompare?.sources.find((item) => item.id === $("#lc-source").value) || state.locusCompare?.sources[0];
+  const tissue = $("#lc-tissue");
+  const was = tissue.value;
+  tissue.innerHTML = (source?.tissues || []).map((item) => `<option value="${escapeHTML(item.key)}">${escapeHTML(item.label)}${item.local ? "" : " · remote"}</option>`).join("");
+  const keys = (source?.tissues || []).map((item) => item.key);
+  tissue.value = keys.includes(was) ? was : keys.includes(state.locusCompare?.defaultTissue) ? state.locusCompare.defaultTissue : keys[0] || "";
+}
+
+function showLocusCompareError(message) {
+  $("#lc-error").textContent = message;
+  $("#lc-error").hidden = !message;
+}
+
+function parseLocusCompareRegion(text) {
+  const match = String(text || "").replace(/[,\s]/g, "").match(/^(chr)?([0-9XYMT]+):(\d+)-(\d+)$/i);
+  if (!match) throw new Error("Region: chr:start-end, e.g. chr6:12,400,000-13,400,000");
+  return { chrom: `chr${match[2].toUpperCase()}`, start: Number(match[3]), end: Number(match[4]) };
+}
+
+async function runLocusCompare(changes = {}) {
+  if (state.locusCompareBusy) return;  // one plot at a time
+  const views = $("#lc-gwas").views || [];
+  const view = views[Number($("#lc-gwas").value)];
+  if (!view) return;
+  let region;
+  try { region = parseLocusCompareRegion($("#lc-region").value); } catch (error) { showLocusCompareError(error.message); return; }
+  const url = new URL(appURL("api/locuscompare"), location.href);
+  const parameters = {
+    track: view.track.config?.url || view.track.url, label: String(view.track.name || "GWAS").replace(/(\.(hg19|hg38|grch37|grch38))?(\.ld)?\.gwas(\.(gz|bgz))?$/i, ""),
+    chrom: region.chrom, start: region.start, end: region.end,
+    source: $("#lc-source").value, tissue: $("#lc-tissue").value, gene: $("#lc-gene").value, ld: $("#lc-ld").value,
+    lead: $("#lc-lead").value.trim(), subset: $("#lc-subset-field").hidden ? "" : $("#lc-subset").value, ...changes,
+  };
+  for (const [name, value] of Object.entries(parameters)) if (value !== "" && value != null) url.searchParams.set(name, value);
+  state.locusCompareBusy = true;
+  $("#lc-go").disabled = true;
+  $("#lc-figure").classList.add("busy");
+  showLocusCompareError("");
+  const remote = !(state.locusCompare?.sources.find((s) => s.id === parameters.source)?.tissues.find((t) => t.key === parameters.tissue)?.local ?? true);
+  $("#lc-status").textContent = remote ? "Reading the eQTLs from the eQTL Catalogue (remote, a few seconds)…" : "Matching variants and computing LD…";
+  try {
+    const data = await fetchJSON(url.toString());
+    state.locusCompareData = data;
+    renderLocusCompare(data);
+  } catch (error) {
+    showLocusCompareError(error.message);
+    $("#lc-status").textContent = "";
+  } finally {
+    state.locusCompareBusy = false;
+    $("#lc-go").disabled = false;
+    $("#lc-figure").classList.remove("busy");
+  }
+}
+
+function renderLocusCompare(data) {
+  // the gene list follows the region and tissue; the chosen gene is shown even when picked automatically
+  const gene = $("#lc-gene");
+  const wanted = gene.value;
+  gene.innerHTML = '<option value="">Best match</option>' + data.egenes.map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.symbol)} · min P ${item.minP.toExponential(1)}</option>`).join("");
+  gene.value = data.egenes.some((item) => item.id === wanted) ? wanted : "";
+  const subsetField = $("#lc-subset-field");
+  subsetField.hidden = !data.gwas.subsets.length;
+  if (data.gwas.subsets.length) {
+    $("#lc-subset").innerHTML = data.gwas.subsets.map((item) => `<option>${escapeHTML(item)}</option>`).join("");
+    $("#lc-subset").value = data.gwas.subset;
+  }
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#4c7a86";
+  const figure = locusCompareSVG(data, { theme: canvasTheme(), accent });
+  $("#lc-figure").innerHTML = figure.svg;
+  state.locusCompareFigure = figure;
+  const lead = data.snps.find((item) => item.id === data.lead);
+  $("#lc-lead").value = "";
+  $("#lc-lead").placeholder = lead ? `${lead.rsid || lead.id} (automatic)` : "automatic";
+  if (data.ld.source === "study" || !data.gwas.studyLD) $("#lc-ld").querySelector('option[value="study"]').disabled = !data.gwas.studyLD;
+  $("#lc-status").textContent = `${data.eqtl.symbol} in ${data.eqtl.tissueLabel}: ${data.snps.length.toLocaleString()} shared variants · lead ${lead?.rsid || lead?.id || "—"}`
+    + `${data.ld.available ? ` · ${data.ld.label}` : ` · LD: ${data.ld.reason}`}${data.eqtl.significantOnly ? " · eQTLs: significant pairs only" : ""} · click a point to use it as the lead`;
+  for (const id of ["lc-goto", "lc-svg", "lc-png", "lc-tsv"]) $(`#${id}`).disabled = false;
+}
+
+function locusCompareHit(event) {
+  const figure = state.locusCompareFigure;
+  const svg = $("#lc-figure svg");
+  if (!figure || !svg) return null;
+  const box = svg.getBoundingClientRect();
+  const x = (event.clientX - box.left) * (figure.width / box.width);
+  const y = (event.clientY - box.top) * (figure.height / box.height);
+  let best = null;
+  let distance = Infinity;
+  for (const point of figure.points) {
+    const d = Math.hypot(point.x - x, point.y - y);
+    if (d <= point.r && d < distance) { best = point; distance = d; }
+  }
+  return best ? state.locusCompareData.snps[best.i] : null;
+}
+
+function locusCompareFile(extension) {
+  const data = state.locusCompareData;
+  const name = `locuscompare_${data.gwas.label}_${data.eqtl.symbol}_${data.eqtl.tissue}_${data.region.chrom}_${data.region.start}-${data.region.end}`;
+  return `${name.replace(/[^a-z0-9_.-]+/gi, "_").slice(0, 140)}.${extension}`;
+}
+
+function downloadLocusCompare(blob, name) {
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = name;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
+
+async function exportLocusCompare(kind) {
+  const data = state.locusCompareData;
+  if (!data) return;
+  if (kind === "tsv") {
+    downloadLocusCompare(new Blob([locusCompareTSV(data)], { type: "text/tab-separated-values" }), locusCompareFile("tsv"));
+    return;
+  }
+  // exported figures use the light palette on a transparent background, as the PNG export of the view
+  const figure = locusCompareSVG(data, { theme: LIGHT_CANVAS, accent: "#4c7a86" });
+  const svgBlob = new Blob([figure.svg], { type: "image/svg+xml;charset=utf-8" });
+  if (kind === "svg") { downloadLocusCompare(svgBlob, locusCompareFile("svg")); return; }
+  const href = URL.createObjectURL(svgBlob);
+  const image = new Image();
+  image.src = href;
+  await image.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = figure.width * 2;
+  canvas.height = figure.height * 2;
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  URL.revokeObjectURL(href);
+  canvas.toBlob((png) => png && downloadLocusCompare(png, locusCompareFile("png")), "image/png");
+}
+
+/** "LocusCompare…" in a GWAS track's menu, and a link in its SNP popups (that SNP as the lead). */
+function installLocusCompareMenus() {
+  const utils = state.browser?.menuUtils;
+  if (utils && !utils.__genomeCanvasLocusCompare) {
+    const original = utils.trackMenuItemList.bind(utils);
+    utils.trackMenuItemList = function trackMenuItemList(trackView) {
+      const items = original(trackView);
+      const track = trackView?.track;
+      const gwas = track?.type === "gwas" || String(track?.config?.format || "").toLowerCase() === "gwas";
+      if (gwas && serverFileOfTrack(track)) {
+        items.unshift({ label: "LocusCompare with GTEx eQTLs…", click() { void openLocusCompare(track); } }, "<hr/>");
+      }
+      return items;
+    };
+    utils.__genomeCanvasLocusCompare = true;
+  }
+  state.browser.on("trackclick", (track, popupData) => {
+    const gwas = track?.type === "gwas" || String(track?.config?.format || "").toLowerCase() === "gwas";
+    if (!gwas || !Array.isArray(popupData) || !serverFileOfTrack(track)) return undefined;
+    const field = (names) => popupData.find((row) => names.includes(String(row?.name || "").toLowerCase().replace(/:$/, "")))?.value;
+    const rsid = String(field(["rsid", "snp", "id", "name"]) || "");
+    const position = Number(String(field(["position", "pos", "bp", "location"]) || "").replace(/[^0-9]/g, "")) || null;
+    state.locusCompareClick = { track, id: /^rs\d+$/i.test(rsid) ? rsid : "", position };
+    popupData.push({ name: "LocusCompare", value: '<a href="#" data-locuscompare-snp>Compare with GTEx eQTLs ›</a>' });
+    return undefined;
+  });
+  document.addEventListener("click", (event) => {
+    const link = event.composedPath().find((node) => node?.dataset && "locuscompareSnp" in node.dataset);
+    if (!link || !state.locusCompareClick) return;
+    event.preventDefault();
+    const { track, id, position } = state.locusCompareClick;
+    void openLocusCompare(track, { id, position });
+  }, true);
+}
+
 window.GenomeCanvasDesktop = Object.freeze({
   snapshot: desktopStateSnapshot,
   search(query) { void searchLocation(query); return true; },
@@ -3288,6 +3536,7 @@ window.GenomeCanvasDesktop = Object.freeze({
   openCustomReference() { showDialog("reference-dialog"); return true; },
   openFavorites() { void openFavoriteProfiles(); return true; },
   openLiftover() { void openLiftover(); return true; },
+  openLocusCompare() { void openLocusCompare(); return true; },
   saveTracksetFromView() { tracksetFromView(); return true; },
   openWorkspace() { showWorkspaceGate(); return true; },
   share() { void shareCurrentView(); return true; },
@@ -3346,6 +3595,40 @@ function bindEvents() {
   $("#trackset-delete").addEventListener("click", deleteTrackset);
   $$('input[name="trackset-mode"]').forEach((input) => input.addEventListener("change", renderTracksetMembers));
   $("#liftover-button").addEventListener("click", openLiftover);
+  $("#locuscompare-button").addEventListener("click", () => openLocusCompare());
+  $("#lc-go").addEventListener("click", () => runLocusCompare());
+  $("#lc-source").addEventListener("change", () => { fillLocusCompareTissues(); $("#lc-gene").value = ""; });
+  $("#lc-tissue").addEventListener("change", () => { $("#lc-gene").value = ""; void runLocusCompare(); });
+  for (const id of ["lc-gene", "lc-ld", "lc-subset", "lc-gwas"]) $(`#${id}`).addEventListener("change", () => void runLocusCompare());
+  for (const id of ["lc-region", "lc-lead"]) $(`#${id}`).addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); void runLocusCompare(); } });
+  $("#lc-figure").addEventListener("mousemove", (event) => {
+    const snp = locusCompareHit(event);
+    const tip = $("#lc-tip");
+    tip.hidden = !snp;
+    $("#lc-figure").style.cursor = snp ? "pointer" : "";
+    if (!snp) return;
+    tip.innerHTML = snpTooltip(state.locusCompareData, snp);
+    tip.style.left = `${Math.min(event.clientX + 14, window.innerWidth - 310)}px`;
+    tip.style.top = `${event.clientY + 14}px`;
+  });
+  $("#lc-figure").addEventListener("mouseleave", () => { $("#lc-tip").hidden = true; });
+  $("#lc-figure").addEventListener("click", (event) => {
+    const snp = locusCompareHit(event);
+    if (!snp || snp.id === state.locusCompareData?.lead) return;
+    $("#lc-tip").hidden = true;
+    $("#lc-lead").value = snp.id;
+    void runLocusCompare({ gene: state.locusCompareData.eqtl.gene });
+  });
+  $("#lc-goto").addEventListener("click", () => {
+    const data = state.locusCompareData;
+    const lead = data?.snps.find((item) => item.id === data.lead);
+    if (!lead) return;
+    closeDialog("locuscompare-dialog");
+    void searchLocation(`${data.region.chrom}:${Math.max(1, lead.pos - 50000)}-${lead.pos + 50000}`);
+  });
+  $("#lc-svg").addEventListener("click", () => exportLocusCompare("svg"));
+  $("#lc-png").addEventListener("click", () => exportLocusCompare("png"));
+  $("#lc-tsv").addEventListener("click", () => exportLocusCompare("tsv"));
   ui.liftoverFrom.addEventListener("change", () => fillLiftoverTargets(ui.liftoverTo.value));
   $("#liftover-swap").addEventListener("click", () => {
     const [from, to] = [ui.liftoverFrom.value, ui.liftoverTo.value];

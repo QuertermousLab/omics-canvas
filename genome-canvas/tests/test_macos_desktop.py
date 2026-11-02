@@ -117,7 +117,7 @@ class MacOSDesktopClientTests(unittest.TestCase):
         self.assertIn("codesign --force --deep --sign -", script)
         self.assertIn("Resources/GenomeCanvas-1024.png", script)
         self.assertIn('Contents/Resources/LocalBackend', script)
-        self.assertIn("server.py workspace_store.py resource_cache.py liftover.py index.html styles.css app.js", script)
+        self.assertIn("server.py workspace_store.py resource_cache.py liftover.py locuscompare.py index.html styles.css app.js", script)
         self.assertIn("reference-resources.mjs", script)
         self.assertIn("canvas-theme.mjs", script)
         self.assertIn("vendor/fonts/*.woff2", script)

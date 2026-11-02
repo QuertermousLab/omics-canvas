@@ -48,6 +48,7 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
   densities that the page draws as SVG. Both are open like `/hub/api/data/` (no workspace check). Tests:
   `python -m unittest discover hub/tests` (also run in CI).
 - Never delete or overwrite source data on `/nfs`; conversions write to `<source>.vizhub/` next to it.
+- Exported figures (PNG / SVG of the viewers, plots and Genome Canvas) are set in Arial (the user's rule).
 - Data colors in the viewers are data: change the interface theme tokens (`hub/web/src/theme.css`,
   Genome Canvas's Nord palette), not dataset colors.
 - Commit identity (repo config): `Genome Canvas Contributors <genome-canvas@users.noreply.github.com>`.

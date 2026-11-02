@@ -55,6 +55,19 @@ the lab shares ([section 6](#6-shared-data)).
   **Liftover** (under the source buttons) converts pasted regions or the current view between hg19 ↔ hg38 and
   mm10 ↔ mm39 (click a result to go there, or copy them as BED), and track files in the view (BED, narrowPeak,
   bedGraph, bigWig, BAM, GTF/GFF, VCF, BEDPE).
+- **LocusCompare**: compare a GWAS track with GTEx eQTLs, as [locuscompare.com](http://locuscompare.com) does.
+  - Open it from a GWAS track's menu (right-click the track → **LocusCompare with GTEx eQTLs…**), from a SNP's popup
+    (**Compare with GTEx eQTLs ›**, with that SNP as the lead) or with **LocusCompare** under the source buttons.
+  - The figure plots each variant's GWAS −log₁₀ P against its eQTL −log₁₀ P, with a LocusZoom panel for each study
+    and the genes below. Points are colored by r² with the lead SNP (purple diamond), as in the GWAS tracks.
+  - Pick the **tissue** (GTEx v8 Artery - Coronary, Aorta or Tibial; v11 lists significant pairs only), the
+    **gene** (*Best match* is the eGene whose eQTLs best overlap the GWAS signal), the **LD** population (1000
+    Genomes EUR, AFR, AMR, EAS, SAS, ALL, or the study's own LD) and the region (up to 3 Mb).
+  - The lead SNP is the one with the smallest sum of the two p-values. **Click a point** to make it the lead.
+  - GWAS files with groups (e.g. one per ancestry) show one group at a time. A file that lists only the variants in
+    high LD with its signals shows few points; use **The study's own LD** for it.
+  - **SVG**, **PNG** and **Table** (both p-values, betas and r² of every shared variant) download the figure and
+    its data; **Show lead** goes to the lead SNP in the browser.
 - **Arrange**: drag the six-dot grip to reorder tracks; right-click a track for color, height, data range and display
   mode; remove it in the track list on the left. Assay colors are automatic and stay the same in both themes.
 - **Mark**: **Highlight** then drag over the tracks to shade a region (pick the color next to it; **Clear** removes
@@ -62,7 +75,7 @@ the lab shares ([section 6](#6-shared-data)).
 - **Keep and share**: **Favorites** saves the whole view (tracks, locus, highlights) as a named profile in your
   workspace; **Share** on a Favorite lists it for the lab (others **Load** it or **Save a copy**; only you change it);
   **Share** in the top bar copies a link that restores the view; **Export PNG** saves the canvas with a transparent
-  background.
+  background. Exported figures (here and in the other viewers) are set in Arial.
 - **Links from other modules** open a region with highlights and tracks, e.g.
   `/genome-canvas/?locus=chr6:33,557,481-33,857,780&highlight=chr6:33,707,481-33,707,780` (the CRISPR explorer adds
   the screen's loops this way).

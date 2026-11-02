@@ -14,6 +14,7 @@ Genome Canvas is a local-network genome browser for laboratories and research te
 - Favorites can be shared with the lab: others open them or save a copy
 - Genome build check: a loaded file whose header (chromosome sizes of bigWig, bigBed, BAM, VCF, .hic) or name says it is on another build than the view is offered a liftover; the check reads a few kilobytes (about 5 ms)
 - Liftover between builds with UCSC chain files: pasted regions or the view (liftOver), and track files — BED/narrowPeak, bedGraph/WIG/bigWig, BAM/CRAM, GFF/GTF, VCF, BEDPE — with CrossMap; converted files are written under the Genome Canvas data folder, never next to the source
+- LocusCompare (as [locuscompare.com](http://locuscompare.com), Liu et al. 2019): a GWAS track in view against the GTEx eQTLs of one gene — the two studies' −log10 p against each other and a LocusZoom panel for each, colored by LD with the lead SNP (1000 Genomes population, or the study's own LD); from a GWAS track's menu, a SNP's popup or the LocusCompare button; SVG, PNG and table downloads
 - Automatic discovery of `.bai`, `.crai`, `.tbi`, `.csi`, and `.fai` indexes
 - Major formats including BAM, CRAM, VCF, BCF, BigWig, BigBed, BED, BEDGraph, WIG, GFF/GFF3, GTF, Hi-C contact heatmaps, BEDPE, SEG, MAF, GWAS, and QTL
 - LocusZoom-style regional association plots for indexed GWAS summary statistics, with p-value guides, lead-variant labels, and complete variant tooltips
@@ -240,6 +241,30 @@ the folder must be inside a data root so they can be served. Optional settings i
 - `liftoverFasta`: the target build's FASTA for VCF liftover, e.g. `{"hg38": "/refs/hg38.fa"}`
 - `liftoverChainDir`, `liftoverDir`: other folders for the chain files and the converted files
 - `liftoverChains`: extra chain files, `{"hg19:hg38": "/refs/hg19ToHg38.over.chain.gz"}`
+
+### LocusCompare
+
+`/api/locuscompare` (`locuscompare.py`, standard library; `tabix` and `plink2` are external programs) reads the GWAS
+track's file and one tissue's eQTLs in the region, matches variants by hg38 position and alleles (either strand, else
+rsid), and picks LocusCompare's lead SNP (smallest sum of the two p-values) unless one is given. LD is the r² with the
+lead in a 1000 Genomes phase 3 population (the `ldReferenceHg19` panel, by rsid; populations from its `panel` file,
+`integrated_call_samples_v3.20130502.ALL.panel`), or the study's own LD when its file has it (`R2` + `SIGNAL`, or
+`ld_r2` + `ld_reference`). A GWAS file with a `GROUP` (or `LD_POP`) column is shown one group at a time.
+
+eQTL data, set in `genomecanvas.config.json` under `locusCompare.eqtl` (each source's optional `tissues` lists the
+ones offered):
+
+- GTEx v8, every tested variant–gene pair, from the eQTL Catalogue (hg38). GTEx's own all-pairs files are only on
+  requester-pays Google Cloud storage; the eQTL Catalogue serves the same data over FTP:
+  `python3 tools/fetch_gtex_eqtl.py --out data/eQTL/GTEx_v8 --tissues artery_coronary artery_aorta artery_tibial`
+  (~3.5 GB per tissue; `--list` shows the 49). With `"remote": true`, tissues not downloaded are read from EBI with
+  tabix, one query at a time.
+- GTEx parquet releases (v10 / v11 significant pairs only, so the plot shows only variants below each gene's
+  threshold): `hub/venv/bin/python tools/gtex_parquet_to_eqtl.py <GTEx_Analysis_v11_eQTL> data/eQTL/GTEx_v11_signif`.
+
+Genes come from a GENCODE table (`locusCompare.genes`, default `data/eQTL/genes.gencode_v39.hg38.tsv`: gene_id,
+symbol, chrom, start, end, strand, type; v39 is the annotation of the eQTL Catalogue's GTEx). GWAS Catalog harmonised
+files become GWAS tracks with `tools/gwas_catalog_to_track.py` (with `hg19_locus`, so the track also gets LD).
 
 ### Faster Reference Loading
 

@@ -10,14 +10,48 @@
     "label": "1000 Genomes Phase 3 ALL",
     "maxWindow": 2000000,
     "bfileTemplate": "/path/to/1000G/ALL.chr{chrom}.genotypes",
-    "vcfTemplate": "/path/to/1000G/ALL.chr{chrom}.genotypes.vcf.gz"
+    "vcfTemplate": "/path/to/1000G/ALL.chr{chrom}.genotypes.vcf.gz",
+    "panel": "/path/to/1000G/integrated_call_samples_v3.20130502.ALL.panel"
   },
   "liftoverFasta": {
     "hg38": "/path/to/hg38.fa",
     "hg19": "/path/to/hg19.fa"
   },
+  "locusCompare": {
+    "genes": "data/eQTL/genes.gencode_v39.hg38.tsv",
+    "eqtl": [
+      {
+        "id": "gtex_v8",
+        "label": "GTEx v8 · all pairs (eQTL Catalogue)",
+        "dir": "data/eQTL/GTEx_v8",
+        "catalogue": "gtex_v8",
+        "remote": true,
+        "tissues": [
+          "artery_coronary",
+          "artery_aorta",
+          "artery_tibial"
+        ]
+      },
+      {
+        "id": "gtex_v11",
+        "label": "GTEx v11 · significant pairs",
+        "dir": "data/eQTL/GTEx_v11_signif",
+        "tissues": [
+          "Artery_Coronary",
+          "Artery_Aorta",
+          "Artery_Tibial"
+        ]
+      }
+    ]
+  },
   "dataRoots": [
-    { "label": "Project tracks", "path": "./data" },
-    { "label": "Sequencing storage", "path": "/mnt/sequencing" }
+    {
+      "label": "Project tracks",
+      "path": "./data"
+    },
+    {
+      "label": "Sequencing storage",
+      "path": "/mnt/sequencing"
+    }
   ]
 }

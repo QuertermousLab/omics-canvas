@@ -58,7 +58,7 @@ export function plotSvg(d: Distribution, type: 'violin' | 'ridge', colors: strin
     `${d.cells.toLocaleString()} cells`, d.group ? `by ${d.group.label}` : '', d.nonzero ? 'cells above 0' : '',
     d.droppedGroups ? `${d.droppedGroups} smaller groups left out` : ''].filter(Boolean).join(' · ');
   const subtitle = `<text x="16" y="40" font-size="11.5" fill="${ink}" fill-opacity=".65">${esc(sub)}</text>`;
-  const font = `font-family="Inter, system-ui, -apple-system, Segoe UI, sans-serif"`;
+  const font = `font-family="Arial, Helvetica, sans-serif"`;  // exported figures are set in Arial
   const color = (g: Group) => colors[g.code] ?? '#8fbcbb';
   const tip = (g: Group) => `<title>${esc(`${g.name} · ${g.cells.toLocaleString()} cells · ${g.cells ? Math.round((100 * g.expressing) / g.cells) : 0}% above 0 · median ${num(g.median ?? 0)} · mean ${num(g.mean ?? 0)}`)}</title>`;
   const jitter = rng(7);

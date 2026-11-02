@@ -795,6 +795,16 @@ subGroups biosample=Heart assay=RNA_seq
         status, _, body = self.request("GET", "/api/track?root=test&path=sample.bed&genome=hg38")
         self.assertIsNone(json.loads(body)["build"])
 
+    def test_locuscompare_catalog_and_bad_requests(self):
+        status, _, body = self.request("GET", "/api/locuscompare/sources")
+        self.assertEqual(status, 200)
+        payload = json.loads(body)
+        self.assertIn("sources", payload)
+        self.assertIn("populations", payload["ld"])
+        status, _, body = self.request("GET", "/api/locuscompare?track=https://example.org/x.gwas.gz&chrom=chr1&start=1&end=10")
+        self.assertEqual(status, 400)
+        self.assertIn("data folders", json.loads(body)["error"])
+
     def test_liftover_status_and_bad_requests(self):
         status, _, body = self.request("GET", "/api/liftover")
         self.assertEqual(status, 200, body)

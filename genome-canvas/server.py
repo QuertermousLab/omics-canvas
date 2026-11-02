@@ -31,6 +31,7 @@ from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import liftover as liftover_tools
+import locuscompare as locuscompare_tools
 from workspace_store import WorkspaceError, WorkspaceStore
 from resource_cache import FileMemoryCache, ReferenceCache
 
@@ -99,6 +100,7 @@ STATIC_FILES = {
     "/annotation-style.mjs": ("annotation-style.mjs", "text/javascript; charset=utf-8"),
     "/hic-heatmap.mjs": ("hic-heatmap.mjs", "text/javascript; charset=utf-8"),
     "/manhattan-style.mjs": ("manhattan-style.mjs", "text/javascript; charset=utf-8"),
+    "/locuscompare.mjs": ("locuscompare.mjs", "text/javascript; charset=utf-8"),
     "/public-hubs.mjs": ("public-hubs.mjs", "text/javascript; charset=utf-8"),
     "/highlights.mjs": ("highlights.mjs", "text/javascript; charset=utf-8"),
     "/reference-resources.mjs": ("reference-resources.mjs", "text/javascript; charset=utf-8"),
@@ -200,6 +202,9 @@ def private_liftover(path):
         return within_root(Path(path).resolve(), (LIFTOVER_DIR / "private").resolve())
     except OSError:
         return False
+
+# LocusCompare (locuscompare.py): a GWAS track against GTEx eQTLs in one region, LD from the 1000 Genomes panel
+LOCUSCOMPARE = locuscompare_tools.LocusCompare(SETTINGS, APP_DIR, STATE_DIR)
 
 
 def within_root(candidate, root):
@@ -1611,6 +1616,13 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
                     query.get("ref", [""])[0],
                     query.get("alt", [""])[0],
                 ))
+            elif path == "/api/locuscompare/sources":
+                self.send_json(LOCUSCOMPARE.catalog())
+            elif path == "/api/locuscompare/egenes":
+                q = lambda name: query.get(name, [""])[0]
+                self.send_json({"egenes": LOCUSCOMPARE.egenes(q("source"), q("tissue"), q("chrom"), q("start"), q("end"))})
+            elif path == "/api/locuscompare":
+                self.handle_locuscompare(query)
             elif path == "/api/liftover":
                 status = LIFTOVER.status()
                 status["files"] = bool(liftover_root()) and not LOCAL_MODE
@@ -2179,6 +2191,42 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def handle_data_file(self, raw_path, query=None):
+        path = self.data_file_path(raw_path)
+        if path is None:
+            return
+        companion = (query or {}).get("companion", [""])[0]
+        if companion:
+            matches = [candidate for candidate in index_candidates(path) if candidate.name == companion]
+            if not matches:
+                raise FileNotFoundError("Track companion file not found")
+            path = matches[0]
+        if not path.is_file():
+            raise FileNotFoundError("Data file not found")
+
+        self.send_file(path, compressible=path.name.lower().endswith(PLAIN_TEXT_TRACK_SUFFIXES))
+
+    def handle_locuscompare(self, query):
+        q = lambda name: query.get(name, [""])[0]
+        track = unquote(urlparse(q("track")).path)
+        if "/data/" not in track:
+            raise ValueError("LocusCompare reads GWAS tracks from the Genome Canvas data folders")
+        path = self.data_file_path("/data/" + track.split("/data/", 1)[1])
+        if path is None:
+            return
+        if not path.is_file():
+            raise FileNotFoundError("GWAS file not found")
+        if not index_candidates(path):
+            raise ValueError("LocusCompare needs an indexed GWAS file (BGZF + Tabix)")
+        try:
+            start, end = int(float(q("start"))), int(float(q("end")))
+        except ValueError:
+            raise ValueError("Give the region as start and end")
+        self.send_json(LOCUSCOMPARE.compare(
+            path, q("label") or path.name, q("chrom"), start, end, source_id=q("source"), tissue_key=q("tissue"),
+            gene=q("gene"), population=q("ld") or "EUR", lead=q("lead"), subset=q("subset")))
+
+    def data_file_path(self, raw_path):
+        """The file of a /data/ URL, as handle_data_file serves it (None after asking for a workspace)."""
         remainder = raw_path[len("/data/"):]
         if "/" not in remainder:
             raise FileNotFoundError("Missing data path")
@@ -2213,21 +2261,11 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             # A legacy Home-root URL still requires the selected workspace.
             # The frontend upgrades it when loading a saved profile.
             if not self.require_workspace():
-                return
+                return None
             root_id, encoded_relative = first_segment, remaining
             roots = self.data_roots()
         relative_path = "/".join(unquote(part) for part in encoded_relative.split("/"))
-        path = resolve_data_path(root_id, relative_path, roots)
-        companion = (query or {}).get("companion", [""])[0]
-        if companion:
-            matches = [candidate for candidate in index_candidates(path) if candidate.name == companion]
-            if not matches:
-                raise FileNotFoundError("Track companion file not found")
-            path = matches[0]
-        if not path.is_file():
-            raise FileNotFoundError("Data file not found")
-
-        self.send_file(path, compressible=path.name.lower().endswith(PLAIN_TEXT_TRACK_SUFFIXES))
+        return resolve_data_path(root_id, relative_path, roots)
 
     def send_compressed_file(self, path, stat, cache_control):
         """Send a whole plain-text track gzip encoded; returns False to fall back."""

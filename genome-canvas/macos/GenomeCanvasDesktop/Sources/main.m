@@ -411,6 +411,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 @property(nonatomic, strong) NSMenuItem *sharedTracksMenuItem;
 @property(nonatomic, strong) GCButton *tracksetButton;
 @property(nonatomic, strong) NSMenuItem *tracksetMenuItem;
+@property(nonatomic, strong) GCButton *locusCompareButton;
+@property(nonatomic, strong) NSMenuItem *locusCompareMenuItem;
 @property(nonatomic, strong) NSMenuItem *openFilesMenuItem;
 @property(nonatomic, strong) NSMenuItem *localBackendMenuItem;
 @property(nonatomic, strong) NSMenuItem *remoteServerMenuItem;
@@ -642,6 +644,16 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     liftoverButton.label = liftoverButton.label;
     liftoverButton.toolTip = @"Convert regions or track files between genome builds (hg19 ↔ hg38, mm10 ↔ mm39)";
     liftoverButton.identifier = @"LiftoverButton";
+    // a GWAS track in view against GTEx eQTLs (the web rail's LocusCompare button); server mode only
+    self.locusCompareButton = [GCButton buttonWithLabel:@"LocusCompare" symbol:@"chart.dots.scatter" style:GCButtonStyleSecondary target:self action:@selector(openLocusCompare:)];
+    self.locusCompareButton.font = GCUIFont(12.5, 550);
+    self.locusCompareButton.label = self.locusCompareButton.label;
+    self.locusCompareButton.toolTip = @"LocusCompare: a GWAS track in view against GTEx eQTLs, colored by LD (also in a GWAS track's menu)";
+    self.locusCompareButton.identifier = @"LocusCompareButton";
+    NSStackView *toolActions = [NSStackView stackViewWithViews:@[liftoverButton, self.locusCompareButton]];
+    toolActions.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    toolActions.distribution = NSStackViewDistributionFillEqually;
+    toolActions.spacing = 8;
 
     NSView *secondDivider = [self dividerLine];
 
@@ -699,7 +711,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 
     NSArray<NSView *> *rows = @[
         brand, sourceLabel, segments, self.workspaceLabel, self.workspaceControls, firstDivider,
-        libraryHeading, self.filesButton, self.sharedButton, sourceActions, liftoverButton, secondDivider, currentHeading, trackScroll, tips, status
+        libraryHeading, self.filesButton, self.sharedButton, sourceActions, toolActions, secondDivider, currentHeading, trackScroll, tips, status
     ];
     NSStackView *column = [NSStackView stackViewWithViews:rows];
     column.translatesAutoresizingMaskIntoConstraints = NO;
@@ -715,7 +727,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     [column setCustomSpacing:8 afterView:self.filesButton];
     [column setCustomSpacing:8 afterView:self.sharedButton];
     [column setCustomSpacing:8 afterView:sourceActions];
-    [column setCustomSpacing:16 afterView:liftoverButton];
+    [column setCustomSpacing:16 afterView:toolActions];
     [column setCustomSpacing:12 afterView:secondDivider];
     [column setCustomSpacing:12 afterView:trackScroll];
     [column setCustomSpacing:12 afterView:tips];
@@ -730,7 +742,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
         [trackScroll.heightAnchor constraintGreaterThanOrEqualToConstant:96],
         [self.statusDot.widthAnchor constraintEqualToConstant:7], [self.statusDot.heightAnchor constraintEqualToConstant:7],
     ]];
-    for (NSView *row in @[segments, self.workspaceControls, firstDivider, self.filesButton, self.sharedButton, sourceActions, liftoverButton, secondDivider, currentHeading, trackScroll, tips]) {
+    for (NSView *row in @[segments, self.workspaceControls, firstDivider, self.filesButton, self.sharedButton, sourceActions, toolActions, secondDivider, currentHeading, trackScroll, tips]) {
         [constraints addObject:[row.widthAnchor constraintEqualToAnchor:column.widthAnchor]];
     }
     [NSLayoutConstraint activateConstraints:constraints];
@@ -1204,6 +1216,10 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     liftover.target = self;
     liftover.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     [fileMenu addItem:liftover];
+    self.locusCompareMenuItem = [[NSMenuItem alloc] initWithTitle:@"LocusCompare…" action:@selector(openLocusCompare:) keyEquivalent:@"c"];
+    self.locusCompareMenuItem.target = self;
+    self.locusCompareMenuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
+    [fileMenu addItem:self.locusCompareMenuItem];
     [fileMenu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *export = [[NSMenuItem alloc] initWithTitle:@"Export PNG…" action:@selector(exportPNG:) keyEquivalent:@"e"];
     export.target = self;
@@ -1271,6 +1287,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.sharedTracksMenuItem.hidden = self.localMode;
     self.tracksetButton.hidden = self.localMode; // tracksets are the lab's, on the server
     self.tracksetMenuItem.hidden = self.localMode;
+    self.locusCompareButton.hidden = self.localMode; // GTEx eQTLs and the LD panel are on the server
+    self.locusCompareMenuItem.hidden = self.localMode;
     self.openFilesMenuItem.title = self.localMode ? @"Open Local Files…" : @"Open Server Files…";
     self.localBackendMenuItem.state = self.localMode ? NSControlStateValueOn : NSControlStateValueOff;
     self.remoteServerMenuItem.state = self.localMode ? NSControlStateValueOff : NSControlStateValueOn;
@@ -1745,6 +1763,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 - (void)openCustomReference:(id)sender { [self callDesktopMethod:@"openCustomReference" arguments:@[]]; }
 - (void)openFavorites:(id)sender { [self callDesktopMethod:@"openFavorites" arguments:@[]]; }
 - (void)openLiftover:(id)sender { [self callDesktopMethod:@"openLiftover" arguments:@[]]; }
+- (void)openLocusCompare:(id)sender { [self callDesktopMethod:@"openLocusCompare" arguments:@[]]; }
 - (void)saveTrackset:(id)sender { if (!self.localMode) [self callDesktopMethod:@"saveTracksetFromView" arguments:@[]]; }
 - (void)shareView:(id)sender { [self callDesktopMethod:@"share" arguments:@[]]; }
 - (void)exportPNG:(id)sender { [self callDesktopMethod:@"exportPNG" arguments:@[]]; }
