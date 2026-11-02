@@ -226,7 +226,7 @@ function desktopStateSnapshot() {
     tracks: desktopTrackViews().map(({ track }, index) => ({
       index,
       name: track.name || track.id || "Untitled track",
-      format: track.config?.format || track.format || track.type || "track",
+      format: track.type === "merged" ? `${(track.tracks || []).length} layered tracks` : track.config?.format || track.format || track.type || "track",
       color: trackColor(track),
       height: Number(track.height || track.config?.height || 0),
     })),
@@ -845,6 +845,10 @@ function trackColor(track) {
 
 function applyTrackVisualStyle(track, repaint = true) {
   let changed = installGradientSignalRenderer(track);
+  // a layered (merged) track draws its signal layers with the same smoothed renderer
+  if (track.type === "merged") {
+    for (const layer of track.tracks || []) changed = installGradientSignalRenderer(layer) || changed;
+  }
   changed = installHicHeatmapRenderer(track) || changed;
   changed = installManhattanRenderer(track) || changed;
   changed = installRefSeqAllStyle(track) || changed;
@@ -1643,6 +1647,7 @@ async function loadTrackset(set) {
     name: members[index].name || payload.track.name,
     color: members[index].color || LAYER_COLORS[index % LAYER_COLORS.length],
     genomeCanvasAutoColor: false,
+    gradientFillOpacity: 0.9,  // layers are drawn half transparent: a fuller fill keeps narrow peaks visible
   })));
   await loadConfiguredTrack({
     type: "merged",
@@ -3282,6 +3287,8 @@ window.GenomeCanvasDesktop = Object.freeze({
   openPublicData() { openPublicDataDialog(); return true; },
   openCustomReference() { showDialog("reference-dialog"); return true; },
   openFavorites() { void openFavoriteProfiles(); return true; },
+  openLiftover() { void openLiftover(); return true; },
+  saveTracksetFromView() { tracksetFromView(); return true; },
   openWorkspace() { showWorkspaceGate(); return true; },
   share() { void shareCurrentView(); return true; },
   exportPNG() { void exportPNG(); return true; },

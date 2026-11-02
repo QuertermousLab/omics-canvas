@@ -409,6 +409,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 @property(nonatomic, strong) GCCardButton *filesButton;
 @property(nonatomic, strong) GCCardButton *sharedButton;
 @property(nonatomic, strong) NSMenuItem *sharedTracksMenuItem;
+@property(nonatomic, strong) GCButton *tracksetButton;
+@property(nonatomic, strong) NSMenuItem *tracksetMenuItem;
 @property(nonatomic, strong) NSMenuItem *openFilesMenuItem;
 @property(nonatomic, strong) NSMenuItem *localBackendMenuItem;
 @property(nonatomic, strong) NSMenuItem *remoteServerMenuItem;
@@ -634,6 +636,12 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     sourceActions.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     sourceActions.distribution = NSStackViewDistributionFillEqually;
     sourceActions.spacing = 8;
+    // regions and track files between genome builds (the web rail's Liftover button)
+    GCButton *liftoverButton = [GCButton buttonWithLabel:@"Liftover" symbol:@"arrow.left.arrow.right" style:GCButtonStyleSecondary target:self action:@selector(openLiftover:)];
+    liftoverButton.font = GCUIFont(12.5, 550);
+    liftoverButton.label = liftoverButton.label;
+    liftoverButton.toolTip = @"Convert regions or track files between genome builds (hg19 ↔ hg38, mm10 ↔ mm39)";
+    liftoverButton.identifier = @"LiftoverButton";
 
     NSView *secondDivider = [self dividerLine];
 
@@ -642,7 +650,10 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     refreshButton.fixedHeight = 26;
     NSView *headingSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
     [headingSpacer setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
-    NSStackView *currentHeading = [NSStackView stackViewWithViews:@[currentLabel, headingSpacer, refreshButton]];
+    // the server tracks in view as a trackset, shared with the lab; server mode only
+    self.tracksetButton = [self iconButton:@"square.stack.3d.up" tip:@"Save these server tracks as a trackset, shared with the lab" action:@selector(saveTrackset:)];
+    self.tracksetButton.fixedHeight = 26;
+    NSStackView *currentHeading = [NSStackView stackViewWithViews:@[currentLabel, headingSpacer, self.tracksetButton, refreshButton]];
     currentHeading.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     currentHeading.alignment = NSLayoutAttributeCenterY;
 
@@ -688,7 +699,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 
     NSArray<NSView *> *rows = @[
         brand, sourceLabel, segments, self.workspaceLabel, self.workspaceControls, firstDivider,
-        libraryHeading, self.filesButton, self.sharedButton, sourceActions, secondDivider, currentHeading, trackScroll, tips, status
+        libraryHeading, self.filesButton, self.sharedButton, sourceActions, liftoverButton, secondDivider, currentHeading, trackScroll, tips, status
     ];
     NSStackView *column = [NSStackView stackViewWithViews:rows];
     column.translatesAutoresizingMaskIntoConstraints = NO;
@@ -703,7 +714,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     [column setCustomSpacing:12 afterView:libraryHeading];
     [column setCustomSpacing:8 afterView:self.filesButton];
     [column setCustomSpacing:8 afterView:self.sharedButton];
-    [column setCustomSpacing:16 afterView:sourceActions];
+    [column setCustomSpacing:8 afterView:sourceActions];
+    [column setCustomSpacing:16 afterView:liftoverButton];
     [column setCustomSpacing:12 afterView:secondDivider];
     [column setCustomSpacing:12 afterView:trackScroll];
     [column setCustomSpacing:12 afterView:tips];
@@ -718,7 +730,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
         [trackScroll.heightAnchor constraintGreaterThanOrEqualToConstant:96],
         [self.statusDot.widthAnchor constraintEqualToConstant:7], [self.statusDot.heightAnchor constraintEqualToConstant:7],
     ]];
-    for (NSView *row in @[segments, self.workspaceControls, firstDivider, self.filesButton, self.sharedButton, sourceActions, secondDivider, currentHeading, trackScroll, tips]) {
+    for (NSView *row in @[segments, self.workspaceControls, firstDivider, self.filesButton, self.sharedButton, sourceActions, liftoverButton, secondDivider, currentHeading, trackScroll, tips]) {
         [constraints addObject:[row.widthAnchor constraintEqualToAnchor:column.widthAnchor]];
     }
     [NSLayoutConstraint activateConstraints:constraints];
@@ -1185,6 +1197,13 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.sharedTracksMenuItem.target = self;
     self.sharedTracksMenuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
     [fileMenu addItem:self.sharedTracksMenuItem];
+    self.tracksetMenuItem = [[NSMenuItem alloc] initWithTitle:@"Save View as Trackset…" action:@selector(saveTrackset:) keyEquivalent:@""];
+    self.tracksetMenuItem.target = self;
+    [fileMenu addItem:self.tracksetMenuItem];
+    NSMenuItem *liftover = [[NSMenuItem alloc] initWithTitle:@"Liftover…" action:@selector(openLiftover:) keyEquivalent:@"l"];
+    liftover.target = self;
+    liftover.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
+    [fileMenu addItem:liftover];
     [fileMenu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *export = [[NSMenuItem alloc] initWithTitle:@"Export PNG…" action:@selector(exportPNG:) keyEquivalent:@"e"];
     export.target = self;
@@ -1250,6 +1269,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.filesButton.accessibilityLabel = self.filesButton.titleLabel.stringValue;
     self.sharedButton.hidden = self.localMode; // the lab list lives on the server
     self.sharedTracksMenuItem.hidden = self.localMode;
+    self.tracksetButton.hidden = self.localMode; // tracksets are the lab's, on the server
+    self.tracksetMenuItem.hidden = self.localMode;
     self.openFilesMenuItem.title = self.localMode ? @"Open Local Files…" : @"Open Server Files…";
     self.localBackendMenuItem.state = self.localMode ? NSControlStateValueOn : NSControlStateValueOff;
     self.remoteServerMenuItem.state = self.localMode ? NSControlStateValueOff : NSControlStateValueOn;
@@ -1723,6 +1744,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 - (void)openSharedTracks:(id)sender { if (!self.localMode) [self callDesktopMethod:@"openSharedTracks" arguments:@[]]; }
 - (void)openCustomReference:(id)sender { [self callDesktopMethod:@"openCustomReference" arguments:@[]]; }
 - (void)openFavorites:(id)sender { [self callDesktopMethod:@"openFavorites" arguments:@[]]; }
+- (void)openLiftover:(id)sender { [self callDesktopMethod:@"openLiftover" arguments:@[]]; }
+- (void)saveTrackset:(id)sender { if (!self.localMode) [self callDesktopMethod:@"saveTracksetFromView" arguments:@[]]; }
 - (void)shareView:(id)sender { [self callDesktopMethod:@"share" arguments:@[]]; }
 - (void)exportPNG:(id)sender { [self callDesktopMethod:@"exportPNG" arguments:@[]]; }
 - (void)removeSelectedTrack:(id)sender { NSInteger row = self.trackTable.selectedRow; if (row >= 0) [self callDesktopMethod:@"removeTrack" arguments:@[@(row)]]; }
