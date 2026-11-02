@@ -1,5 +1,12 @@
 Native Genome Canvas Desktop builds for Apple Silicon and Intel Macs.
 
+## What's new in 1.10.0
+
+- **Liftover**: a button under **Public data** / **Reference** (or **File → Liftover…**, ⌥⌘L) converts pasted regions or the current view between hg19 ↔ hg38 and mm10 ↔ mm39 (click a result to go there, or copy them as BED), and track files in the view — BED, narrowPeak, bedGraph, bigWig, BAM, GTF/GFF, VCF, BEDPE — on the server
+- **Genome build check**: a file whose header or name says it is on another build than the view asks before loading — convert it, load it as it is, or skip it
+- **Tracksets**: groups of shared files under **Shared tracks**, loaded together as separate tracks or overlaid in one smooth layered track (e.g. **Layered H3K27ac (ENCODE)**, 7 cell lines). The stack button next to the track list's refresh (or **File → Save View as Trackset…**) saves the server tracks in view as one; the native track list shows a layered track's layer count. Server mode only
+- **Shared Favorites**: **Share** on a Favorite lists it for the lab; others **Load** it or **Save a copy**
+
 ## What's new in 1.9.0
 
 - **Connect to Server…** (⌘,) sets the server address and port (default 171.65.68.140 port 8892) and, optionally, **SSH port forwarding** for servers you cannot reach directly: the SSH host and port, your account and an optional password (kept in the macOS Keychain; empty: your SSH key). The app opens the tunnel itself and reconnects after sleep or a network change; **Use Default** goes back to the lab server
