@@ -43,6 +43,10 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
 - Module scores (`hub/module_score.py`): rank caches in `state/module-cache/<folder key>-<assay>/` (rebuilt when
   `expr.bin` changes; safe to delete), saved scores in `state/module-scores/<folder key>/` (index.json + `<id>.f32`;
   user data — keep). The folder key is the slide folder's path, so every dataset of that folder shares them.
+- Expression export and plots (`hub/expression.py`, `hub/web/src/expression-panel.ts`): `/hub/api/datasets/<id>/matrix`
+  streams files (dense tables are capped at `DENSE_MAX` values; Matrix Market has no cap), `/distribution` returns
+  densities that the page draws as SVG. Both are open like `/hub/api/data/` (no workspace check). Tests:
+  `python -m unittest discover hub/tests` (also run in CI).
 - Never delete or overwrite source data on `/nfs`; conversions write to `<source>.vizhub/` next to it.
 - Data colors in the viewers are data: change the interface theme tokens (`hub/web/src/theme.css`,
   Genome Canvas's Nord palette), not dataset colors.

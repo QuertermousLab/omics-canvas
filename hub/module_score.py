@@ -39,11 +39,12 @@ def max_rank(n_genes):
 class Matrix:
     """One assay of a slide folder: feature names and the gene-by-gene expr.bin / expr.idx."""
 
-    def __init__(self, folder: Path, assay: str = ''):
+    def __init__(self, folder: Path, assay: str = '', genes_only=True):
         meta = json.loads((folder / 'slide.json').read_text())
         assays = meta.get('assays') or []
         a = next((x for x in assays if x.get('key') == assay), None) or (assays[0] if assays else {})
-        if a.get('type') == 'chromvar':
+        self.label, self.type = a.get('label') or 'Gene expression', a.get('type') or 'rna'
+        if a.get('type') == 'chromvar' and genes_only:
             raise ValueError('Module scores need genes: pick the gene expression assay')
         sub = folder / a['dir'] if a.get('dir') else folder
         self.key = a.get('key') or 'main'

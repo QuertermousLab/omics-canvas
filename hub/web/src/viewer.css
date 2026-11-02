@@ -61,6 +61,21 @@
   .composition b { font-weight: 600; }
   .regions { margin-top: 8px; }
 
+  /* Export & plots (expression-panel.ts): genes x cells files, violin / ridge plots */
+  .expr-groups { display: grid; gap: 6px; margin: 4px 0 6px; }
+  .expr-cats { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow: auto; display: grid; gap: 1px; }
+  .expr-cats label { display: grid; grid-template-columns: auto 10px minmax(0, 1fr) auto; align-items: center; gap: 6px; font-size: .78rem; padding: 2px 2px; }
+  .expr-cats .sw { width: 10px; height: 10px; border-radius: 2px; }
+  .expr-cats .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .expr-cats .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .expr-count { margin: 2px 0 8px; font-size: .76rem; color: var(--muted); }
+  .expr-plotbox { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .expr-opts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .expr-opts .btn { margin-left: auto; }
+  .expr-plot { width: min(1100px, 100vw - 32px); }
+  .expr-plot__fig { overflow: auto; max-height: calc(100vh - 160px); }
+  .expr-plot__fig svg { display: block; margin: 0 auto; }
+
   .channel { padding: 6px 0; border-top: 1px dashed var(--line); }
   .ch-sliders { display: grid; gap: 2px; padding-left: 26px; }
   .ch-sliders label { display: grid; grid-template-columns: 52px 1fr; align-items: center; font-size: .75rem; color: var(--muted); }

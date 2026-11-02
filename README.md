@@ -123,6 +123,11 @@ folder; the page only offers what that viewer reads and points to the right one 
   ignoring case) scored as AUCell's AUC (top 5% of each cell's genes) or Seurat's AddModuleScore. Each slide's
   per-cell gene ranks are computed once into `state/module-cache/`; scores saved under a label are float32 files in
   `state/module-scores/<slide folder>/` (never inside the dataset), listed for everyone who has the dataset.
+  **Export & plots** (`hub/expression.py`) gives chosen genes × chosen cells (all cells, those shown, a region, or
+  annotation categories), as counts or log-normalized values. The file is CSV, TSV, gzip or a 10x Matrix Market zip,
+  and is also served to scripts at `/hub/api/datasets/<id>/matrix`. The same panel draws one gene's (or module
+  score's) violin or ridge plot per group; the densities come from `/hub/api/datasets/<id>/distribution`. See
+  [the tutorial](docs/TUTORIAL.md#9-tips) for the parameters.
   Tissue coordinates are always kept, whichever viewer converts the data: one conversion serves both (the single-cell
   viewer opens it on its embedding, computing a UMAP if there is none), and the same folder can be in your spatial
   and your single-cell lists. Selecting a source again reuses a finished conversion unless the source changed (or it

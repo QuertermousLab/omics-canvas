@@ -74,6 +74,48 @@
         </div>
       </details>
 
+      <details data-expr-box>
+        <summary>Export &amp; plots</summary>
+        <p class="hint">Genes × cells as a file, or one gene or module score per group as a violin or ridge plot.</p>
+        <textarea class="input mono module-genes" rows="3" spellcheck="false" data-expr-genes aria-label="Genes"
+          placeholder="Genes, e.g. MYH11 ACTA2 CNN1 — spaces, commas or new lines. Empty: every gene"></textarea>
+        <label class="lbl">Cells <select class="input" data-expr-cells>
+          <option value="all">All cells</option><option value="shown">Cells shown (legend and filters)</option>
+          <option value="selection">Selected region</option><option value="groups">By annotation…</option></select></label>
+        <div class="expr-groups" data-expr-groups hidden>
+          <select class="input" data-expr-col aria-label="Annotation"></select>
+          <div class="legend-tools"><button type="button" data-expr-all>All</button><button type="button" data-expr-none>None</button></div>
+          <ul class="expr-cats" data-expr-cats></ul>
+        </div>
+        <p class="expr-count" data-expr-count></p>
+        <div class="row2">
+          <label class="lbl">Values <select class="input" data-expr-value><option value="normalized">Normalized (log)</option><option value="counts">Counts</option></select></label>
+          <label class="lbl">Annotation column <select class="input" data-expr-meta></select></label>
+        </div>
+        <div class="row2">
+          <label class="lbl">Format <select class="input" data-expr-format><option value="csv">CSV</option><option value="tsv">TSV</option>
+            <option value="csv.gz">CSV (gzip)</option><option value="mtx">Matrix Market (10x, zip)</option></select></label>
+          <label class="lbl">Rows <select class="input" data-expr-orient><option value="cells">Cells</option><option value="genes">Genes</option></select></label>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn--primary btn--sm" data-expr-export>Export matrix</button>
+          <button type="button" class="btn btn--light btn--sm" data-expr-api title="Copy this export as a command (curl) for scripts">Copy API call</button>
+        </div>
+        <div class="expr-plotbox">
+          <label class="lbl">Plot <select class="input" data-expr-target aria-label="Gene or score to plot"></select></label>
+          <div class="row2">
+            <label class="lbl">Group by <select class="input" data-expr-group></select></label>
+            <label class="lbl">Type <select class="input" data-expr-kind><option value="violin">Violin</option><option value="ridge">Ridge</option></select></label>
+          </div>
+          <div class="expr-opts">
+            <label class="check"><input type="checkbox" checked data-expr-points /> Points</label>
+            <label class="check" title="Leave out cells with no expression (value 0)"><input type="checkbox" data-expr-nonzero /> Above 0 only</label>
+            <button type="button" class="btn btn--light btn--sm" data-expr-plot>Plot</button>
+          </div>
+        </div>
+        <p class="module-note" data-expr-note hidden></p>
+      </details>
+
       <details open>
         <summary>Regions</summary>
         <p class="hint">Draw with the <b>▭</b> or <b>✎</b> tool above the <span data-surface>image</span>, then crop, save or export.</p>

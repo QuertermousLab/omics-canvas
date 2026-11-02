@@ -35,6 +35,8 @@ STATE = VIZHUB / 'state'
 STATIC = HERE / 'static'
 sys.path.insert(0, str(HERE / 'converters'))
 import detect  # noqa: E402
+import expression  # noqa: E402
+import numpy as np  # noqa: E402
 import module_score  # noqa: E402
 
 CONFIG = json.loads((HERE / 'config.json').read_text())
@@ -1603,6 +1605,205 @@ def delete_module_score(base: str, id: str, request: Request):
     except PermissionError as exc:
         raise HTTPException(403, str(exc))
     return {'deleted': id}
+
+
+# ---------- expression of chosen cells (expression.py): cells x genes matrices and grouped distributions (violins)
+
+async def expression_params(request: Request):
+    """Query parameters (a repeated one becomes a list), with a POST's JSON body on top."""
+    p = {}
+    for k in request.query_params.keys():
+        vals = request.query_params.getlist(k)
+        p[k] = vals if len(vals) > 1 else vals[0]
+    if request.method == 'POST':
+        try:
+            body = await request.json()
+        except ValueError:
+            raise HTTPException(400, 'The body is not JSON')
+        if not isinstance(body, dict):
+            raise HTTPException(400, 'The body is a JSON object')
+        p.update(body)
+    return p
+
+
+def expression_sample(id_, sample):
+    """(dataset, sample, folder) of a spatial or single-cell dataset; `sample` may be left out when it has one."""
+    d = dataset(id_)
+    if d['kind'] not in ('spatial', 'singlecell'):
+        raise HTTPException(400, f'“{d["title"]}” is not a spatial or single-cell dataset')
+    slides = d['slides']
+    s = next((x for x in slides if x['id'] == sample), None) if sample else (slides[0] if len(slides) == 1 else None)
+    if not s:
+        raise HTTPException(400, f'Pick a sample (sample=…): {", ".join(x["id"] for x in slides)}' if not sample
+                            else f'No sample {sample!r}; there are: {", ".join(x["id"] for x in slides)}')
+    folder = slide_dir(d, s)
+    if not (folder / 'slide.json').is_file():
+        raise HTTPException(404, f'Sample {s["id"]} has no viewer data')
+    return d, s, folder
+
+
+def expression_matrix_of(folder, assay):
+    try:
+        return module_score.Matrix(folder, assay or '', genes_only=False)
+    except (OSError, KeyError, ValueError) as exc:
+        raise HTTPException(400, f'This sample has no expression matrix ({exc})')
+
+
+def expression_cells(cells, p):
+    """Cell numbers picked by the parameters: indices, cells (ids), mask, where / obs + values."""
+    where = p.get('where') or {}
+    if isinstance(where, str):
+        try:
+            where = json.loads(where)
+        except ValueError:
+            raise HTTPException(400, 'where is a JSON object: {"annotation": ["value", …]}')
+    if not isinstance(where, dict):
+        raise HTTPException(400, 'where is a JSON object: {"annotation": ["value", …]}')
+    where = dict(where)
+    if p.get('obs') and expression.as_list(p.get('values')):
+        where[str(p['obs'])] = p['values']
+    return expression.select(cells, p.get('indices'), p.get('cells'), p.get('mask'), where)
+
+
+def expression_safe(name):
+    return re.sub(r'[^A-Za-z0-9_.-]+', '_', str(name)).strip('_') or 'data'
+
+
+@app.get('/hub/api/datasets/{id_}/expression')
+def expression_info(id_: str):
+    """What can be asked of a dataset's expression: samples, assays (with or without counts) and annotations."""
+    d = dataset(id_)
+    if d['kind'] not in ('spatial', 'singlecell'):
+        raise HTTPException(400, f'“{d["title"]}” is not a spatial or single-cell dataset')
+    out = []
+    for s in d['slides']:
+        try:
+            _, _, folder = expression_sample(id_, s['id'])
+            cells = expression.Cells(folder)
+        except (HTTPException, OSError, ValueError):
+            continue
+        assays = [{'key': a.get('key') or 'main', 'label': a.get('label'), 'type': a.get('type'), 'nFeatures': a.get('nFeatures'),
+                   'counts': (a.get('exprDtype') or cells.meta.get('exprDtype')) != 'float32', 'normalization': a.get('normalization')}
+                  for a in cells.meta.get('assays') or [{'key': 'main', 'label': cells.meta.get('feature') or 'Gene expression', 'type': 'rna',
+                                                         'nFeatures': len(cells.meta.get('genes') or []), 'normalization': cells.meta.get('normalization')}]]
+        out.append({'id': s['id'], 'title': s.get('title'), 'nCells': cells.n, 'assays': assays, 'obs': cells.public()})
+    return {'id': d['id'], 'title': d['title'], 'kind': d['kind'], 'samples': out}
+
+
+@app.api_route('/hub/api/datasets/{id_}/matrix', methods=['GET', 'POST'])
+async def expression_matrix(id_: str, request: Request):
+    """Chosen cells x genes as a file: format csv / tsv / csv.gz / tsv.gz (cells as rows, or orient=genes) or mtx (a zip
+    of a 10x-style Matrix Market folder); value counts or normalized (log1p(counts / total * 10,000))."""
+    p = await expression_params(request)
+    d, s, folder = expression_sample(id_, p.get('sample'))
+    matrix = expression_matrix_of(folder, p.get('assay'))
+    fmt = str(p.get('format') or 'csv').lower()
+    value = str(p.get('value') or 'normalized').lower()
+    orient = str(p.get('orient') or 'cells').lower()
+    if fmt not in ('csv', 'tsv', 'csv.gz', 'tsv.gz', 'mtx'):
+        raise HTTPException(400, 'format is csv, tsv, csv.gz, tsv.gz or mtx')
+    if orient not in ('cells', 'genes'):
+        raise HTTPException(400, 'orient is cells (a row per cell) or genes')
+    try:
+        expression.check_value(matrix, value)
+        cells = expression.Cells(folder)
+        genes, ginfo = expression.genes_of(matrix, p.get('genes'), limit=None if fmt == 'mtx' else 20000)
+        rows, cinfo = expression_cells(cells, p)
+        meta = [m for m in expression.as_list(p.get('meta')) if m]
+        if len(meta) == 1 and ',' in str(meta[0]):
+            meta = [m.strip() for m in str(meta[0]).split(',') if m.strip()]
+        if p.get('obs') and p['obs'] not in meta:
+            meta.append(p['obs'])
+        meta = [cells.spec(m)['key'] for m in meta]
+        stem = f'{expression_safe(d["id"])}_{expression_safe(s["id"])}_{value}'
+        if fmt == 'mtx':
+            body = expression.market_zip(matrix, cells, genes, rows, value, meta, folder=stem)
+            name, media = f'{stem}.zip', 'application/zip'
+        else:
+            sep = ',' if fmt.startswith('csv') else '\t'
+            lines = expression.dense_text(matrix, cells, genes, rows, value, sep, orient, meta)
+            body = expression.gzipped(lines) if fmt.endswith('.gz') else (x.encode() for x in lines)
+            name = f'{stem}.{fmt}'
+            media = 'application/gzip' if fmt.endswith('.gz') else ('text/csv' if sep == ',' else 'text/tab-separated-values')
+    except expression.Problem as exc:
+        raise HTTPException(400, str(exc))
+    info = {'sample': s['id'], 'assay': matrix.key, 'value': value, 'cells': int(len(rows)), 'genes': len(genes),
+            'given': ginfo['given'], 'missing': ginfo['missing'][:50], 'converted': dict(list(ginfo['converted'].items())[:50]),
+            'meta': meta, **cinfo}
+    return StreamingResponse(body, media_type=media, headers={
+        'content-disposition': f'attachment; filename="{name}"', 'x-matrix': json.dumps(info),
+        'access-control-expose-headers': 'x-matrix', 'cache-control': 'no-store'})
+
+
+@app.api_route('/hub/api/datasets/{id_}/distribution', methods=['GET', 'POST'])
+async def expression_distribution(id_: str, request: Request):
+    """One gene's (or a module score's, or a numeric annotation's) values in the chosen cells per group of `group` (a
+    category annotation): densities, quartiles and sampled points for violin and ridge plots. 202 while a module
+    score's rank cache is built."""
+    p = await expression_params(request)
+    d, s, folder = expression_sample(id_, p.get('sample'))
+    cells = expression.Cells(folder)
+    value = str(p.get('value') or 'normalized').lower()
+    info = {}
+    try:
+        if p.get('gene'):
+            matrix = expression_matrix_of(folder, p.get('assay'))
+            expression.check_value(matrix, value)
+            idx, ginfo = expression.genes_of(matrix, [str(p['gene'])])
+            g = idx[0]
+            vals = np.zeros(matrix.n, np.float64)
+            c, v = expression.gene_values(matrix, g, value)
+            vals[c] = v
+            label = matrix.names[g]
+            info.update(kind='gene', gene=label, assay=matrix.key, value=value, converted=ginfo['converted'])
+        elif p.get('module'):
+            m = next((x for x in MODULES.saved(folder) if x['id'] == p['module']), None)
+            if not m:
+                raise HTTPException(404, 'No such saved score')
+            vals = np.fromfile(MODULES.values_file(folder, m['id']), dtype='<f4').astype(np.float64)
+            label = m['name']
+            info.update(kind='module', method=m.get('method'), genes=len(m.get('genes') or []))
+        elif p.get('moduleGenes'):
+            matrix = module_matrix(folder, p.get('assay'))
+            idx, ginfo = module_genes(matrix, {'genes': p['moduleGenes']})
+            ranks = MODULES.ranks(folder, matrix)
+            if ranks is None:
+                st = MODULES.status(folder, matrix)
+                if st.get('error'):
+                    raise HTTPException(500, f'Could not rank the genes: {st["error"]}')
+                return JSONResponse({'building': True, 'progress': st.get('progress', 0)}, status_code=202)
+            values, how = module_values(matrix, ranks, idx, str(p.get('method') or 'auc'))
+            vals = values.astype(np.float64)
+            label = str(p.get('label') or f'{"Seurat" if how["method"] == "seurat" else "AUC"} score')
+            info.update(kind='module', method=how['method'], genes=len(ginfo['used']))
+        elif p.get('metric'):
+            o = cells.spec(p['metric'])
+            if o['type'] != 'number':
+                raise expression.Problem(f'{o["key"]} is not a number')
+            vals = cells.column(o).astype(np.float64)
+            label = o.get('label') or o['key']
+            info.update(kind='metric', key=o['key'])
+        else:
+            raise HTTPException(400, 'Give a gene, a module (saved score id), moduleGenes or a metric')
+        if len(vals) != cells.n:
+            raise expression.Problem('These values do not match the cells of this sample')
+        rows, cinfo = expression_cells(cells, p)
+        group = str(p.get('group') or '')
+        if group:
+            o = cells.spec(group)
+            if o['type'] != 'category':
+                raise expression.Problem(f'Group by a category annotation; {o["key"]} is a number')
+            codes, labels = cells.column(o), o['categories']
+            info['group'] = {'key': o['key'], 'label': o.get('label') or o['key']}
+        else:
+            codes, labels = None, ['All cells']
+            info['group'] = None
+        points = max(0, min(2000, int(p.get('points') or 300)))
+        nonzero = str(p.get('nonzero') or '').lower() in ('1', 'true', 'yes')
+        out = expression.distribution(vals, rows, codes, labels, nonzero=nonzero, points=points)
+    except expression.Problem as exc:
+        raise HTTPException(400, str(exc))
+    return {'label': label, 'sample': s['id'], 'cells': int(len(rows)), **info, **cinfo, **out}
 
 
 @app.get('/hub/api/data/{id_}/{rest:path}')

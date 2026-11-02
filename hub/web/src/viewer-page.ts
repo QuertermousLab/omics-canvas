@@ -4,6 +4,7 @@
   import { css, esc, initChrome, loadWorkspace, workspace } from './common';
   import { mountManager } from './manager';
   import { bindShared, sharedCard } from './shared';
+  import { mountExpression } from './expression-panel';
   import { colormapGradient } from './spatial/colors';
   import { listProjects, Slide, type Kind, type Project } from './spatial/data';
   import { preferredEmbedding, Viewer, type Region, type Tool } from './spatial/viewer';
@@ -23,6 +24,7 @@
   const canvas = $('canvas'), msg = $('msg');
   let v: Viewer;
   let panel: AtacPanel | null = null; // chromatin accessibility, for scATAC datasets with fragments
+  let expr: { refresh(): void } | null = null; // Export & plots (expression-panel.ts)
 
   const fail = (html: string) => { msg.innerHTML = html; msg.hidden = false; };
   const debounce = <A extends unknown[]>(fn: (...a: A) => void, ms = 60) => {
@@ -473,6 +475,7 @@
     metric.querySelector('optgroup[data-modules]')?.remove();
     if (here.length) metric.insertAdjacentHTML('beforeend', `<optgroup label="Module scores" data-modules>${here.map((m) => `<option value="module:${esc(m.id)}">${esc(m.name)} (${esc(METHOD_LABEL[m.method] ?? m.method)})</option>`).join('')}</optgroup>`);
     if (selected) { metric.value = `module:${selected}`; openSavedModule(selected); }
+    expr?.refresh();
   }
 
   async function openSavedModule(id: string) {
@@ -778,7 +781,10 @@
     }
 
     const panelRefresh = debounce(() => panel?.refresh(), 80);
-    v.onChange = () => { renderLegend(); renderScale(); renderRegions(); renderStatus(); panelRefresh(); };
+    expr = mountExpression({ viewer: () => v, dataset: projectId, sample: () => slideId, headers, ink: () => ink, save,
+      savedModules: () => savedModules.filter((m) => m.assay === v.slide.assay.key || v.slide.assays.length === 1), lastModule: () => lastModule });
+    const exprRefresh = debounce(() => expr?.refresh(), 150);
+    v.onChange = () => { renderLegend(); renderScale(); renderRegions(); renderStatus(); panelRefresh(); exprRefresh(); };
     // labels: a size (on), or minus the size last used (off)
     const lab = +(savedLabels() ?? -16);
     if (lab) $<HTMLInputElement>('label-size').value = String(Math.abs(lab));

@@ -96,6 +96,25 @@ coordinates. Without a dataset in the address the page lists your datasets ([sec
   minutes); later ones take about a second. **Save** keeps a score under a label: it is listed under the box and with
   the numeric annotations, opens without computing for everyone who has the dataset, and only you can delete it.
   Saved scores are small files kept by the hub, not written into the dataset.
+- **Export & plots**: the expression of some genes in some cells, as a file or a plot.
+  - **Genes**: paste them as for a module score. Leave the box empty for every gene (best as Matrix Market).
+  - **Cells**: *All cells*, *Cells shown* (what the legend and filters keep), the *Selected region*, or *By annotation*
+    (tick clusters or other categories of a column).
+  - **Values**: *Normalized*, log1p(counts / total × 10,000) as the viewer shows them, or raw *Counts*. Counts are not
+    available when the data has no counts (values stored as given).
+  - **Annotation column**: adds a column such as the cell type next to each cell.
+  - **Export matrix** writes CSV, TSV or gzip-compressed CSV, with cells or genes as rows, or a 10x-style Matrix Market
+    folder (zip of `matrix.mtx`, `features.tsv`, `barcodes.tsv`, `metadata.tsv`) that Seurat's `ReadMtx` and scanpy's
+    `read_10x_mtx` open.
+  - **Copy API call** copies the same request as a `curl` command (see [Tips](#9-tips)).
+  - **Plot** draws one gene, one module score (saved, or the one just computed) or one numeric annotation in the
+    chosen cells, as a **Violin** plot (as Seurat's `VlnPlot`) or a **Ridge** plot (as `RidgePlot`), grouped by an
+    annotation, with the groups' colors.
+    - **Points** shows up to 400 cells per group.
+    - **Above 0 only** leaves out cells with no expression.
+    - Hover a group for its cells, % above 0, median and mean.
+    - The plot window saves **SVG**, **PNG** or the per-group numbers (**Table**).
+    - One plot is computed at a time.
 - **Image**: the tissue image is drawn under the cells — H&E or IHC in its own colors with an **Opacity** slider,
   fluorescence channels (Xenium morphology) each with its color; **Black / White / Gamma** adjust the contrast.
 - **Regions**: draw a box (▭) or a free shape (✎) on the tissue to select cells. The panel then shows their composition;
@@ -314,5 +333,24 @@ Omics Canvas's sidebar, **Connect to Server…** / the **Server** button in Geno
   tidy, they are not access control. Do not add data that must stay private.
 - **Large data**: 50–100 GB fragment files take hours; the conversion card shows an estimate. Uncheck the fragment files
   under *Advanced* for a quick first look.
+- **API**: scripts can read a spatial or single-cell dataset's expression without the viewer. `<id>` is the dataset's
+  name in its link (`/single-cell/<id>/`); add `sample=` for a dataset with several samples.
+  - `GET /hub/api/datasets/<id>/expression` lists its samples, assays (with or without counts) and annotations.
+  - `GET` or `POST /hub/api/datasets/<id>/matrix` returns a file, for example:
+    `curl -o smc.csv 'http://171.65.68.140:8892/hub/api/datasets/<id>/matrix?genes=MYH11,ACTA2&obs=cell_type&values=SMC&values=Fibroblast&value=counts'`.
+    It takes:
+    - `genes` (comma-separated; none means every gene);
+    - cells by any of `cells` (cell ids), `indices` (0-based row numbers), `obs` with `values` (an annotation and
+      its categories), or `where` (JSON, `{"cluster": ["SMC"], "nCount_RNA": {"min": 500}}`);
+    - `value` (`normalized` or `counts`);
+    - `format` (`csv`, `tsv`, `csv.gz`, `tsv.gz`, `mtx`);
+    - `orient` (`cells` or `genes` as rows);
+    - `meta` (annotation columns to add).
+
+    Without cell criteria you get every cell.
+  - `GET` or `POST /hub/api/datasets/<id>/distribution` returns one `gene`, saved `module` (its id) or `metric`
+    per `group` as JSON: densities, quartiles and sampled points, the data behind the plots.
+
+  In R, `read.csv(url)` reads a CSV link directly.
 - **Problems**: a conversion card's **Show log** has the converter's message; the dataset page of each viewer lists
   what it reads. The project's [README](../README.md) covers the server and command-line conversion.

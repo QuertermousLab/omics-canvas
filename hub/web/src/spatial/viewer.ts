@@ -419,6 +419,15 @@ export class Viewer {
     this.setSelection(sel);
   }
 
+  /** 1 for the cells the legend and filters keep (and the crop), whatever the color threshold hides. */
+  shownMask() {
+    const n = this.slide.n, out = new Uint8Array(n);
+    const codes = this.groupBy ? this.slide.obs(this.groupBy) : null, visible = this.catVisible.get(this.groupBy) ?? [];
+    const pass = this.passMask(), sel = this.cropped ? this.selection : null;
+    for (let i = 0; i < n; i++) out[i] = (!codes || visible[codes[i]] !== false) && (!pass || pass[i]) && (!sel || sel[i]) ? 1 : 0;
+    return out;
+  }
+
   selectedIndices() {
     const out: number[] = [];
     this.selection?.forEach((v, i) => v && out.push(i));
