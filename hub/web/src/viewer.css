@@ -112,3 +112,19 @@
   .sv-msg .picker div a:hover { border-color: var(--terra); color: var(--terra); }
   .sv-msg .picker div a span { font-size: .8rem; color: var(--muted); }
   @media (max-width: 860px) { .sv { grid-template-columns: 1fr; height: auto; } .sv-canvas { height: 70vh; } }
+  /* module score (AUC / Seurat) of a gene list; saved scores listed below it */
+  details.module { margin-top: 10px; padding: 6px 10px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+  details.module summary { padding: 2px 0 4px; font-size: .72rem; }
+  details.module[open] summary { padding-bottom: 8px; }
+  .module-genes { resize: vertical; min-height: 58px; font-size: .8rem; }
+  .module-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; margin-top: 6px; }
+  .module-note { margin: 6px 0 0; font-size: .76rem; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
+  .module-note b { color: var(--ink-2); }
+  .module-note .warn { color: var(--terra); }
+  .module-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+  .module-list:empty { display: none; }
+  .module-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px; padding: 4px 6px; border-radius: var(--radius-sm); background: var(--surface-2, rgba(0,0,0,.03)); font-size: .8rem; }
+  .module-list li.on { box-shadow: inset 3px 0 0 var(--terra); }
+  .module-list button.pick { min-width: 0; border: 0; background: none; padding: 0; text-align: left; font: inherit; color: var(--ink); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .module-list button.pick small { color: var(--muted); margin-left: 4px; }
+  .module-list .x { font-size: .95rem; }

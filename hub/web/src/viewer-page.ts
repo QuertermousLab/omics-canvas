@@ -1,12 +1,12 @@
 
   // Spatial / single-cell viewer page: the <script> of QuertermousLab/athena src/components/SpatialViewer.astro,
   // adapted to the hub (dataset in the URL path, /hub/api/projects, no Cloudflare Access sign-in).
-  import { css, esc, initChrome, loadWorkspace } from './common';
+  import { css, esc, initChrome, loadWorkspace, workspace } from './common';
   import { mountManager } from './manager';
   import { bindShared, sharedCard } from './shared';
   import { colormapGradient } from './spatial/colors';
   import { listProjects, Slide, type Kind, type Project } from './spatial/data';
-  import { Viewer, type Region, type Tool } from './spatial/viewer';
+  import { preferredEmbedding, Viewer, type Region, type Tool } from './spatial/viewer';
   import type { AtacPanel } from './spatial/atacPanel';
 
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(`[data-${s}]`)!;
@@ -233,6 +233,7 @@
     assayKey = key;
     renderAssay();
     clearValue();
+    loadModules();
     updatePanel();
     renderStatus();
   }
@@ -355,6 +356,7 @@
 
   function clearValue() {
     showMotif(null);
+    document.querySelectorAll('[data-module].on').forEach((li) => li.classList.remove('on'));
     $<HTMLInputElement>('gene').value = '';
     $<HTMLSelectElement>('metric').value = '';
     v.setColorBy({ kind: 'group' });
@@ -368,8 +370,141 @@
   $<HTMLSelectElement>('metric').onchange = (e) => {
     const key = (e.target as HTMLSelectElement).value;
     $<HTMLInputElement>('gene').value = '';
-    if (key) v.setColorBy({ kind: 'obs', key }); else clearValue();
+    if (key.startsWith('module:')) openSavedModule(key.slice(7));
+    else if (key) v.setColorBy({ kind: 'obs', key }); else clearValue();
   };
+
+  // ------------------------------------------------------------- module scores (hub: module_score.py)
+  // A pasted gene list scored in every cell on the server (AUCell AUC, or Seurat AddModuleScore); the server cleans
+  // and matches the names (case, quotes, separators). A score can be saved under a label: kept as a small file with
+  // the dataset and opened again without computing.
+  interface SavedModule { id: string; name: string; method: string; assay: string; genes: string[]; missing: string[]; owner: string; ownerName?: string; created: number }
+  interface ModuleInfo { given: number; used: string[]; converted: Record<string, string>; missing: string[]; method: string; k?: number; controls?: number }
+  const MODULE_KEY = 'vizhub-module-genes';
+  let savedModules: SavedModule[] = [];
+  let lastModule: { genes: string; method: string } | null = null;
+  const METHOD_LABEL: Record<string, string> = { auc: 'AUC', seurat: 'Seurat' };
+  const headers = (json = false) => ({ ...(json ? { 'content-type': 'application/json' } : {}), ...(workspace() ? { 'x-vizhub-workspace': workspace()!.id } : {}) });
+
+  function moduleNote(info: ModuleInfo) {
+    const conv = Object.entries(info.converted);
+    const shown = (list: string[]) => esc(list.slice(0, 12).join(', ')) + (list.length > 12 ? ` +${list.length - 12}` : '');
+    return [`<b>${info.used.length} of ${info.given}</b> genes scored${info.method === 'auc' ? ` · AUC over each cell's top ${info.k} genes` : ` · ${info.controls} control genes`}`,
+      conv.length ? `<span class="warn">Matched by another spelling: ${esc(conv.slice(0, 10).map(([a, b]) => `${a} → ${b}`).join(', '))}${conv.length > 10 ? ` +${conv.length - 10}` : ''}</span>` : '',
+      info.missing.length ? `<span class="warn">Not in this dataset: ${shown(info.missing)}</span>` : ''].filter(Boolean).join('<br>');
+  }
+
+  async function scoreModule() {
+    const text = $<HTMLTextAreaElement>('module-genes').value, method = $<HTMLSelectElement>('module-method').value;
+    const note = $('module-note'), go = $<HTMLButtonElement>('module-go');
+    try { localStorage.setItem(MODULE_KEY, text); } catch { /* private window */ }
+    go.disabled = true;
+    note.hidden = false;
+    try {
+      for (;;) {
+        const res = await fetch('/hub/api/module-score', { method: 'POST', headers: headers(true),
+          body: JSON.stringify({ base: v.slide.base, assay: v.slide.assay.key, genes: text, method }) });
+        if (res.status === 202) {
+          const p = await res.json();
+          note.innerHTML = `Ranking the genes of every cell — once for this dataset, then scores take a second: ${Math.round((p.progress || 0) * 100)}%`;
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Scoring failed (${res.status})`);
+        const info = JSON.parse(res.headers.get('x-module') || '{}') as ModuleInfo;
+        const values = new Float32Array(await res.arrayBuffer());
+        note.innerHTML = moduleNote(info);
+        lastModule = { genes: text, method };
+        $('module-save').hidden = false;
+        const name = $<HTMLInputElement>('module-name');
+        if (!name.value) name.value = info.used.slice(0, 3).join(' ') + (info.used.length > 3 ? ' …' : '');
+        // a new, unsaved score: no saved one is selected
+        $<HTMLSelectElement>('metric').value = '';
+        document.querySelectorAll('[data-module].on').forEach((li) => li.classList.remove('on'));
+        await showModule(`${METHOD_LABEL[info.method] ?? info.method} score · ${info.used.slice(0, 4).join(', ')}${info.used.length > 4 ? ` +${info.used.length - 4}` : ''}`, values, info.method);
+        break;
+      }
+    } catch (e) {
+      note.innerHTML = `<span class="warn">${esc((e as Error).message)}</span>`;
+    } finally {
+      go.disabled = false;
+    }
+  }
+
+  async function showModule(label: string, values: Float32Array, method: string) {
+    $<HTMLInputElement>('gene').value = '';
+    await v.setColorBy({ kind: 'values', label, values });
+    if (method === 'seurat') {  // centered on 0: the 1st–99th percentile, every cell colored
+      const sorted = Float32Array.from(values).sort();
+      v.range = [sorted[Math.floor(sorted.length * 0.01)], sorted[Math.floor(sorted.length * 0.99)]];
+      v.belowMin = 'color';
+      v.update();
+    }
+  }
+
+  async function saveModule() {
+    if (!lastModule) return;
+    const name = $<HTMLInputElement>('module-name').value.trim();
+    if (!name) { $<HTMLInputElement>('module-name').focus(); return; }
+    try {
+      const res = await fetch('/hub/api/module-scores', { method: 'POST', headers: headers(true),
+        body: JSON.stringify({ base: v.slide.base, assay: v.slide.assay.key, genes: lastModule.genes, method: lastModule.method, name }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not save');
+      await loadModules(data.id);
+      $('status').textContent = `Saved “${name}”: it opens again without computing`;
+    } catch (e) {
+      $('module-note').innerHTML += `<br><span class="warn">${esc((e as Error).message)}</span>`;
+    }
+  }
+
+  async function loadModules(selected = '') {
+    try {
+      const res = await fetch(`/hub/api/module-scores?base=${encodeURIComponent(v.slide.base)}`, { headers: headers() });
+      savedModules = res.ok ? await res.json() : [];
+    } catch { savedModules = []; }
+    const mine = workspace()?.id;
+    const here = savedModules.filter((m) => m.assay === v.slide.assay.key || (v.slide.assays.length === 1));
+    $('module-list').innerHTML = here.map((m) => `<li data-module="${esc(m.id)}"${m.id === selected ? ' class="on"' : ''}>
+        <button type="button" class="pick" title="${esc(`${m.genes.length} genes: ${m.genes.join(', ')}${m.ownerName ? ` · saved by ${m.ownerName}` : ''}`)}">${esc(m.name)}<small>${esc(METHOD_LABEL[m.method] ?? m.method)} · ${m.genes.length} genes</small></button>
+        ${m.owner === mine ? `<button type="button" class="x" data-module-delete="${esc(m.id)}" title="Delete this saved score" aria-label="Delete">×</button>` : '<span></span>'}</li>`).join('');
+    // also offered with the numeric annotations
+    const metric = $<HTMLSelectElement>('metric');
+    metric.querySelector('optgroup[data-modules]')?.remove();
+    if (here.length) metric.insertAdjacentHTML('beforeend', `<optgroup label="Module scores" data-modules>${here.map((m) => `<option value="module:${esc(m.id)}">${esc(m.name)} (${esc(METHOD_LABEL[m.method] ?? m.method)})</option>`).join('')}</optgroup>`);
+    if (selected) { metric.value = `module:${selected}`; openSavedModule(selected); }
+  }
+
+  async function openSavedModule(id: string) {
+    const m = savedModules.find((x) => x.id === id);
+    if (!m) return;
+    $('status').textContent = `Loading ${m.name}…`;
+    const res = await fetch(`/hub/api/module-scores/values?base=${encodeURIComponent(v.slide.base)}&id=${encodeURIComponent(id)}`, { headers: headers() });
+    if (!res.ok) { $('status').textContent = `Could not open ${m.name}`; return; }
+    $<HTMLSelectElement>('metric').value = `module:${id}`;
+    document.querySelectorAll('[data-module]').forEach((li) => li.classList.toggle('on', (li as HTMLElement).dataset.module === id));
+    await showModule(`${m.name} (${METHOD_LABEL[m.method] ?? m.method})`, new Float32Array(await res.arrayBuffer()), m.method);
+  }
+
+  $('module-go').onclick = scoreModule;
+  $('module-keep').onclick = saveModule;
+  $<HTMLInputElement>('module-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveModule(); });
+  $<HTMLTextAreaElement>('module-genes').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) scoreModule(); });
+  try { $<HTMLTextAreaElement>('module-genes').value = localStorage.getItem(MODULE_KEY) ?? ''; } catch { /* private window */ }
+  $('module-list').addEventListener('click', async (e) => {
+    const t = e.target as HTMLElement;
+    const del = t.closest<HTMLElement>('[data-module-delete]');
+    if (del) {
+      const m = savedModules.find((x) => x.id === del.dataset.moduleDelete);
+      if (!m || !confirm(`Delete the saved score “${m.name}”?`)) return;
+      await fetch(`/hub/api/module-scores?base=${encodeURIComponent(v.slide.base)}&id=${encodeURIComponent(m.id)}`, { method: 'DELETE', headers: headers() });
+      if ($<HTMLSelectElement>('metric').value === `module:${m.id}`) clearValue();
+      loadModules();
+      return;
+    }
+    const li = t.closest<HTMLElement>('[data-module]');
+    if (li) openSavedModule(li.dataset.module!);
+  });
   $('clear-value').onclick = clearValue;
   $<HTMLSelectElement>('norm').onchange = (e) => {
     v.norm = (e.target as HTMLSelectElement).value as 'log' | 'raw';
@@ -605,7 +740,7 @@
       msg.hidden = true;
       v = new Viewer(canvas, slide);
       // tissue data opened in the single-cell viewer starts on its embedding (Display → Layout has Spatial too)
-      if (kind !== 'spatial' && slide.meta.spatial !== false && slide.meta.embeddings.length) v.setLayout(slide.meta.embeddings[0].key);
+      if (kind !== 'spatial' && slide.meta.spatial !== false && slide.meta.embeddings.length) v.setLayout(preferredEmbedding(slide.meta.embeddings).key);
       applyBackground();
     } catch (e) {
       fail(esc((e as Error).message));
@@ -650,6 +785,7 @@
     v.labelSize = lab > 0 ? lab : 0;
     renderLabelsRow();
     loadFilters();
+    loadModules();
     updatePanel();
     renderChannels();
     v.update();

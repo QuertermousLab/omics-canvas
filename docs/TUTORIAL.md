@@ -88,6 +88,14 @@ coordinates. Without a dataset in the address the page lists your datasets ([sec
 - **Gene expression**: type a gene (or pick a numeric annotation such as counts). Choose log-normalized or raw values,
   a colormap, the min / max range (histogram above), and whether cells at or below the minimum are gray, hidden or
   colored. With several assays (e.g. RNA, peaks, gene activity, chromVAR) choose it in **Assay**.
+- **Module score**: paste a gene list (spaces, commas, semicolons or new lines; quotes and brackets are ignored) and
+  **Score cells**. Names are matched ignoring case (MYH11 → Myh11 in mouse data); the note lists what was matched by
+  another spelling and what is not in the dataset. **AUC (AUCell)** scores where the genes rank among each cell's top
+  5% of genes (0–1, comparable across samples); **Seurat AddModuleScore** is the mean expression minus control genes
+  of similar expression, as in Seurat. The first score of a dataset ranks every cell's genes once (seconds to two
+  minutes); later ones take about a second. **Save** keeps a score under a label: it is listed under the box and with
+  the numeric annotations, opens without computing for everyone who has the dataset, and only you can delete it.
+  Saved scores are small files kept by the hub, not written into the dataset.
 - **Image**: the tissue image is drawn under the cells — H&E or IHC in its own colors with an **Opacity** slider,
   fluorescence channels (Xenium morphology) each with its color; **Black / White / Gamma** adjust the contrast.
 - **Regions**: draw a box (▭) or a free shape (✎) on the tissue to select cells. The panel then shows their composition;
@@ -105,7 +113,9 @@ Spatial ATAC data has the same accessibility panel as the single-cell viewer bel
 ## 4. Single-cell viewer
 
 `/single-cell/` — scRNA-seq, snRNA-seq, multiome and scATAC on UMAP or any embedding. The controls are those of the
-spatial viewer (annotation, gene, regions, display, PNG); the layout menu switches embeddings.
+spatial viewer (annotation, gene, regions, display, PNG, module scores); the layout menu switches embeddings. An
+integrated UMAP is shown first when there is one (Harmony `umap_h` / `umap.harmony`, WNN, bridge integration, scVI,
+CCA/RPCA …), else the first embedding.
 
 ![Mouse SMC time course: all cells by cell type](images/sc-umap.png)
 

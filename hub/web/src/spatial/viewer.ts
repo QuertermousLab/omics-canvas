@@ -21,6 +21,25 @@ const filterExt = [new DataFilterExtension({ filterSize: 1 })];
 
 interface TileContent { channels: number[]; pixels: (Uint8Array | Uint8ClampedArray | null)[] }
 
+// Integration tokens in an embedding's name, most preferred first: Harmony (umap_h), integrated, scVI, WNN, bridge
+// integration, CCA/RPCA/MNN/BBKNN…, reference mapping.
+const INTEGRATED = [['h', 'harmony'], ['integrated', 'integration', 'int'], ['scvi', 'scanvi'], ['wnn'], ['bridge'],
+  ['cca', 'rpca', 'mnn', 'fastmnn', 'bbknn', 'scanorama', 'liger', 'inmf', 'combat'], ['ref', 'reference']];
+
+/** The embedding shown first: an integrated UMAP when there is one (X_umap_h, umap.harmony, umap.bridge …), else the
+ *  first. Plain UMAPs of one modality (umap.rna, umap.sct) are not integrated. */
+export function preferredEmbedding(embeddings: { key: string; label: string }[]) {
+  let best: { key: string; label: string } | undefined, bestScore = Infinity;
+  for (const e of embeddings) {
+    const tokens = e.key.replace(/^X_/, '').toLowerCase().split(/[._\-\s]+/);
+    const tier = INTEGRATED.findIndex((names) => names.some((n) => tokens.includes(n)));
+    if (tier < 0) continue;
+    const score = tier * 2 + (tokens.includes('umap') ? 0 : 1);
+    if (score < bestScore) { best = e; bestScore = score; }
+  }
+  return best ?? embeddings[0];
+}
+
 export class Viewer {
   readonly slide: Slide;
   readonly deck: Deck<OrthographicView>;
@@ -90,7 +109,7 @@ export class Viewer {
       this.catVisible.set(o.key, o.categories!.map(() => true));
     }
     this.channels = (m.image?.channels ?? []).map((c) => ({ visible: c.visible, color: c.color, lo: 0, hi: 255, gamma: 1, opacity: 1, rgb: c.mode === 'rgb' }));
-    this.setLayout(m.spatial === false ? m.embeddings[0]?.key ?? 'spatial' : 'spatial', false);
+    this.setLayout(m.spatial === false ? preferredEmbedding(m.embeddings)?.key ?? 'spatial' : 'spatial', false);
     this.view = this.fitView();
 
     this.overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -423,8 +442,9 @@ export class Viewer {
     const ids = await this.slide.cellIds();
     // tissue sections: positions in µm; single-cell data: the coordinates of the first embedding
     const m = this.slide.meta, tissue = m.spatial !== false;
-    const px = tissue ? m.pixelSize : 1, pos = tissue ? this.slide.positions : this.slide.embedding(m.embeddings[0].key)!;
-    const axis = tissue ? ['x_um', 'y_um'] : [1, 2].map((k) => `${m.embeddings[0].key.replace(/^X_/, '')}_${k}`);
+    const emb = this.layout !== 'spatial' ? this.layout : preferredEmbedding(m.embeddings)?.key ?? '';
+    const px = tissue ? m.pixelSize : 1, pos = tissue ? this.slide.positions : this.slide.embedding(emb)!;
+    const axis = tissue ? ['x_um', 'y_um'] : [1, 2].map((k) => `${emb.replace(/^X_/, '')}_${k}`);
     const spec = this.slide.spec(this.groupBy);
     const codes = spec ? this.slide.obs(this.groupBy) : null;
     const valueName = this.colorBy.kind === 'gene' ? `${this.colorBy.gene}_${this.norm === 'log' ? 'lognorm' : 'counts'}`

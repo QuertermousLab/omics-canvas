@@ -34,6 +34,22 @@
         <label class="lbl">or numeric annotation
           <select class="input" data-metric><option value="">—</option></select>
         </label>
+        <details class="module" data-module-box>
+          <summary>Module score</summary>
+          <textarea class="input mono module-genes" rows="3" spellcheck="false" data-module-genes aria-label="Genes of the module"
+            placeholder="Genes, e.g. MYH11, ACTA2, CNN1, TAGLN — separated by spaces, commas or new lines"></textarea>
+          <div class="module-row">
+            <select class="input" data-module-method aria-label="Method" title="AUC (AUCell): where the genes rank in each cell, 0–1, steady across samples. Seurat AddModuleScore: mean expression minus control genes of similar expression, as in Seurat">
+              <option value="auc">AUC (AUCell)</option><option value="seurat">Seurat AddModuleScore</option></select>
+            <button type="button" class="btn btn--primary btn--sm" data-module-go>Score cells</button>
+          </div>
+          <p class="module-note" data-module-note hidden></p>
+          <div class="module-row" data-module-save hidden>
+            <input class="input" maxlength="80" data-module-name aria-label="Label" placeholder="Label, e.g. Contractile SMC" />
+            <button type="button" class="btn btn--light btn--sm" data-module-keep title="Keep this score with the dataset: it opens again without computing, for everyone who has the dataset">Save</button>
+          </div>
+          <ul class="module-list" data-module-list></ul>
+        </details>
         <div data-scale hidden>
           <div class="scale-title"><strong data-scale-name></strong><button type="button" class="x" data-clear-value title="Back to annotation colors">×</button></div>
           <div class="row2">

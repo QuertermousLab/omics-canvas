@@ -40,6 +40,9 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
 - CRISPR screen reports (HTML pages opened from the explorer) are kept per data folder in `state/reports.json`
   (`add` / `hide` lists) and also found next to a screen's source (`found_reports`); `/hub/api/reports/<id>/…` serves
   a report's own folder only.
+- Module scores (`hub/module_score.py`): rank caches in `state/module-cache/<folder key>-<assay>/` (rebuilt when
+  `expr.bin` changes; safe to delete), saved scores in `state/module-scores/<folder key>/` (index.json + `<id>.f32`;
+  user data — keep). The folder key is the slide folder's path, so every dataset of that folder shares them.
 - Never delete or overwrite source data on `/nfs`; conversions write to `<source>.vizhub/` next to it.
 - Data colors in the viewers are data: change the interface theme tokens (`hub/web/src/theme.css`,
   Genome Canvas's Nord palette), not dataset colors.

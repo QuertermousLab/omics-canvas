@@ -35,6 +35,7 @@ STATE = VIZHUB / 'state'
 STATIC = HERE / 'static'
 sys.path.insert(0, str(HERE / 'converters'))
 import detect  # noqa: E402
+import module_score  # noqa: E402
 
 CONFIG = json.loads((HERE / 'config.json').read_text())
 ROOTS = [dict(label=r['label'], path=os.path.normpath(r['path'])) for r in CONFIG['roots']]
@@ -1479,6 +1480,129 @@ def enhancer_arcs(id_: str, which: str, genome: str = 'hg38', sample: str = ''):
     body = ''.join('\t'.join(map(str, a)) + '\n' for a in arcs)
     # readable from Genome Canvas on another origin (e.g. the Mac app's local backend)
     return Response(body, media_type='text/plain', headers={'cache-control': 'private, max-age=300', 'access-control-allow-origin': '*'})
+
+
+# ---------- module scores (module_score.py): AUCell AUC or Seurat AddModuleScore of a gene list, saved by label
+
+MODULES = module_score.ModuleScores(STATE)
+
+
+def slide_folder(base: str):
+    """The folder of a slide from the viewer's data URL (/hub/api/data/<dataset>[/<sample>]), as data() serves it."""
+    m = re.fullmatch(r'/hub/api/data/([^/]+)(?:/(.+?))?/?', str(base or ''))
+    if not m:
+        raise HTTPException(400, 'Not a dataset link')
+    d = dataset(m.group(1))
+    rel = posixpath.normpath(m.group(2) or '.')
+    if rel.startswith(('..', '/')):
+        raise HTTPException(400, 'bad path')
+    sid, _, rest = rel.partition('/')
+    sl = next((x for x in d['slides'] if x.get('root') and x['id'] == sid), None)
+    folder = Path(sl['root']) / rest if sl else Path(d['root']) / ('' if rel == '.' else rel)
+    if d.get('combined') and not sl:
+        raise HTTPException(404, f'no sample {sid}')
+    if not (folder / 'slide.json').is_file():
+        raise HTTPException(404, 'No slide there')
+    return d, folder
+
+
+def module_matrix(folder, assay):
+    try:
+        return module_score.Matrix(folder, assay or '')
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except (OSError, KeyError) as exc:
+        raise HTTPException(400, f'This slide has no expression matrix ({exc})')
+
+
+def module_genes(matrix, body):
+    wanted = body.get('genes')
+    wanted = module_score.parse_genes(' '.join(map(str, wanted)) if isinstance(wanted, list) else wanted)
+    if not wanted:
+        raise HTTPException(400, 'Give some genes: separated by spaces, commas or new lines')
+    idx, used, converted, missing = module_score.resolve(matrix.names, wanted[:2000])
+    if not idx:
+        raise HTTPException(400, f'None of the {len(wanted)} genes is in this dataset ({", ".join(wanted[:8])}…)')
+    return idx, {'given': len(wanted), 'used': used, 'converted': converted, 'missing': missing}
+
+
+def module_values(matrix, ranks, idx, method):
+    if method == 'seurat':
+        values, controls = module_score.seurat_score(matrix, ranks, idx)
+        return values, {'method': 'seurat', 'controls': controls}
+    return module_score.score(matrix, ranks, idx), {'method': 'auc', 'k': ranks.k}
+
+
+@app.post('/hub/api/module-score')
+async def compute_module_score(request: Request):
+    """A gene list's score in every cell (float32, application/octet-stream; what was used in x-module). 202 with the
+    progress while the slide's rank cache is built (once per slide and assay)."""
+    body = await request.json()
+    _, folder = slide_folder(body.get('base'))
+    matrix = module_matrix(folder, body.get('assay'))
+    idx, info = module_genes(matrix, body)
+    ranks = MODULES.ranks(folder, matrix)
+    if ranks is None:
+        st = MODULES.status(folder, matrix)
+        if st.get('error'):
+            raise HTTPException(500, f'Could not rank the genes: {st["error"]}')
+        return JSONResponse({'building': True, 'progress': st.get('progress', 0), **info}, status_code=202)
+    values, how = module_values(matrix, ranks, idx, str(body.get('method') or 'auc'))
+    info.update(how)
+    head = json.dumps({**info, 'missing': info['missing'][:200], 'used': info['used'][:500]})
+    return Response(values.tobytes(), media_type='application/octet-stream', headers={'x-module': head})
+
+
+@app.get('/hub/api/module-scores')
+def list_module_scores(base: str):
+    _, folder = slide_folder(base)
+    return MODULES.saved(folder)
+
+
+@app.post('/hub/api/module-scores')
+async def save_module_score(request: Request):
+    """Save a score under a label: computed again here, kept as a float32 file beside the others of the slide."""
+    ws = workspace_of(request)
+    body = await request.json()
+    _, folder = slide_folder(body.get('base'))
+    name = ' '.join(str(body.get('name') or '').split())[:80]
+    if not name:
+        raise HTTPException(400, 'Give the score a name')
+    matrix = module_matrix(folder, body.get('assay'))
+    idx, info = module_genes(matrix, body)
+    ranks = MODULES.ranks(folder, matrix)
+    if ranks is None:
+        raise HTTPException(409, 'The genes are still being ranked: try again in a moment')
+    values, how = module_values(matrix, ranks, idx, str(body.get('method') or 'auc'))
+    entry = {'name': name, 'assay': matrix.key, **how, 'genes': info['used'], 'missing': info['missing'],
+             'converted': info['converted'], 'owner': ws['id'], 'ownerName': ws['name'], 'created': int(time.time()),
+             'min': float(values.min()), 'max': float(values.max())}
+    return MODULES.save(folder, entry, values)
+
+
+@app.get('/hub/api/module-scores/values')
+def module_score_values(base: str, id: str):
+    _, folder = slide_folder(base)
+    try:
+        f = MODULES.values_file(folder, id)
+    except KeyError:
+        raise HTTPException(404, 'No such score')
+    if not f.is_file():
+        raise HTTPException(404, 'No such score')
+    return FileResponse(f, media_type='application/octet-stream', headers={'cache-control': 'private, max-age=3600'})
+
+
+@app.delete('/hub/api/module-scores')
+def delete_module_score(base: str, id: str, request: Request):
+    ws = workspace_of(request)
+    _, folder = slide_folder(base)
+    try:
+        MODULES.delete(folder, id, ws['id'])
+    except KeyError:
+        raise HTTPException(404, 'No such score')
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc))
+    return {'deleted': id}
 
 
 @app.get('/hub/api/data/{id_}/{rest:path}')

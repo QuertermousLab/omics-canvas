@@ -117,7 +117,12 @@ folder; the page only offers what that viewer reads and points to the right one 
   button next to them (or **Reports…** on the CRISPR datasets page) — open from buttons named by the page's title
   ("Gene Program Explorer") next to the explorer's screen picker, for everyone who has the screen.
   Raw integer counts are used when present (`layers["counts"]`, `raw.X`, `X`); otherwise values are shown as stored.
-  A UMAP (+ Leiden clusters if there is no annotation) is computed when a single-cell dataset has no embedding.
+  A UMAP (+ Leiden clusters if there is no annotation) is computed when a single-cell dataset has no embedding; the
+  viewer opens on an integrated UMAP when there is one (`umap_h`, `umap.harmony`, WNN, bridge, scVI …).
+  **Module scores** (spatial and single-cell viewers, `hub/module_score.py`): a pasted gene list (cleaned, matched
+  ignoring case) scored as AUCell's AUC (top 5% of each cell's genes) or Seurat's AddModuleScore. Each slide's
+  per-cell gene ranks are computed once into `state/module-cache/`; scores saved under a label are float32 files in
+  `state/module-scores/<slide folder>/` (never inside the dataset), listed for everyone who has the dataset.
   Tissue coordinates are always kept, whichever viewer converts the data: one conversion serves both (the single-cell
   viewer opens it on its embedding, computing a UMAP if there is none), and the same folder can be in your spatial
   and your single-cell lists. Selecting a source again reuses a finished conversion unless the source changed (or it
