@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY index.html styles.css app.js *.mjs server.py workspace_store.py resource_cache.py genomecanvas.config.example.json ./
+COPY index.html styles.css app.js *.mjs server.py workspace_store.py resource_cache.py liftover.py genomecanvas.config.example.json ./
 COPY public ./public
 COPY vendor ./vendor
 

@@ -30,6 +30,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+import liftover as liftover_tools
 from workspace_store import WorkspaceError, WorkspaceStore
 from resource_cache import FileMemoryCache, ReferenceCache
 
@@ -173,6 +174,32 @@ SETTINGS, DATA_ROOTS = load_settings()
 HOME_ROOT = Path(SETTINGS.get("homeRoot", "/home"))
 LOCAL_DBSNP_HG38 = Path(SETTINGS.get("dbSnpHg38") or APP_DIR / "data" / "hg38.dbsnp156.gz")
 LOCAL_WORKSPACE = {"id": "local", "name": "This Mac", "kind": "local", "home": None}
+# Liftover (liftover.py): UCSC chain files and the target builds' FASTA (for VCFs) from the config; converted files
+# go under the Genome Canvas data folder, served from the data root that holds it.
+LIFTOVER_DIR = Path(os.path.expanduser(str(SETTINGS.get("liftoverDir") or APP_DIR / "data" / "liftover")))
+LIFTOVER = liftover_tools.Liftover(
+    Path(os.path.expanduser(str(SETTINGS.get("liftoverChainDir") or LIFTOVER_DIR / "chains"))), LIFTOVER_DIR,
+    chains=SETTINGS.get("liftoverChains") if isinstance(SETTINGS.get("liftoverChains"), dict) else None,
+    fasta=SETTINGS.get("liftoverFasta") if isinstance(SETTINGS.get("liftoverFasta"), dict) else None,
+)
+
+
+def liftover_root():
+    """The data root that serves converted files (the one holding LIFTOVER_DIR), or None."""
+    try:
+        folder = LIFTOVER_DIR.resolve()
+    except OSError:
+        return None
+    holding = [root_id for root_id, item in DATA_ROOTS.items() if within_root(folder, item["path"])]
+    return max(holding, key=lambda root_id: len(str(DATA_ROOTS[root_id]["path"]))) if holding else None  # the closest
+
+
+def private_liftover(path):
+    """A file converted from a Home folder: served to whoever has its link, never put on the shared list."""
+    try:
+        return within_root(Path(path).resolve(), (LIFTOVER_DIR / "private").resolve())
+    except OSError:
+        return False
 
 
 def within_root(candidate, root):
@@ -1093,7 +1120,37 @@ def profile_summary(record):
         "locus": state.get("locus") or "",
         "trackCount": track_count,
         "highlightCount": len(state.get("genomeCanvasHighlights", [])) if isinstance(state.get("genomeCanvasHighlights"), list) else 0,
+        "shared": record.get("shared") is True,
     }
+
+
+def shared_profile_paths(owner_key, profile_id):
+    """Where another workspace's Favorite is (its owner key is its folder; the shared genome account also has old ones)."""
+    if not re.fullmatch(r"[a-f0-9]{24}", owner_key) or not re.fullmatch(r"[a-f0-9]{20}", profile_id):
+        return []
+    candidates = [PROFILE_DIR / owner_key / (profile_id + ".json")]
+    if owner_key == profile_owner_key("genome"):
+        candidates.append(PROFILE_DIR / (profile_id + ".json"))
+    return candidates
+
+
+def list_shared_profiles(exclude_owner):
+    """Favorites other workspaces shared with the lab (newest first)."""
+    mine = profile_owner_key(exclude_owner)
+    genome = profile_owner_key("genome")
+    found = {}
+    paths = [(path.parent.name, path) for path in PROFILE_DIR.glob("*/*.json")]
+    paths += [(genome, path) for path in PROFILE_DIR.glob("*.json")]
+    for owner_key, path in paths:
+        if owner_key == mine or (owner_key, path.stem) in found:
+            continue
+        record = read_json(path, None)
+        if not isinstance(record, dict) or record.get("shared") is not True or not isinstance(record.get("state"), dict):
+            continue
+        summary = profile_summary(record)
+        summary.update(ownerKey=owner_key, ownerName=record.get("ownerName") or "")
+        found[(owner_key, path.stem)] = summary
+    return sorted(found.values(), key=lambda item: item.get("updatedAt") or "", reverse=True)
 
 
 def list_profiles(owner="genome"):
@@ -1126,6 +1183,80 @@ def list_profiles(owner="genome"):
 SHARED_TRACK_CHECK_SECONDS = 30
 SHARED_TRACK_CHECK = {"at": 0.0}
 SHARED_TRACK_LOCK = Lock()
+
+
+# ---------------------------------------------------------------- tracksets
+# A named group of files in the shared data roots, listed for everyone (Shared tracks): loaded as separate tracks
+# or, signal files only, overlaid in one layered track (IGV's merged track), like UCSC's Layered H3K27Ac.
+TRACKSET_MODES = ("overlay", "separate")
+OVERLAY_FORMATS = ("bigwig", "bedgraph", "wig", "tdf")
+MAX_TRACKSET_MEMBERS = 40
+COLOR_PATTERN = re.compile(r"#[0-9a-fA-F]{6}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*[0-9.]+\s*)?\)")
+
+
+def normalized_trackset(payload):
+    name = " ".join(str(payload.get("name") or "").split())
+    if not name:
+        raise ValueError("Trackset name is required")
+    if len(name) > 80:
+        raise ValueError("Trackset name must be 80 characters or fewer")
+    mode = str(payload.get("mode") or "separate")
+    if mode not in TRACKSET_MODES:
+        raise ValueError("Trackset display must be overlay or separate")
+    members = payload.get("members")
+    if not isinstance(members, list) or not members:
+        raise ValueError("A trackset needs at least one track")
+    if len(members) > MAX_TRACKSET_MEMBERS:
+        raise ValueError("A trackset holds at most {} tracks".format(MAX_TRACKSET_MEMBERS))
+    out, seen = [], set()
+    for member in members:
+        if not isinstance(member, dict):
+            raise ValueError("Invalid trackset member")
+        root_id, relative = str(member.get("root") or ""), str(member.get("path") or "").strip("/")
+        if root_id not in DATA_ROOTS:
+            raise ValueError("Tracksets are shared with everyone: use files in the shared server folders, not a Home folder")
+        path = resolve_data_path(root_id, relative, DATA_ROOTS)
+        if not path.is_file() or not is_track_file(path):
+            raise ValueError("Not a track file: /{}".format(relative))
+        file_format, _ = detect_format(format_filename(path))
+        if mode == "overlay" and file_format not in OVERLAY_FORMATS:
+            raise ValueError("Only signal files (bigWig, bedGraph, wig) can be overlaid: {}".format(path.name))
+        relative = str(path.relative_to(DATA_ROOTS[root_id]["path"])) if within_root(path, DATA_ROOTS[root_id]["path"]) else relative
+        if (root_id, relative) in seen:
+            continue
+        seen.add((root_id, relative))
+        label = " ".join(str(member.get("name") or "").split())[:120] or path.name
+        color = str(member.get("color") or "").strip()
+        out.append({"root": root_id, "path": relative, "name": label, "format": file_format,
+                    **({"color": color} if COLOR_PATTERN.fullmatch(color) else {})})
+    return {
+        "name": name,
+        "description": " ".join(str(payload.get("description") or "").split())[:300],
+        "mode": mode,
+        "genome": str(payload.get("genome") or "")[:40],
+        "members": out,
+    }
+
+
+def public_tracksets(store, workspace):
+    """Every trackset, its members checked against their files; one whose files are all gone is left out."""
+    out = []
+    for item in store.list_tracksets():
+        present = 0
+        for member in item["members"]:
+            root = DATA_ROOTS.get(member["root"])
+            member["rootLabel"] = root["label"] if root else member["root"]
+            try:
+                path = resolve_data_path(member["root"], member["path"], DATA_ROOTS) if root else None
+                member["missing"] = not (path and path.is_file())
+            except (OSError, PermissionError, ValueError):
+                member["missing"] = True
+            present += not member["missing"]
+        if not present:
+            continue
+        item["mine"] = item.pop("ownerId") == (workspace or {}).get("id")
+        out.append(item)
+    return out
 
 
 def check_shared_tracks(store, force=False):
@@ -1480,9 +1611,21 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
                     query.get("ref", [""])[0],
                     query.get("alt", [""])[0],
                 ))
+            elif path == "/api/liftover":
+                status = LIFTOVER.status()
+                status["files"] = bool(liftover_root()) and not LOCAL_MODE
+                self.send_json(status)
+            elif path.startswith("/api/liftover/jobs/"):
+                self.handle_liftover_job(path.rsplit("/", 1)[-1])
+            elif path == "/api/tracksets":
+                self.send_json({"tracksets": [] if LOCAL_MODE else public_tracksets(self.workspace_store, self.current_workspace())})
             elif path == "/api/profiles":
                 workspace = self.current_workspace()
-                self.send_json({"user": workspace["name"], "workspaceId": workspace["id"], "profiles": list_profiles(self.authenticated_user())})
+                owner = self.authenticated_user()
+                self.send_json({"user": workspace["name"], "workspaceId": workspace["id"], "profiles": list_profiles(owner),
+                                "shared": [] if LOCAL_MODE else list_shared_profiles(owner)})
+            elif path.startswith("/api/shared-profiles/"):
+                self.handle_get_shared_profile(path)
             elif path.startswith("/api/profiles/"):
                 self.handle_get_profile(path.rsplit("/", 1)[-1])
             elif path.startswith("/api/sessions/"):
@@ -1517,6 +1660,14 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             self.handle_hide_shared_track()
         elif path == "/api/profiles":
             self.handle_save_profile()
+        elif re.fullmatch(r"/api/profiles/[a-f0-9]{20}/share", path):
+            self.handle_share_profile(path.split("/")[3])
+        elif path == "/api/liftover/regions":
+            self.handle_liftover_regions()
+        elif path == "/api/liftover/files":
+            self.handle_liftover_file()
+        elif path == "/api/tracksets" or re.fullmatch(r"/api/tracksets/[a-f0-9]{12}", path):
+            self.handle_save_trackset(path.split("/")[3] if path.count("/") == 3 else None)
         else:
             self.send_api_error(404, "Not found")
 
@@ -1645,6 +1796,8 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             "id": profile_id,
             "owner": owner,
             "name": name,
+            "ownerName": self.current_workspace()["name"],
+            "shared": previous.get("shared") is True,
             "createdAt": previous.get("createdAt", now),
             "updatedAt": now,
             "state": state,
@@ -1654,6 +1807,128 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             json.dump(record, handle, ensure_ascii=False, separators=(",", ":"))
         temporary.replace(target)
         self.send_json({"profile": profile_summary(record)}, 201 if not previous else 200)
+
+    def handle_share_profile(self, profile_id):
+        """Share a Favorite with the lab (others see and open it; only its workspace changes it), or stop sharing it."""
+        if not self.same_origin_request():
+            self.send_api_error(403, "Cross-site changes are not allowed")
+            return
+        try:
+            shared = self.read_json_body(MAX_WORKSPACE_BYTES, "Share request").get("shared") is True
+        except ValueError as exc:
+            self.send_api_error(400, str(exc))
+            return
+        owner = self.authenticated_user()
+        target = next((candidate for candidate in profile_candidates(owner, profile_id) if candidate.is_file()), None)
+        record = read_json(target, None) if target else None
+        if not isinstance(record, dict):
+            self.send_api_error(404, "Favorite profile not found")
+            return
+        record.update(shared=shared, ownerName=self.current_workspace()["name"])
+        temporary = target.with_suffix(".tmp")
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(record, handle, ensure_ascii=False, separators=(",", ":"))
+        temporary.replace(target)
+        self.send_json({"profile": profile_summary(record)})
+
+    def handle_get_shared_profile(self, path):
+        parts = path.split("/")
+        target = next((candidate for candidate in shared_profile_paths(*parts[3:5]) if candidate.is_file()), None) if len(parts) == 5 else None
+        record = read_json(target, None) if target else None
+        if not isinstance(record, dict) or record.get("shared") is not True:
+            self.send_api_error(404, "This Favorite is no longer shared")
+            return
+        self.send_json(record)
+
+    def handle_liftover_regions(self):
+        if not self.same_origin_request():
+            self.send_api_error(403, "Cross-site changes are not allowed")
+            return
+        try:
+            body = self.read_json_body(MAX_PROFILE_BYTES, "Liftover request")
+            source = liftover_tools.canonical_build(body.get("from"))
+            target = liftover_tools.canonical_build(body.get("to"))
+            if not source or not target:
+                raise ValueError("Choose the builds to convert between")
+            rows = LIFTOVER.regions(body.get("text"), source, target)
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            self.send_api_error(400, str(exc))
+            return
+        self.send_json({"from": source, "to": target, "regions": rows})
+
+    def handle_liftover_file(self):
+        """Convert a server file to another build (in the background); poll /api/liftover/jobs/<id>."""
+        if not self.same_origin_request():
+            self.send_api_error(403, "Cross-site changes are not allowed")
+            return
+        try:
+            if LOCAL_MODE or not liftover_root():
+                raise ValueError("Converting files needs the lab server's Genome Canvas data folder")
+            body = self.read_json_body(MAX_WORKSPACE_BYTES, "Liftover request")
+            roots = self.data_roots()
+            root_id = str(body.get("root") or "")
+            path = resolve_data_path(root_id, str(body.get("path") or ""), roots)
+            if not path.is_file() or not is_track_file(path):
+                raise ValueError("Track file not found or unsupported")
+            file_format, _ = detect_format(format_filename(path))
+            source = liftover_tools.canonical_build(body.get("from"))
+            if not source:
+                guess = liftover_tools.detect_build(path, file_format)
+                source = guess and guess["build"]
+            target = liftover_tools.canonical_build(body.get("to"))
+            if not source or not target:
+                raise ValueError("Choose the build the file is on and the one to convert it to")
+            job = LIFTOVER.start(path, file_format, source, target, "{}:{}".format(root_id, path),
+                                 private=root_id not in DATA_ROOTS)
+        except FileNotFoundError as exc:
+            self.send_api_error(404, str(exc))
+            return
+        except PermissionError as exc:
+            self.send_api_error(403, str(exc))
+            return
+        except (OSError, ValueError) as exc:
+            self.send_api_error(400, str(exc))
+            return
+        self.send_json({"job": self.public_liftover_job(job)}, 202)
+
+    def public_liftover_job(self, job):
+        out = {key: value for key, value in job.items() if key not in ("key", "outputPath")}
+        if job.get("outputPath"):
+            root_id = liftover_root()
+            out["file"] = {"root": root_id, "path": str(Path(job["outputPath"]).resolve().relative_to(DATA_ROOTS[root_id]["path"]))} if root_id else None
+        return out
+
+    def handle_liftover_job(self, job_id):
+        job = LIFTOVER.job(job_id)
+        if not job:
+            self.send_api_error(404, "Liftover job not found (the server restarted?)")
+            return
+        self.send_json({"job": self.public_liftover_job(job)})
+
+    def handle_save_trackset(self, trackset_id):
+        if LOCAL_MODE:
+            self.send_api_error(400, "Tracksets need the lab server")
+            return
+        if not self.same_origin_request():
+            self.send_api_error(403, "Cross-site changes are not allowed")
+            return
+        try:
+            values = normalized_trackset(self.read_json_body(MAX_PROFILE_BYTES, "Trackset"))
+            if trackset_id and not self.workspace_store.get_trackset(trackset_id):
+                raise FileNotFoundError("This trackset no longer exists")
+            new_id = trackset_id or secrets.token_hex(6)
+            saved = self.workspace_store.save_trackset(new_id, values, self.current_workspace())
+        except FileNotFoundError as exc:
+            self.send_api_error(404, str(exc))
+            return
+        except PermissionError as exc:
+            self.send_api_error(403, str(exc))
+            return
+        except (OSError, ValueError) as exc:
+            self.send_api_error(400, str(exc))
+            return
+        saved = next((item for item in public_tracksets(self.workspace_store, self.current_workspace()) if item["id"] == saved["id"]), saved)
+        self.send_json({"trackset": saved}, 200 if trackset_id else 201)
 
     def handle_get_profile(self, profile_id):
         if not re.fullmatch(r"[a-f0-9]{20}", profile_id):
@@ -1699,6 +1974,20 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             self.send_json({"deleted": workspace_id, "hidden": workspace["kind"] == "home"}, headers=headers)
             return
         if not self.require_workspace():
+            return
+        if re.fullmatch(r"/api/tracksets/[a-f0-9]{12}", path):
+            if not self.same_origin_request():
+                self.send_api_error(403, "Cross-site changes are not allowed")
+                return
+            try:
+                self.workspace_store.delete_trackset(path.rsplit("/", 1)[-1], self.current_workspace()["id"])
+            except PermissionError as exc:
+                self.send_api_error(403, str(exc))
+                return
+            except WorkspaceError as exc:
+                self.send_api_error(404, str(exc))
+                return
+            self.send_json({"deleted": path.rsplit("/", 1)[-1]})
             return
         if not path.startswith("/api/profiles/"):
             self.send_api_error(404, "Not found")
@@ -1791,8 +2080,13 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             self.send_json({"kind": "reference", "reference": reference})
             return
 
-        record_shared_track(self.workspace_store, root_id, path, "track", query.get("genome", [""])[0], workspace)
-        self.send_json({"kind": "track", "track": track})
+        if not private_liftover(path):
+            record_shared_track(self.workspace_store, root_id, path, "track", query.get("genome", [""])[0], workspace)
+        # the build the file says it is on (a few KB of its header, or its name): the page offers a liftover
+        build = liftover_tools.detect_build(path, file_format)
+        if build:
+            build["liftover"] = LIFTOVER.why_not(file_format, build["build"], liftover_tools.canonical_build(query.get("genome", [""])[0]) or "")
+        self.send_json({"kind": "track", "track": track, "build": build, "file": {"root": root_id, "path": str(path.relative_to(root_path))}})
 
     def handle_shared_tracks(self, query):
         if LOCAL_MODE:

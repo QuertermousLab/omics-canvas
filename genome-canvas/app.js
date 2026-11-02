@@ -66,6 +66,8 @@ function normalizeTrackURLs(config) {
   const normalized = normalizeReferenceResources(config, state.config, appBaseURL);
   if (normalized.url) normalized.url = localDataURL(normalized.url);
   if (normalized.indexURL) normalized.indexURL = localDataURL(normalized.indexURL);
+  // a layered (merged) track keeps its own tracks
+  if (Array.isArray(normalized.tracks)) normalized.tracks = normalized.tracks.map(normalizeTrackURLs);
   return normalized;
 }
 
@@ -112,6 +114,9 @@ const ui = {
   selectAllFiles: $("#select-all-files-button"),
   clearSelectedFiles: $("#clear-selected-files-button"),
   sharedBrowser: $("#shared-browser"),
+  liftoverFrom: $("#liftover-from"),
+  liftoverTo: $("#liftover-to"),
+  liftoverFile: $("#liftover-file"),
   sharedSearch: $("#shared-search"),
   sharedGenomeOnly: $("#shared-genome-only"),
   sharedNewOnly: $("#shared-new-only"),
@@ -159,6 +164,9 @@ const state = {
   currentFileEntries: [],
   sharedTracks: [],
   selectedShared: new Map(),
+  tracksets: [],
+  openTracksets: new Set(),
+  editingTrackset: null,
   centerGuide: false,
   syncTimer: null,
   reorderObserver: null,
@@ -879,7 +887,8 @@ function syncTracks() {
 
       const swatch = document.createElement("span");
       swatch.className = "track-color";
-      swatch.style.background = trackColor(track);
+      const layers = track.type === "merged" ? (track.tracks || []).map(trackColor) : [];
+      swatch.style.background = layers.length > 1 ? `linear-gradient(135deg, ${layers.join(", ")})` : trackColor(track);
 
       const copy = document.createElement("div");
       copy.className = "track-item-copy";
@@ -887,7 +896,9 @@ function syncTracks() {
       name.textContent = track.name || track.id || "Untitled track";
       name.title = name.textContent;
       const meta = document.createElement("small");
-      meta.textContent = track.config?.format || track.format || track.type || "track";
+      meta.textContent = track.type === "merged"
+        ? `${(track.tracks || []).length} layered tracks`
+        : track.config?.format || track.format || track.type || "track";
       copy.append(name, meta);
 
       const remove = document.createElement("button");
@@ -1488,38 +1499,162 @@ async function loadSelectedFiles() {
   await loadServerFiles([...state.selectedFiles.values()], ui.loadSelected, "file-dialog");
 }
 
-// Server files ({root, path, name}) from the file browser or the shared track list. The genome in view is
-// recorded with each file on the shared list.
+// Server files ({root, path, name}) from the file browser or the shared track list, and tracksets ({trackset}).
+// The genome in view is recorded with each file on the shared list. A file that says it is on another build
+// (its header or name: /api/track's `build`) is offered a liftover first.
 async function loadServerFiles(selected, button, dialogId) {
   if (!selected.length) return;
   button.disabled = true;
-  setStatus(`Loading ${selected.length} server file${selected.length === 1 ? "" : "s"}...`, "busy");
-  let loaded = 0;
+  setStatus(`Loading ${selected.length} item${selected.length === 1 ? "" : "s"}...`, "busy");
+  let loaded = 0, skipped = 0;
   const failures = [];
+  const choices = { all: null, many: selected.filter((item) => !item.trackset).length > 1 };
 
   for (const file of selected) {
     try {
-      const payload = await fetchJSON(`${appURL("api/track")}?root=${encodeURIComponent(file.root)}&path=${encodeURIComponent(file.path)}&genome=${encodeURIComponent(state.currentGenome)}`);
+      if (file.trackset) {
+        await loadTrackset(file.trackset);
+        loaded += 1;
+        continue;
+      }
+      let payload = await fetchTrackPayload(file.root, file.path);
       if (payload.kind === "reference") {
         const reference = normalizeReferenceURLs(payload.reference);
         await loadGenome(reference, reference.name);
       } else {
+        const decision = await checkTrackBuild(payload, file, choices);
+        if (decision === "skip") { skipped += 1; continue; }
+        if (decision && decision.payload) payload = decision.payload;
         await loadConfiguredTrack(payload.track);
       }
       loaded += 1;
     } catch (error) {
-      failures.push(`${file.name}: ${error.message}`);
+      failures.push(`${file.name || file.trackset?.name}: ${error.message}`);
     }
   }
+  button.disabled = false;
   closeDialog(dialogId);
   syncTracks();
+  const skippedText = skipped ? `; ${skipped} skipped` : "";
   if (failures.length) {
-    toast(`Loaded ${loaded}; ${failures.length} failed. ${failures[0]}`, "error");
+    toast(`Loaded ${loaded}${skippedText}; ${failures.length} failed. ${failures[0]}`, "error");
     setStatus("Some tracks failed to load", "error");
   } else {
-    toast(`Loaded ${loaded} server file${loaded === 1 ? "" : "s"}`);
+    toast(`Loaded ${loaded} item${loaded === 1 ? "" : "s"}${skippedText}`);
     setStatus("Ready");
   }
+}
+
+function fetchTrackPayload(root, path) {
+  return fetchJSON(`${appURL("api/track")}?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&genome=${encodeURIComponent(state.currentGenome)}`);
+}
+
+// ---------------------------------------------------------------- genome builds and liftover
+// UCSC names, as the server's liftover.py: the view's genome and a file's build compare by these.
+const BUILD_ALIASES = {
+  hg19: "hg19", grch37: "hg19", b37: "hg19", hg38: "hg38", grch38: "hg38", hg18: "hg18", hs1: "hs1", chm13: "hs1",
+  mm10: "mm10", grcm38: "mm10", mm39: "mm39", grcm39: "mm39", mm9: "mm9",
+};
+const canonicalBuild = (name) => BUILD_ALIASES[String(name || "").toLowerCase().split(".")[0].replace(/[^a-z0-9]/g, "")] || null;
+
+// "load" | "skip" | {payload} (the converted file's track)
+async function checkTrackBuild(payload, file, choices) {
+  const view = canonicalBuild(state.currentGenome), build = payload.build;
+  if (!build || !view || build.build === view) return "load";
+  const choice = choices.all || await askAboutBuild(payload, file, view, choices.many);
+  if (choice.all) choices.all = { action: choice.action };
+  if (choice.action !== "convert") return choice.action;
+  if (build.liftover) return "load";  // not convertible: "do the same" falls back to loading it
+  const job = await runLiftover({ root: payload.file.root, path: payload.file.path, from: build.build, to: view, name: file.name });
+  return { payload: await fetchTrackPayload(job.file.root, job.file.path) };
+}
+
+function askAboutBuild(payload, file, view, many) {
+  const build = payload.build, dialog = $("#build-dialog");
+  $("#build-title").textContent = `${build.build} file in a ${view} view`;
+  $("#build-message").textContent = `“${file.name || payload.track.name}” looks like it is on ${build.build}, but the view is ${view}. Its features would land in the wrong places.`;
+  $("#build-evidence").textContent = `How we know: ${build.evidence}.`;
+  const convert = $("#build-convert");
+  convert.textContent = `Convert to ${view}`;
+  convert.disabled = Boolean(build.liftover);
+  $("#build-note").textContent = build.liftover
+    ? `It cannot be converted here: ${build.liftover}.`
+    : `Converting writes a ${view} copy to the Genome Canvas data folder (the original is not changed) and loads it; a file converted before opens right away.`;
+  $("#build-all-row").hidden = !many;
+  $("#build-all").checked = false;
+  return new Promise((resolve) => {
+    const done = (action) => {
+      dialog.querySelectorAll("[value]").forEach((element) => { element.onclick = null; });
+      dialog.removeEventListener("close", onClose);
+      if (dialog.open) dialog.close();
+      resolve({ action, all: $("#build-all").checked });
+    };
+    const onClose = () => done("skip");
+    dialog.querySelectorAll("button[value]").forEach((element) => { element.onclick = (event) => { event.preventDefault(); done(element.value); }; });
+    dialog.addEventListener("close", onClose);
+    showDialog("build-dialog");
+  });
+}
+
+// Convert a server file; resolves with the finished job ({file: {root, path}}). Progress shows in the status bar.
+async function runLiftover({ root, path, from, to, name }, onUpdate) {
+  let { job } = await fetchJSON(appURL("api/liftover/files"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ root, path, from, to }),
+  });
+  const started = Date.now();
+  while (job.status === "queued" || job.status === "running") {
+    setStatus(`${job.message} — ${name || job.name} (${Math.round((Date.now() - started) / 1000)} s)`, "busy");
+    onUpdate?.(job);
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    ({ job } = await fetchJSON(appURL(`api/liftover/jobs/${job.id}`)));
+  }
+  onUpdate?.(job);
+  if (job.status !== "done" || !job.file) throw new Error(job.message || "Conversion failed");
+  return job;
+}
+
+// ---------------------------------------------------------------- tracksets
+// Named groups of shared server files (server: /api/tracksets), listed in Shared tracks for everyone. "overlay"
+// draws signal files in one IGV merged track (layered, half transparent, in each file's color); "separate" loads
+// each file as its own track.
+const LAYER_COLORS = ["rgb(255,128,128)", "rgb(255,212,128)", "rgb(120,235,204)", "rgb(128,212,255)", "rgb(128,128,255)",
+  "rgb(212,128,255)", "rgb(255,128,212)", "rgb(160,160,160)", "rgb(180,200,120)", "rgb(240,160,90)"];
+
+async function loadTrackset(set) {
+  const members = set.members.filter((member) => !member.missing);
+  const view = canonicalBuild(state.currentGenome);
+  if (set.genome && view && canonicalBuild(set.genome) && canonicalBuild(set.genome) !== view
+      && !window.confirm(`“${set.name}” is a ${set.genome} trackset and the view is ${view}. Load it anyway?`)) {
+    throw new Error(`skipped (${set.genome})`);
+  }
+  if (set.mode !== "overlay") {
+    for (const member of members) {
+      const payload = await fetchTrackPayload(member.root, member.path);
+      await loadConfiguredTrack({ ...payload.track, name: member.name || payload.track.name, ...(member.color ? { color: member.color } : {}) });
+    }
+    return;
+  }
+  const payloads = await Promise.all(members.map((member) => fetchTrackPayload(member.root, member.path)));
+  const tracks = payloads.map((payload, index) => decorateTrack(normalizeTrackURLs({
+    ...payload.track,
+    type: "wig",
+    name: members[index].name || payload.track.name,
+    color: members[index].color || LAYER_COLORS[index % LAYER_COLORS.length],
+    genomeCanvasAutoColor: false,
+  })));
+  await loadConfiguredTrack({
+    type: "merged",
+    name: set.name,
+    height: 120,
+    alpha: 0.5,
+    autoscale: true,
+    color: tracks[0]?.color,
+    genomeCanvasAutoColor: false,
+    genomeCanvasTrackset: set.id,
+    tracks,
+  });
 }
 
 // ---------------------------------------------------------------- shared tracks
@@ -1539,9 +1674,13 @@ async function openSharedTracks() {
 async function loadSharedTracks(refresh) {
   ui.sharedBrowser.innerHTML = '<div class="browser-message"><div><b>G</b><span>Reading the shared track list...</span></div></div>';
   try {
-    const payload = await fetchJSON(`${appURL("api/shared-tracks")}${refresh ? "?refresh=1" : ""}`);
+    const [payload, sets] = await Promise.all([
+      fetchJSON(`${appURL("api/shared-tracks")}${refresh ? "?refresh=1" : ""}`),
+      fetchJSON(appURL("api/tracksets")).catch(() => ({ tracksets: [] })),
+    ]);
     state.sharedTracks = payload.tracks || [];
-    const known = new Set(state.sharedTracks.map(sharedKey));
+    state.tracksets = sets.tracksets || [];
+    const known = new Set([...state.sharedTracks.map(sharedKey), ...state.tracksets.map((set) => `set:${set.id}`)]);
     for (const key of [...state.selectedShared.keys()]) if (!known.has(key)) state.selectedShared.delete(key);
     renderSharedTracks();
   } catch (error) {
@@ -1554,8 +1693,9 @@ async function loadSharedTracks(refresh) {
 // root:path of the server files shown now, from their /data/[<workspace>/]<root>/<path> URLs
 function serverFilesInView() {
   const keys = new Set();
-  for (const view of trackViews()) {
-    const url = view.track?.config?.url || view.track?.url;
+  const tracks = trackViews().flatMap((view) => [view.track, ...(view.track?.type === "merged" ? view.track.tracks || [] : [])]);
+  for (const track of tracks) {
+    const url = track?.config?.url || track?.url;
     if (typeof url !== "string") continue;
     let path;
     try { path = new URL(url, location.href).pathname; } catch { continue; }
@@ -1570,12 +1710,32 @@ function serverFilesInView() {
   return keys;
 }
 
+// files inside a trackset are listed in it (expand it), not again on their own
+function tracksetMemberKeys() {
+  return new Set((state.tracksets || []).flatMap((set) => set.members.map(sharedKey)));
+}
+
+function visibleTracksets() {
+  const query = ui.sharedSearch.value.trim().toLowerCase();
+  const view = canonicalBuild(state.currentGenome);
+  const inView = ui.sharedNewOnly.checked ? serverFilesInView() : new Set();
+  const layeredInView = new Set(trackViews().map((item) => item.track?.config?.genomeCanvasTrackset).filter(Boolean));
+  return (state.tracksets || []).filter((set) => {
+    if (ui.sharedNewOnly.checked && (layeredInView.has(set.id) || set.members.every((member) => inView.has(sharedKey(member))))) return false;
+    if (ui.sharedGenomeOnly.checked && set.genome && canonicalBuild(set.genome) !== view) return false;
+    if (!query) return true;
+    return [set.name, set.description, set.ownerName, set.genome, set.mode, ...set.members.flatMap((member) => [member.name, member.path])]
+      .join(" ").toLowerCase().includes(query);
+  });
+}
+
 function visibleSharedTracks() {
   const query = ui.sharedSearch.value.trim().toLowerCase();
   const genomeOnly = ui.sharedGenomeOnly.checked;
   const inView = ui.sharedNewOnly.checked ? serverFilesInView() : new Set();
+  const members = tracksetMemberKeys();
   return state.sharedTracks.filter((item) => {
-    if (inView.has(sharedKey(item))) return false;
+    if (inView.has(sharedKey(item)) || members.has(sharedKey(item))) return false;
     if (genomeOnly && item.kind !== "reference" && item.genomes.length && !item.genomes.includes(state.currentGenome)) return false;
     if (!query) return true;
     return [item.name, item.path, item.format, item.rootLabel, item.ownerName, ...item.users, ...item.genomes]
@@ -1589,13 +1749,14 @@ function sharedFolder(item) {
 }
 
 function renderSharedTracks() {
-  const shown = visibleSharedTracks();
+  const shown = visibleSharedTracks(), sets = visibleTracksets();
   ui.sharedBrowser.replaceChildren();
   const head = document.createElement("div");
   head.className = "file-table-head shared-row";
   head.innerHTML = "<span></span><span>NAME</span><span>FORMAT</span><span>LOADED BY</span><span>MODIFIED</span>";
   ui.sharedBrowser.append(head);
-  if (!shown.length) {
+  for (const set of sets) renderTracksetRow(set);
+  if (!shown.length && !sets.length) {
     const empty = document.createElement("div");
     empty.className = "browser-message";
     const filtered = state.sharedTracks.length > 0;
@@ -1606,7 +1767,99 @@ function renderSharedTracks() {
     updateSharedSelection();
     return;
   }
-  for (const item of shown) {
+  for (const item of shown) renderSharedFileRow(item);
+  updateSharedSelection();
+}
+
+function sharedCheck(key, value, row, label) {
+  const check = document.createElement("input");
+  check.className = "file-check";
+  check.type = "checkbox";
+  check.checked = state.selectedShared.has(key);
+  check.setAttribute("aria-label", `Select ${label}`);
+  row.classList.toggle("selected", check.checked);
+  const toggle = (checked) => {
+    if (checked) state.selectedShared.set(key, value);
+    else state.selectedShared.delete(key);
+    check.checked = checked;
+    row.classList.toggle("selected", checked);
+    updateSharedSelection();
+  };
+  check.addEventListener("change", () => toggle(check.checked));
+  return { check, toggle };
+}
+
+function renderTracksetRow(set) {
+  const key = `set:${set.id}`, open = state.openTracksets.has(set.id);
+  const row = document.createElement("div");
+  row.className = "file-row shared-row trackset-row";
+  const checkSlot = document.createElement("span");
+  const { check, toggle } = sharedCheck(key, { trackset: set, name: set.name }, row, set.name);
+  checkSlot.append(check);
+  const nameCell = document.createElement("span");
+  nameCell.className = "trackset-name-cell";
+  const expand = document.createElement("button");
+  expand.type = "button";
+  expand.className = `icon-button ghost small trackset-toggle${open ? " open" : ""}`;
+  expand.title = `${open ? "Hide" : "Show"} its ${set.members.length} files`;
+  expand.setAttribute("aria-expanded", String(open));
+  expand.innerHTML = '<svg class="icon"><use href="#i-chevron-right"/></svg>';
+  expand.addEventListener("click", () => {
+    if (open) state.openTracksets.delete(set.id); else state.openTracksets.add(set.id);
+    renderSharedTracks();
+  });
+  const nameButton = document.createElement("button");
+  nameButton.type = "button";
+  nameButton.className = "file-name-button";
+  nameButton.title = set.description || set.name;
+  const icon = document.createElement("span");
+  icon.className = `file-icon trackset-icon${set.mode === "overlay" ? " layered" : ""}`;
+  icon.textContent = set.mode === "overlay" ? "LAYER" : "SET";
+  const label = document.createElement("span");
+  label.className = "shared-name";
+  const name = document.createElement("strong");
+  name.textContent = set.name;
+  const detail = document.createElement("small");
+  const missing = set.members.filter((member) => member.missing).length;
+  detail.textContent = [set.description || `${set.members.length} files`, missing ? `${missing} missing` : ""].filter(Boolean).join(" · ");
+  label.append(name, detail);
+  nameButton.append(icon, label);
+  nameButton.addEventListener("click", () => toggle(!check.checked));
+  nameCell.append(expand, nameButton);
+
+  const format = document.createElement("small");
+  format.textContent = [`${set.members.length} ${set.mode === "overlay" ? "layered" : "tracks"}`, set.genome].filter(Boolean).join(" · ");
+  const by = document.createElement("small");
+  by.textContent = set.mine ? "you" : set.ownerName || "?";
+  const modifiedCell = document.createElement("span");
+  modifiedCell.className = "shared-modified";
+  const modified = document.createElement("small");
+  modified.textContent = String(set.updatedAt || "").slice(0, 10);
+  modifiedCell.append(modified);
+  if (set.mine) {
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "secondary-button small trackset-edit";
+    edit.textContent = "Edit";
+    edit.title = "Rename it, change its files, colors or display, or delete it";
+    edit.addEventListener("click", () => openTracksetEditor(set));
+    modifiedCell.append(edit);
+  }
+  row.append(checkSlot, nameCell, format, by, modifiedCell);
+  ui.sharedBrowser.append(row);
+  if (!open) return;
+  set.members.forEach((member, index) => {
+    const item = state.sharedTracks.find((entry) => sharedKey(entry) === sharedKey(member))
+      || { ...member, kind: "track", genomes: set.genome ? [set.genome] : [], users: [], loads: 0, rootLabel: member.rootLabel,
+        ownerName: set.ownerName, mine: false, createdAt: "", modified: null, size: 0 };
+    const child = renderSharedFileRow({ ...item, name: member.name || item.name }, member.missing);
+    child.classList.add("trackset-member");
+    if (set.mode === "overlay") child.style.setProperty("--layer", member.color || LAYER_COLORS[index % LAYER_COLORS.length]);
+  });
+}
+
+function renderSharedFileRow(item, missing = false) {
+  {
     const key = sharedKey(item);
     const row = document.createElement("div");
     row.className = "file-row shared-row";
@@ -1667,18 +1920,22 @@ function renderSharedTracks() {
       modifiedCell.append(unshare);
     }
     row.append(checkSlot, nameButton, format, by, modifiedCell);
+    if (missing) { row.classList.add("missing"); check.disabled = true; modified.textContent = "file missing"; }
     ui.sharedBrowser.append(row);
+    return row;
   }
-  updateSharedSelection();
 }
 
 function updateSharedSelection() {
   const count = state.selectedShared.size;
   const shown = visibleSharedTracks();
-  ui.sharedSelectionSummary.textContent = count ? `${count} track${count === 1 ? "" : "s"} selected` : "No tracks selected";
+  const files = [...state.selectedShared.values()].filter((item) => !item.trackset && item.kind !== "reference");
+  ui.sharedSelectionSummary.textContent = count ? `${count} selected` : "No tracks selected";
   ui.loadShared.disabled = count === 0;
   ui.sharedSelectAll.disabled = !shown.length || shown.every((item) => state.selectedShared.has(sharedKey(item)));
   ui.sharedClear.disabled = count === 0;
+  $("#shared-trackset-button").disabled = files.length < 1;
+  $("#shared-trackset-button").title = files.length ? `Group the ${files.length} selected file${files.length === 1 ? "" : "s"} as a trackset, shared with the lab` : "Select files to group them as a trackset";
 }
 
 async function unshareTrack(item) {
@@ -1699,6 +1956,167 @@ async function unshareTrack(item) {
 
 async function loadSelectedSharedTracks() {
   await loadServerFiles([...state.selectedShared.values()], ui.loadShared, "shared-dialog");
+}
+
+function tracksetFromSharedSelection() {
+  const files = [...state.selectedShared.values()].filter((item) => !item.trackset && item.kind !== "reference");
+  openTracksetEditor(null, files.map((item) => ({ root: item.root, path: item.path, name: item.name, format: item.format })));
+}
+
+// ---------------------------------------------------------------- trackset editor
+// A new trackset from files picked in Shared tracks or the server tracks in view, or an existing one (its owner).
+
+function openTracksetEditor(set = null, members = null, mode = null) {
+  state.editingTrackset = {
+    id: set?.id || null,
+    members: (members || set?.members || []).map((member, index) => ({
+      root: member.root, path: member.path, name: member.name || member.path.split("/").pop(), color: member.color || "",
+      format: member.format || "", fallback: LAYER_COLORS[index % LAYER_COLORS.length],
+    })),
+  };
+  $("#trackset-title").textContent = set ? "Edit trackset" : "New trackset";
+  $("#trackset-name").value = set?.name || "";
+  $("#trackset-description").value = set?.description || "";
+  const chosen = mode || set?.mode || (state.editingTrackset.members.every((member) => isSignalFormat(member)) && state.editingTrackset.members.length > 1 ? "overlay" : "separate");
+  $$('input[name="trackset-mode"]').forEach((input) => { input.checked = input.value === chosen; });
+  $("#trackset-delete").hidden = !set;
+  $("#trackset-error").hidden = true;
+  renderTracksetMembers();
+  showDialog("trackset-dialog");
+  $("#trackset-name").focus();
+}
+
+function isSignalFormat(member) {
+  const format = String(member.format || "").toLowerCase();
+  return ["bigwig", "bedgraph", "wig", "tdf"].includes(format) || /\.(bw|bigwig|bedgraph|wig)(\.gz)?$/i.test(member.path);
+}
+
+function tracksetMode() {
+  return $('input[name="trackset-mode"]:checked')?.value || "separate";
+}
+
+function renderTracksetMembers() {
+  const list = $("#trackset-members"), editing = state.editingTrackset, overlay = tracksetMode() === "overlay";
+  list.replaceChildren();
+  editing.members.forEach((member, index) => {
+    const item = document.createElement("li");
+    item.className = "trackset-member-row";
+    const color = document.createElement("input");
+    color.type = "color";
+    color.value = toHexColor(member.color || member.fallback);
+    color.title = "Color of this layer";
+    color.hidden = !overlay;
+    color.addEventListener("input", () => { member.color = color.value; });
+    const name = document.createElement("input");
+    name.value = member.name;
+    name.maxLength = 120;
+    name.setAttribute("aria-label", "Track name");
+    name.addEventListener("input", () => { member.name = name.value; });
+    const path = document.createElement("small");
+    path.textContent = `\u200e/${member.path}\u200e`;  // drawn right to left (the end shows); marks keep the slash first
+    path.title = `/${member.path}`;
+    const copy = document.createElement("span");
+    copy.className = "trackset-member-copy";
+    copy.append(name, path);
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "icon-button ghost small";
+    up.title = "Move up";
+    up.textContent = "↑";
+    up.disabled = index === 0;
+    up.addEventListener("click", () => { editing.members.splice(index - 1, 0, ...editing.members.splice(index, 1)); renderTracksetMembers(); });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon-button ghost small";
+    remove.title = "Take it out of the trackset";
+    remove.innerHTML = '<svg class="icon"><use href="#i-x"/></svg>';
+    remove.addEventListener("click", () => { editing.members.splice(index, 1); renderTracksetMembers(); });
+    item.append(color, copy, up, remove);
+    list.append(item);
+  });
+  const notSignal = editing.members.filter((member) => !isSignalFormat(member)).length;
+  $("#trackset-member-note").textContent = overlay && notSignal
+    ? `${notSignal} file${notSignal === 1 ? " is" : "s are"} not signal (bigWig, bedGraph): show them as separate tracks`
+    : `${editing.members.length} file${editing.members.length === 1 ? "" : "s"}${overlay ? " · pick each layer's color" : ""}`;
+}
+
+function toHexColor(color) {
+  const match = String(color).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (match) return "#" + match.slice(1, 4).map((value) => Number(value).toString(16).padStart(2, "0")).join("");
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : "#7f8c99";
+}
+
+async function saveTrackset(event) {
+  event.preventDefault();
+  const editing = state.editingTrackset, overlay = tracksetMode() === "overlay";
+  const body = {
+    name: $("#trackset-name").value.trim(),
+    description: $("#trackset-description").value.trim(),
+    mode: tracksetMode(),
+    genome: state.currentGenome,
+    members: editing.members.map((member) => ({ root: member.root, path: member.path, name: member.name.trim(),
+      ...(overlay ? { color: member.color || toHexColor(member.fallback) } : member.color ? { color: member.color } : {}) })),
+  };
+  try {
+    const { trackset } = await fetchJSON(appURL(editing.id ? `api/tracksets/${editing.id}` : "api/tracksets"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    closeDialog("trackset-dialog");
+    toast(`Saved trackset ${trackset.name}: everyone sees it under Shared tracks`);
+    state.selectedShared.clear();
+    if ($("#shared-dialog").open) await loadSharedTracks(false);
+  } catch (error) {
+    $("#trackset-error").textContent = error.message;
+    $("#trackset-error").hidden = false;
+  }
+}
+
+async function deleteTrackset() {
+  const editing = state.editingTrackset;
+  if (!editing?.id || !window.confirm("Delete this trackset? Its files are not changed; others no longer see the set.")) return;
+  try {
+    await fetchJSON(appURL(`api/tracksets/${editing.id}`), { method: "DELETE" });
+    closeDialog("trackset-dialog");
+    toast("Trackset deleted");
+    if ($("#shared-dialog").open) await loadSharedTracks(false);
+  } catch (error) {
+    $("#trackset-error").textContent = error.message;
+    $("#trackset-error").hidden = false;
+  }
+}
+
+// the server files in view (a layered track: its files, colors and the overlay display)
+function tracksetFromView() {
+  const members = [];
+  let layered = false;
+  for (const view of trackViews()) {
+    const tracks = view.track?.type === "merged" ? (layered = true, view.track.tracks || []) : [view.track];
+    for (const track of tracks) {
+      const file = serverFileOfTrack(track);
+      if (file && !members.some((member) => member.root === file.root && member.path === file.path)) {
+        members.push({ ...file, name: track.name, color: typeof track.color === "string" ? track.color : "", format: track.config?.format || "" });
+      }
+    }
+  }
+  if (!members.length) {
+    toast("No server files in the view: tracksets group files from the shared server folders", "error");
+    return;
+  }
+  openTracksetEditor(null, members, layered ? "overlay" : null);
+}
+
+function serverFileOfTrack(track) {
+  const url = track?.config?.url || track?.url;
+  if (typeof url !== "string") return null;
+  let path;
+  try { path = new URL(url, location.href).pathname; } catch { return null; }
+  const at = path.indexOf("/data/");
+  if (at < 0) return null;
+  const parts = path.slice(at + 6).split("/").filter(Boolean).map((part) => { try { return decodeURIComponent(part); } catch { return part; } });
+  if (/^(home|manual)-[0-9a-f]{18}$|^local$/.test(parts[0] || "")) parts.shift();
+  return parts.length > 1 ? { root: parts[0], path: parts.slice(1).join("/") } : null;
 }
 
 async function loadRemoteTrack(event) {
@@ -2160,6 +2578,7 @@ async function renderFavoriteProfiles() {
   try {
     const payload = await fetchJSON(appURL("api/profiles"));
     const profiles = Array.isArray(payload.profiles) ? payload.profiles : [];
+    renderSharedProfiles(Array.isArray(payload.shared) ? payload.shared : []);
     ui.profileList.replaceChildren();
     if (!profiles.length) {
       const empty = document.createElement("div");
@@ -2176,6 +2595,12 @@ async function renderFavoriteProfiles() {
       copy.className = "profile-row-copy";
       const name = document.createElement("strong");
       name.textContent = profile.name;
+      if (profile.shared) {
+        const chip = document.createElement("span");
+        chip.className = "profile-shared-chip";
+        chip.textContent = "shared";
+        name.append(chip);
+      }
       const metadata = document.createElement("small");
       metadata.textContent = profileMetadataText(profile);
       copy.append(name, metadata);
@@ -2186,6 +2611,24 @@ async function renderFavoriteProfiles() {
       load.type = "button";
       load.textContent = "Load";
       load.addEventListener("click", () => loadFavoriteProfile(profile));
+      const share = document.createElement("button");
+      share.type = "button";
+      share.className = profile.shared ? "profile-share on" : "profile-share";
+      share.textContent = profile.shared ? "Unshare" : "Share";
+      share.title = profile.shared ? "Stop sharing it: it is private to this workspace again" : "Share it with the lab: everyone can open it or save a copy; only you change it";
+      share.addEventListener("click", async () => {
+        try {
+          await fetchJSON(appURL(`api/profiles/${encodeURIComponent(profile.id)}/share`), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ shared: !profile.shared }),
+          });
+          toast(profile.shared ? `${profile.name} is private again` : `Shared ${profile.name} with the lab`);
+          await renderFavoriteProfiles();
+        } catch (error) {
+          toast(`Could not change sharing: ${error.message}`, "error");
+        }
+      });
       const download = document.createElement("button");
       download.type = "button";
       download.textContent = "Download";
@@ -2211,12 +2654,235 @@ async function renderFavoriteProfiles() {
           toast(`Could not delete profile: ${error.message}`, "error");
         }
       });
-      actions.append(load, download, remove);
+      actions.append(load, share, download, remove);
       row.append(copy, actions);
       ui.profileList.append(row);
     }
   } catch (error) {
     ui.profileList.innerHTML = `<div class="profile-empty"><b>!</b><span>${escapeHTML(error.message)}</span></div>`;
+  }
+}
+
+// Favorites other workspaces shared with the lab: open one, or save a copy to your own
+function renderSharedProfiles(shared) {
+  const list = $("#shared-profile-list");
+  $("#shared-profiles-heading").hidden = list.hidden = !shared.length;
+  list.replaceChildren();
+  for (const profile of shared) {
+    const row = document.createElement("article");
+    row.className = "profile-row";
+    const copy = document.createElement("div");
+    copy.className = "profile-row-copy";
+    const name = document.createElement("strong");
+    name.textContent = profile.name;
+    const metadata = document.createElement("small");
+    metadata.textContent = `${profile.ownerName || "Someone"} · ${profileMetadataText(profile)}`;
+    copy.append(name, metadata);
+    const actions = document.createElement("div");
+    actions.className = "profile-row-actions";
+    const fetchShared = () => fetchJSON(appURL(`api/shared-profiles/${encodeURIComponent(profile.ownerKey)}/${encodeURIComponent(profile.id)}`));
+    const load = document.createElement("button");
+    load.type = "button";
+    load.textContent = "Load";
+    load.addEventListener("click", async () => {
+      if (!window.confirm(`Replace the current view with “${profile.name}” (${profile.ownerName || "shared"})?`)) return;
+      try {
+        const record = await fetchShared();
+        await applyProfileState(record.state, profile.name);
+        closeDialog("profile-dialog");
+        toast(`Loaded ${profile.ownerName ? `${profile.ownerName}'s` : "shared"} favorite ${profile.name}`);
+      } catch (error) {
+        toast(`Could not load profile: ${error.message}`, "error");
+      }
+    });
+    const keep = document.createElement("button");
+    keep.type = "button";
+    keep.textContent = "Save a copy";
+    keep.title = "Add it to your own Favorites (yours to change; theirs is not affected)";
+    keep.addEventListener("click", async () => {
+      const copyName = window.prompt("Name in your Favorites", profile.name)?.trim();
+      if (!copyName) return;
+      try {
+        const record = await fetchShared();
+        await fetchJSON(appURL("api/profiles"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: copyName, state: record.state }),
+        });
+        toast(`Saved ${copyName} to your Favorites`);
+        await renderFavoriteProfiles();
+      } catch (error) {
+        toast(`Could not save a copy: ${error.message}`, "error");
+      }
+    });
+    actions.append(load, keep);
+    row.append(copy, actions);
+    list.append(row);
+  }
+}
+
+// ---------------------------------------------------------------- liftover dialog
+// Regions (pasted, or the view) and server files between builds with a chain file on the server (/api/liftover).
+
+async function openLiftover() {
+  showDialog("liftover-dialog");
+  $("#liftover-error").hidden = true;
+  try {
+    state.liftover = state.liftover || await fetchJSON(appURL("api/liftover"));
+  } catch (error) {
+    state.liftover = { available: false, pairs: [], error: error.message };
+  }
+  const info = state.liftover;
+  const view = canonicalBuild(state.currentGenome);
+  const sources = [...new Set(info.pairs.map(([from]) => from))];
+  ui.liftoverFrom.innerHTML = sources.map((build) => `<option>${escapeHTML(build)}</option>`).join("");
+  const into = info.pairs.find(([, to]) => to === view);
+  ui.liftoverFrom.value = into ? into[0] : sources[0] || "";
+  fillLiftoverTargets(into ? view : null);
+  $("#liftover-status").textContent = info.available
+    ? `Chains: ${info.pairs.map(([from, to]) => `${from} → ${to}`).join(", ")}. Files: ${info.files ? "converted with CrossMap" : "not available on this server"}.`
+    : info.error || "Liftover is not set up on this server (needs liftOver/CrossMap and chain files).";
+  for (const id of ["liftover-regions-go", "liftover-file-go"]) $(`#${id}`).disabled = !info.available;
+  if (!info.files) $("#liftover-file-go").disabled = true;
+  fillLiftoverFiles();
+}
+
+function fillLiftoverTargets(preferred) {
+  const targets = state.liftover.pairs.filter(([from]) => from === ui.liftoverFrom.value).map(([, to]) => to);
+  ui.liftoverTo.innerHTML = targets.map((build) => `<option>${escapeHTML(build)}</option>`).join("");
+  if (preferred && targets.includes(preferred)) ui.liftoverTo.value = preferred;
+}
+
+function fillLiftoverFiles() {
+  const files = [];
+  for (const view of trackViews()) {
+    const tracks = view.track?.type === "merged" ? view.track.tracks || [] : [view.track];
+    for (const track of tracks) {
+      const file = serverFileOfTrack(track);
+      if (file && !files.some((item) => item.root === file.root && item.path === file.path)) files.push({ ...file, name: track.name });
+    }
+  }
+  ui.liftoverFile.innerHTML = files.length
+    ? files.map((file, index) => `<option value="${index}">${escapeHTML(file.name)} — /${escapeHTML(file.path)}</option>`).join("")
+    : "<option value=\"\">No server tracks in the view</option>";
+  ui.liftoverFile.files = files;
+}
+
+function switchLiftoverTab(tab) {
+  $$("[data-liftover-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.liftoverTab === tab);
+    button.setAttribute("aria-selected", String(button.dataset.liftoverTab === tab));
+  });
+  $$("[data-liftover-panel]").forEach((panel) => { panel.hidden = panel.dataset.liftoverPanel !== tab; });
+}
+
+async function liftoverRegions() {
+  const button = $("#liftover-regions-go");
+  button.disabled = true;
+  $("#liftover-error").hidden = true;
+  try {
+    const result = await fetchJSON(appURL("api/liftover/regions"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: ui.liftoverFrom.value, to: ui.liftoverTo.value, text: $("#liftover-regions").value }),
+    });
+    renderLiftoverResults(result);
+  } catch (error) {
+    $("#liftover-error").textContent = error.message;
+    $("#liftover-error").hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderLiftoverResults(result) {
+  const box = $("#liftover-results"), here = canonicalBuild(state.currentGenome) === result.to;
+  box.replaceChildren();
+  if (!result.regions.length) {
+    box.innerHTML = '<p class="build-note">Nothing to convert: paste regions above.</p>';
+    return;
+  }
+  const table = document.createElement("table");
+  table.className = "liftover-table";
+  table.innerHTML = `<thead><tr><th>${escapeHTML(result.from)}</th><th>${escapeHTML(result.to)}</th></tr></thead>`;
+  const body = document.createElement("tbody");
+  const lines = [];
+  for (const row of result.regions) {
+    const line = document.createElement("tr");
+    const input = document.createElement("td");
+    input.textContent = row.input;
+    const output = document.createElement("td");
+    if (row.mapped?.length) {
+      row.mapped.forEach((hit, index) => {
+        lines.push(`${hit.chrom}\t${hit.start}\t${hit.end}${row.name ? `\t${row.name}` : ""}`);
+        if (index) output.append(document.createElement("br"));
+        if (here) {
+          const go = document.createElement("button");
+          go.type = "button";
+          go.className = "liftover-locus";
+          go.textContent = hit.locus;
+          go.title = "Go there";
+          go.addEventListener("click", () => { closeDialog("liftover-dialog"); state.browser.search(hit.locus); });
+          output.append(go);
+        } else {
+          const text = document.createElement("span");
+          text.className = "liftover-locus";
+          text.textContent = hit.locus;
+          output.append(text);
+        }
+      });
+      if (row.mapped.length > 1) output.title = "Split: parts map to several places";
+    } else {
+      output.className = "liftover-miss";
+      output.textContent = row.error || "Not mapped";
+    }
+    line.append(input, output);
+    body.append(line);
+  }
+  table.append(body);
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "secondary-button small";
+  copy.textContent = `Copy ${lines.length} ${result.to} region${lines.length === 1 ? "" : "s"} (BED)`;
+  copy.disabled = !lines.length;
+  copy.addEventListener("click", () => navigator.clipboard?.writeText(lines.join("\n") + "\n").then(() => toast("Copied")).catch(() => window.prompt("Copy:", lines.join("\n"))));
+  box.append(table, copy);
+}
+
+async function liftoverFile() {
+  const file = ui.liftoverFile.files?.[Number(ui.liftoverFile.value)];
+  if (!file) {
+    toast("Load the server file first, then pick it here", "error");
+    return;
+  }
+  const from = ui.liftoverFrom.value, to = ui.liftoverTo.value;
+  const item = document.createElement("li");
+  item.innerHTML = `<b>${escapeHTML(file.name)}</b> <span>${escapeHTML(from)} → ${escapeHTML(to)}</span><small>Starting…</small>`;
+  $("#liftover-jobs").prepend(item);
+  const status = item.querySelector("small");
+  try {
+    const job = await runLiftover({ ...file, from, to }, (update) => { status.textContent = update.message; });
+    status.textContent = `${job.message} · /${job.file.path}`;
+    setStatus("Ready");
+    const load = document.createElement("button");
+    load.type = "button";
+    load.className = "secondary-button small";
+    load.textContent = canonicalBuild(state.currentGenome) === to ? "Load it" : `Load (view is ${state.currentGenome})`;
+    load.addEventListener("click", async () => {
+      try {
+        const payload = await fetchTrackPayload(job.file.root, job.file.path);
+        await loadConfiguredTrack(payload.track);
+        syncTracks();
+        toast(`Loaded ${payload.track.name}`);
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    });
+    item.append(load);
+  } catch (error) {
+    item.classList.add("failed");
+    status.textContent = error.message;
+    setStatus("Liftover failed", "error");
   }
 }
 
@@ -2667,6 +3333,28 @@ function bindEvents() {
     renderSharedTracks();
   });
   ui.loadShared.addEventListener("click", loadSelectedSharedTracks);
+  $("#shared-trackset-button").addEventListener("click", tracksetFromSharedSelection);
+  $("#trackset-from-view").addEventListener("click", tracksetFromView);
+  $("#trackset-form").addEventListener("submit", saveTrackset);
+  $("#trackset-delete").addEventListener("click", deleteTrackset);
+  $$('input[name="trackset-mode"]').forEach((input) => input.addEventListener("change", renderTracksetMembers));
+  $("#liftover-button").addEventListener("click", openLiftover);
+  ui.liftoverFrom.addEventListener("change", () => fillLiftoverTargets(ui.liftoverTo.value));
+  $("#liftover-swap").addEventListener("click", () => {
+    const [from, to] = [ui.liftoverFrom.value, ui.liftoverTo.value];
+    if (!state.liftover?.pairs.some(([a, b]) => a === to && b === from)) return;
+    ui.liftoverFrom.value = to;
+    fillLiftoverTargets(from);
+  });
+  $$("[data-liftover-tab]").forEach((button) => button.addEventListener("click", () => switchLiftoverTab(button.dataset.liftoverTab)));
+  $("#liftover-use-view").addEventListener("click", () => {
+    const view = canonicalBuild(state.currentGenome);
+    if (state.liftover?.pairs.some(([from]) => from === view)) { ui.liftoverFrom.value = view; fillLiftoverTargets(); }
+    const loci = state.browser?.referenceFrameList?.map((frame) => frame.getLocusString?.()).filter(Boolean) || [];
+    $("#liftover-regions").value = loci.join("\n") || ui.locus.value;
+  });
+  $("#liftover-regions-go").addEventListener("click", liftoverRegions);
+  $("#liftover-file-go").addEventListener("click", liftoverFile);
   $("#url-track-button").addEventListener("click", openPublicDataDialog);
   $("#custom-reference-button").addEventListener("click", () => showDialog("reference-dialog"));
   $("#favorites-button").addEventListener("click", openFavoriteProfiles);

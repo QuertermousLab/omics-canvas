@@ -141,7 +141,10 @@ folder; the page only offers what that viewer reads and points to the right one 
   over; a source file that changed or went away after its conversion is flagged. Its first workspace can **Unshare** it.
 - Genome Canvas has the same for tracks: **Shared tracks** lists every file loaded from a shared data root (not Home
   folders), in its SQLite store, with **Only <genome>** and **Not in this view** switches; deleted or moved files are
-  dropped, rewritten ones get their new size and date.
+  dropped, rewritten ones get their new size and date. It also lists the lab's **tracksets** (files loaded together, or
+  overlaid in one layered track, e.g. ENCODE's Layered H3K27ac), and Favorites can be shared with the lab. Files whose
+  header or name says they are on another build than the view are offered a **liftover** (hg19 ↔ hg38, mm10 ↔ mm39;
+  regions and files, see `genome-canvas/README.md`).
 
 ### Tissue images (H&E, IHC, IF)
 

@@ -12,6 +12,10 @@
     "bfileTemplate": "/path/to/1000G/ALL.chr{chrom}.genotypes",
     "vcfTemplate": "/path/to/1000G/ALL.chr{chrom}.genotypes.vcf.gz"
   },
+  "liftoverFasta": {
+    "hg38": "/path/to/hg38.fa",
+    "hg19": "/path/to/hg19.fa"
+  },
   "dataRoots": [
     { "label": "Project tracks", "path": "./data" },
     { "label": "Sequencing storage", "path": "/mnt/sequencing" }

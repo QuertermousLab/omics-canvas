@@ -91,6 +91,7 @@ jobs:
             test -f "${app}/Contents/Resources/LocalBackend/server.py"
             test -f "${app}/Contents/Resources/LocalBackend/vendor/igv.min.js"
             test -f "${app}/Contents/Resources/LocalBackend/resource_cache.py"
+            test -f "${app}/Contents/Resources/LocalBackend/liftover.py"
             test -f "${app}/Contents/Resources/LocalBackend/canvas-theme.mjs"
             test -f "${app}/Contents/Resources/LocalBackend/reference-resources.mjs"
             test -f "${app}/Contents/Resources/LocalBackend/vendor/fonts/manrope-latin-wght-normal.woff2"

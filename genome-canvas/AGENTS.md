@@ -19,6 +19,7 @@ the web app: plain HTML, CSS and ES modules.
 | `track-colors.mjs`, `signal-style.mjs`, `annotation-style.mjs`, `hic-heatmap.mjs`, `manhattan-style.mjs` | Track coloring and custom IGV renderers |
 | `canvas-theme.mjs` | Canvas chrome palette for light/dark and the dark-mode canvas adapter |
 | `public-hubs.mjs`, `highlights.mjs`, `reference-resources.mjs` | Hub catalog, highlights, cached reference URLs |
+| `liftover.py` | Genome build of a track file from its header or name (`detect_build`, run on every `/api/track`, ~5 ms) and liftover of regions/files with UCSC liftOver and CrossMap (external programs; the module stays standard-library only) |
 | `tools/` | Offline data prep: reference cache, GWAS LD precomputation |
 | `deploy/` | examples for running Genome Canvas on its own (system service, nginx); on the lab server the units and gateway come from the root `vizhubctl` |
 | `vendor/fonts/` | Manrope, Fraunces, JetBrains Mono (woff2, SIL OFL) |
@@ -43,7 +44,13 @@ the web app: plain HTML, CSS and ES modules.
   path `dbSnpHg38`, 1000 Genomes LD panel `ldReferenceHg19`). Its `./data` root pins
   `"id": "8b314e678286"` (the id of the old `~/baldar/IGV/data` path) so share links made before
   the move keep working — never drop it. Runtime state lives in `.genomecanvas/` (workspaces.sqlite3,
-  sessions = share links, profiles = Favorites) and must never be deleted or committed.
+  sessions = share links, profiles = Favorites) and must never be deleted or committed. A Favorite with
+  `"shared": true` is listed for every workspace (`/api/profiles` → `shared`; only its workspace changes it).
+  Tracksets live in the `tracksets` table of `workspaces.sqlite3` (members are files in shared data roots, never
+  Home folders; "overlay" sets load as one IGV `merged` track). `data/` is not in git: it holds the lab's local
+  tracks, `data/ENCODE/hg38/Layered_H3K27ac/` (UCSC's 7 ENCODE H3K27ac bigWigs, the "Layered H3K27ac (ENCODE)"
+  trackset), `data/liftover/chains/` (UCSC chain files hg19↔hg38, mm10↔mm39) and converted files
+  (`data/liftover/<build>/<key>/`, reused while the source is unchanged; `private/` for Home-folder sources).
 - Other lab machines (e.g. cvmed-loki) see the same NFS directory but have **no
   SSH key for thor** and cannot reach port 8892. Give the user commands to run on
   thor. Gateway logs are in `../gateway/logs/`.

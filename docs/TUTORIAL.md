@@ -49,12 +49,19 @@ the lab shares ([section 6](#6-shared-data)).
   **Shared tracks** lists every server file anyone in the lab has loaded — tick and load them without looking for
   their paths ([section 6](#6-shared-data)).
   **Public data** searches ENCODE, GTEx, Roadmap and 4DN hubs or takes a UCSC / WashU hub URL or any track URL.
+- **Genome builds**: a file that says it is on another build than the view (chromosome sizes in its header, or
+  *hg19* / *GRCh37* … in its name) asks before loading: **Convert to hg38** writes a converted copy to the Genome
+  Canvas data folder (never next to the original) and loads it; **Load it as it is** or **Skip this file**.
+  **Liftover** (under the source buttons) converts pasted regions or the current view between hg19 ↔ hg38 and
+  mm10 ↔ mm39 (click a result to go there, or copy them as BED), and track files in the view (BED, narrowPeak,
+  bedGraph, bigWig, BAM, GTF/GFF, VCF, BEDPE).
 - **Arrange**: drag the six-dot grip to reorder tracks; right-click a track for color, height, data range and display
   mode; remove it in the track list on the left. Assay colors are automatic and stay the same in both themes.
 - **Mark**: **Highlight** then drag over the tracks to shade a region (pick the color next to it; **Clear** removes
   all); **Center guide** draws a line at the center.
 - **Keep and share**: **Favorites** saves the whole view (tracks, locus, highlights) as a named profile in your
-  workspace; **Share** copies a link that restores the view; **Export PNG** saves the canvas with a transparent
+  workspace; **Share** on a Favorite lists it for the lab (others **Load** it or **Save a copy**; only you change it);
+  **Share** in the top bar copies a link that restores the view; **Export PNG** saves the canvas with a transparent
   background.
 - **Links from other modules** open a region with highlights and tracks, e.g.
   `/genome-canvas/?locus=chr6:33,557,481-33,857,780&highlight=chr6:33,707,481-33,707,780` (the CRISPR explorer adds
@@ -176,6 +183,13 @@ of them can also be added on its own.
 folders, with its folder, format, genome and who loaded it. Tick and **Load selected tracks**. **Only hg38** (the
 genome in view) and **Not in this view** (the tracks you have open) are on by default. Files in Home folders are never
 listed; **×** on a file you shared first takes it off the list.
+
+**Tracksets** are listed there too: a named group of files, loaded together as separate tracks or as one **layered**
+track (signal files overlaid in their colors, like UCSC's *Layered H3K27Ac*; the lab has **Layered H3K27ac (ENCODE)**,
+7 cell lines on hg38). The arrow shows a set's files (each can be loaded alone); its files are not listed again on
+their own. Make one from ticked files (**Make trackset…**) or from the server tracks in view (the stack button above
+the track list): name, *One layered track* or *Separate tracks*, each layer's color. **Edit** on your own set
+renames it, changes its files or deletes it.
 
 ![Shared tracks in Genome Canvas: CpG islands is in view, so only the other three are listed](images/genome-canvas-shared-tracks.png)
 

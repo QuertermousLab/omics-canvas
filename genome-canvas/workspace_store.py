@@ -1,4 +1,4 @@
-"""Persistent password-free workspace names for Genome Canvas, and the lab's shared track list."""
+"""Persistent password-free workspace names for Genome Canvas, the lab's shared track list and its tracksets."""
 
 import hashlib
 import json
@@ -83,6 +83,20 @@ class WorkspaceStore:
                     loaded_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (root_id, path)
+                );
+                -- named groups of shared server files, listed for everyone; drawn as separate tracks or
+                -- (signal files) overlaid in one layered track
+                CREATE TABLE IF NOT EXISTS tracksets (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    mode TEXT NOT NULL,
+                    genome TEXT NOT NULL DEFAULT '',
+                    members TEXT NOT NULL,
+                    workspace_id TEXT,
+                    workspace_name TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
                 );
                 """
             )
@@ -276,3 +290,62 @@ class WorkspaceStore:
             if row["workspace_id"] != workspace_id:
                 raise PermissionError("Only {} can take this track off the shared list".format(row["workspace_name"] or "its owner"))
             connection.execute("UPDATE shared_tracks SET hidden = 1 WHERE root_id = ? AND path = ?", (root_id, path))
+
+    # Tracksets: [{root, path, name, color}] members; the workspace that made one alone may change or delete it.
+
+    @staticmethod
+    def public_trackset(row):
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "description": row["description"],
+            "mode": row["mode"],
+            "genome": row["genome"],
+            "members": json.loads(row["members"] or "[]"),
+            "ownerId": row["workspace_id"],
+            "ownerName": row["workspace_name"],
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def list_tracksets(self):
+        with self.connect() as connection:
+            rows = connection.execute("SELECT * FROM tracksets ORDER BY updated_at DESC").fetchall()
+        return [self.public_trackset(row) for row in rows]
+
+    def get_trackset(self, trackset_id):
+        with self.connect() as connection:
+            row = connection.execute("SELECT * FROM tracksets WHERE id = ?", (trackset_id,)).fetchone()
+        return self.public_trackset(row) if row else None
+
+    def save_trackset(self, trackset_id, values, workspace):
+        """Create a trackset, or change one (its owner only)."""
+        now = utc_now()
+        members = json.dumps(values["members"], separators=(",", ":"))
+        with self.connect() as connection:
+            row = connection.execute("SELECT workspace_id, workspace_name FROM tracksets WHERE id = ?", (trackset_id,)).fetchone()
+            if row is None:
+                connection.execute(
+                    "INSERT INTO tracksets(id, name, description, mode, genome, members, workspace_id, workspace_name,"
+                    " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (trackset_id, values["name"], values["description"], values["mode"], values["genome"], members,
+                     workspace["id"], workspace["name"], now, now),
+                )
+            else:
+                if row["workspace_id"] != workspace["id"]:
+                    raise PermissionError("Only {} can change this trackset".format(row["workspace_name"] or "its owner"))
+                connection.execute(
+                    "UPDATE tracksets SET name = ?, description = ?, mode = ?, genome = ?, members = ?, updated_at = ?"
+                    " WHERE id = ?",
+                    (values["name"], values["description"], values["mode"], values["genome"], members, now, trackset_id),
+                )
+        return self.get_trackset(trackset_id)
+
+    def delete_trackset(self, trackset_id, workspace_id):
+        with self.connect() as connection:
+            row = connection.execute("SELECT workspace_id, workspace_name FROM tracksets WHERE id = ?", (trackset_id,)).fetchone()
+            if row is None:
+                raise WorkspaceError("This trackset no longer exists")
+            if row["workspace_id"] != workspace_id:
+                raise PermissionError("Only {} can delete this trackset".format(row["workspace_name"] or "its owner"))
+            connection.execute("DELETE FROM tracksets WHERE id = ?", (trackset_id,))

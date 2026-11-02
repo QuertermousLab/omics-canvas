@@ -93,7 +93,7 @@ cp "${script_dir}"/Resources/Fonts/*.ttf "${script_dir}"/Resources/Fonts/*.LICEN
 local_backend="${app_bundle}/Contents/Resources/LocalBackend"
 mkdir -p "${local_backend}/public" "${local_backend}/vendor/fonts"
 for file in \
-  server.py workspace_store.py resource_cache.py index.html styles.css app.js \
+  server.py workspace_store.py resource_cache.py liftover.py index.html styles.css app.js \
   track-colors.mjs signal-style.mjs annotation-style.mjs hic-heatmap.mjs \
   manhattan-style.mjs public-hubs.mjs highlights.mjs reference-resources.mjs \
   canvas-theme.mjs; do

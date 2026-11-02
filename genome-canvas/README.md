@@ -10,6 +10,10 @@ Genome Canvas is a local-network genome browser for laboratories and research te
 - Custom FASTA + FAI and 2bit reference genomes
 - Direct access to configured server directories without file uploads
 - Shared tracks: every file a workspace has loaded from a shared data root (not Home folders), listed for the whole lab; deleted or moved files drop off the list and rewritten ones show their new date
+- Tracksets: named groups of shared files, listed for the lab under Shared tracks and loaded together, as separate tracks or overlaid in one layered track (like UCSC's Layered H3K27Ac); the lab server has the ENCODE Layered H3K27ac set (7 cell lines, hg38)
+- Favorites can be shared with the lab: others open them or save a copy
+- Genome build check: a loaded file whose header (chromosome sizes of bigWig, bigBed, BAM, VCF, .hic) or name says it is on another build than the view is offered a liftover; the check reads a few kilobytes (about 5 ms)
+- Liftover between builds with UCSC chain files: pasted regions or the view (liftOver), and track files — BED/narrowPeak, bedGraph/WIG/bigWig, BAM/CRAM, GFF/GTF, VCF, BEDPE — with CrossMap; converted files are written under the Genome Canvas data folder, never next to the source
 - Automatic discovery of `.bai`, `.crai`, `.tbi`, `.csi`, and `.fai` indexes
 - Major formats including BAM, CRAM, VCF, BCF, BigWig, BigBed, BED, BEDGraph, WIG, GFF/GFF3, GTF, Hi-C contact heatmaps, BEDPE, SEG, MAF, GWAS, and QTL
 - LocusZoom-style regional association plots for indexed GWAS summary statistics, with p-value guides, lead-variant labels, and complete variant tooltips
@@ -225,6 +229,17 @@ Optional environment variables:
 - `GENOME_CANVAS_PORT`: listening port; default `8000`
 - `GENOME_DATA_ROOTS`: permitted data roots
 - `GENOME_CANVAS_REFERENCE_DIR`: local reference cache; default `.genomecanvas/references`
+
+### Liftover
+
+Liftover runs the UCSC `liftOver` and `CrossMap` programs (found on `PATH`, `/usr/local/bin` or `~/.local/bin`; VCFs
+also use `bcftools` and `tabix`, BAMs `samtools`). Chain files are read from `data/liftover/chains`, named like UCSC's
+(`hg19ToHg38.over.chain.gz`); each one there adds a pair of builds. Converted files go to `data/liftover/<build>/`, and
+the folder must be inside a data root so they can be served. Optional settings in `genomecanvas.config.json`:
+
+- `liftoverFasta`: the target build's FASTA for VCF liftover, e.g. `{"hg38": "/refs/hg38.fa"}`
+- `liftoverChainDir`, `liftoverDir`: other folders for the chain files and the converted files
+- `liftoverChains`: extra chain files, `{"hg19:hg38": "/refs/hg19ToHg38.over.chain.gz"}`
 
 ### Faster Reference Loading
 

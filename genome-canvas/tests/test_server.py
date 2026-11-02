@@ -689,6 +689,122 @@ subGroups biosample=Heart assay=RNA_seq
         self.assertEqual((tracks["variants.vcf.gz"]["ownerName"], tracks["variants.vcf.gz"]["loads"]), ("", 0))
 
 
+    def post_json(self, path, payload):
+        body = json.dumps(payload).encode("utf-8")
+        return self.request("POST", path, body=body, headers={"Content-Type": "application/json", "Content-Length": str(len(body))})
+
+    def tracksets(self):
+        status, _, body = self.request("GET", "/api/tracksets")
+        self.assertEqual(status, 200, body)
+        return json.loads(body)["tracksets"]
+
+    def test_tracksets_group_shared_files_for_everyone(self):
+        (self.root / "a.bigWig").write_bytes(b"bigwig-a")
+        (self.root / "b.bw").write_bytes(b"bigwig-b")
+        members = [{"root": "test", "path": "a.bigWig", "name": "Cell A", "color": "rgb(255,128,128)"},
+                   {"root": "test", "path": "/b.bw", "color": "javascript:alert(1)"}]
+        status, _, body = self.post_json("/api/tracksets", {"name": "Layered signal", "mode": "overlay", "genome": "hg38", "members": members})
+        self.assertEqual(status, 201, body)
+        made = json.loads(body)["trackset"]
+        self.assertEqual((made["name"], made["mode"], made["genome"], made["mine"], made["ownerName"]),
+                         ("Layered signal", "overlay", "hg38", True, "alice"))
+        self.assertEqual([(m["path"], m["name"], m.get("color"), m["format"]) for m in made["members"]],
+                         [("a.bigWig", "Cell A", "rgb(255,128,128)", "bigwig"), ("b.bw", "b.bw", None, "bigwig")])
+
+        # only signal files overlay; Home folders stay private
+        status, _, body = self.post_json("/api/tracksets", {"name": "Mixed", "mode": "overlay", "members": [{"root": "test", "path": "sample.bed"}]})
+        self.assertEqual(status, 400, body)
+        status, _, _ = self.post_json("/api/tracksets", {"name": "Mixed", "mode": "separate", "members": [{"root": "test", "path": "sample.bed"}]})
+        self.assertEqual(status, 201)
+        alice_home_root = next(root_id for root_id, item in server.data_roots_for_workspace(
+            server.find_workspace(self.workspace_store, self.alice_workspace_id, self.home_root)).items()
+            if item["path"] == self.alice_home)
+        status, _, body = self.post_json("/api/tracksets", {"name": "Private", "members": [{"root": alice_home_root, "path": "private.bed"}]})
+        self.assertEqual(status, 400, body)
+
+        # everyone sees it; only alice changes or deletes it
+        self.select_workspace(server.home_workspace_id(self.bob_home))
+        listed = {item["name"]: item for item in self.tracksets()}
+        self.assertEqual(sorted(listed), ["Layered signal", "Mixed"])
+        self.assertFalse(listed["Layered signal"]["mine"])
+        status, _, _ = self.post_json("/api/tracksets/{}".format(made["id"]), {"name": "Mine now", "members": members})
+        self.assertEqual(status, 403)
+        status, _, _ = self.request("DELETE", "/api/tracksets/{}".format(made["id"]))
+        self.assertEqual(status, 403)
+
+        self.select_workspace(self.alice_workspace_id)
+        status, _, body = self.post_json("/api/tracksets/{}".format(made["id"]), {"name": "Layered H3K27ac", "mode": "separate", "members": members[:1]})
+        self.assertEqual(status, 200, body)
+        self.assertEqual((json.loads(body)["trackset"]["name"], len(json.loads(body)["trackset"]["members"])), ("Layered H3K27ac", 1))
+
+        # members follow their files: a set whose files are all gone is not listed
+        (self.root / "a.bigWig").unlink()
+        self.assertEqual([item["name"] for item in self.tracksets()], ["Mixed"])
+        mixed = self.tracksets()[0]
+        status, _, _ = self.request("DELETE", "/api/tracksets/{}".format(mixed["id"]))
+        self.assertEqual(status, 200)
+        self.assertEqual(self.tracksets(), [])
+
+    def test_favorites_can_be_shared_with_the_lab(self):
+        state = {"genome": "hg38", "locus": "chr1:1-10", "tracks": [{"name": "Signal", "type": "wig"}]}
+        status, _, body = self.post_json("/api/profiles", {"name": "Alice view", "state": state})
+        self.assertEqual(status, 201, body)
+        profile = json.loads(body)["profile"]
+        self.assertFalse(profile["shared"])
+
+        bob_id = server.home_workspace_id(self.bob_home)
+        self.select_workspace(bob_id)
+        status, _, body = self.request("GET", "/api/profiles")
+        self.assertEqual(json.loads(body)["shared"], [])
+
+        self.select_workspace(self.alice_workspace_id)
+        status, _, body = self.post_json("/api/profiles/{}/share".format(profile["id"]), {"shared": True})
+        self.assertEqual(status, 200, body)
+        self.assertTrue(json.loads(body)["profile"]["shared"])
+        # saving it again keeps it shared
+        status, _, body = self.post_json("/api/profiles", {"name": "Alice view", "state": dict(state, locus="chr1:5-50")})
+        self.assertTrue(json.loads(body)["profile"]["shared"])
+        status, _, body = self.request("GET", "/api/profiles")
+        self.assertEqual(json.loads(body)["shared"], [])  # not listed again for its own workspace
+
+        self.select_workspace(bob_id)
+        status, _, body = self.request("GET", "/api/profiles")
+        shared = json.loads(body)["shared"]
+        self.assertEqual([(item["name"], item["ownerName"], item["locus"]) for item in shared], [("Alice view", "alice", "chr1:5-50")])
+        status, _, body = self.request("GET", "/api/shared-profiles/{}/{}".format(shared[0]["ownerKey"], shared[0]["id"]))
+        self.assertEqual(status, 200, body)
+        self.assertEqual(json.loads(body)["state"]["locus"], "chr1:5-50")
+        # bob cannot change alice's Favorite
+        status, _, _ = self.post_json("/api/profiles/{}/share".format(profile["id"]), {"shared": False})
+        self.assertEqual(status, 404)
+
+        self.select_workspace(self.alice_workspace_id)
+        self.post_json("/api/profiles/{}/share".format(profile["id"]), {"shared": False})
+        self.select_workspace(bob_id)
+        status, _, _ = self.request("GET", "/api/shared-profiles/{}/{}".format(shared[0]["ownerKey"], shared[0]["id"]))
+        self.assertEqual(status, 404)
+
+
+    def test_track_payload_names_its_build(self):
+        (self.root / "peaks.hg19.bed").write_text("chr1\t10\t20\n")
+        status, _, body = self.request("GET", "/api/track?root=test&path=peaks.hg19.bed&genome=hg38")
+        self.assertEqual(status, 200, body)
+        payload = json.loads(body)
+        self.assertEqual((payload["build"]["build"], payload["file"]), ("hg19", {"root": "test", "path": "peaks.hg19.bed"}))
+        self.assertIn("liftover", payload["build"])
+        status, _, body = self.request("GET", "/api/track?root=test&path=sample.bed&genome=hg38")
+        self.assertIsNone(json.loads(body)["build"])
+
+    def test_liftover_status_and_bad_requests(self):
+        status, _, body = self.request("GET", "/api/liftover")
+        self.assertEqual(status, 200, body)
+        self.assertIn("pairs", json.loads(body))
+        status, _, body = self.post_json("/api/liftover/regions", {"from": "hg19", "to": "nope", "text": "chr1:1-10"})
+        self.assertEqual(status, 400, body)
+        status, _, _ = self.request("GET", "/api/liftover/jobs/abcdef123456")
+        self.assertEqual(status, 404)
+
+
 class LocalModeServerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
