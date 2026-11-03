@@ -151,23 +151,24 @@ def parquet_to_tabix(parquet: Path, out: Path):
     missing = [c for c in COLUMNS if c not in names]
     if missing:
         raise RuntimeError(f'{parquet.name}: no {", ".join(missing)}')
-    blocks, rows = [], 0  # [chromosome, [row groups]] in file order; tabix needs each chromosome contiguous
+    # [chromosome, [row groups holding it]] in file order: tabix needs each chromosome in one block, and a row
+    # group may hold the end of one chromosome and the start of the next
+    blocks, rows = [], 0
     for i in range(f.num_row_groups):
-        chroms = pc.unique(f.read_row_group(i, columns=['chromosome']).column(0)).to_pylist()
-        if len(chroms) != 1:
-            raise RuntimeError(f'{parquet.name}: row group {i} spans chromosomes {chroms}')
-        if blocks and blocks[-1][0] == chroms[0]:
-            blocks[-1][1].append(i)
-        elif any(b[0] == chroms[0] for b in blocks):
-            raise RuntimeError(f'{parquet.name}: chromosome {chroms[0]} is not in one block')
-        else:
-            blocks.append([chroms[0], [i]])
+        for chrom in pc.unique(f.read_row_group(i, columns=['chromosome']).column(0)).to_pylist():
+            if blocks and blocks[-1][0] == chrom:
+                blocks[-1][1].append(i)
+            elif any(b[0] == chrom for b in blocks):
+                raise RuntimeError(f'{parquet.name}: chromosome {chrom} is not in one block')
+            else:
+                blocks.append([chrom, [i]])
     part = out.with_name(out.name + '.part')
     with open(part, 'wb') as raw:
         z = subprocess.Popen(['bgzip', '-c'], stdin=subprocess.PIPE, stdout=raw)
         z.stdin.write(('\t'.join(COLUMNS) + '\n').encode())
         for chrom, groups in blocks:
-            t = f.read_row_groups(groups, columns=COLUMNS).sort_by([('position', 'ascending')])
+            t = f.read_row_groups(groups, columns=COLUMNS)
+            t = t.filter(pc.equal(t.column('chromosome'), chrom)).sort_by([('position', 'ascending')])
             t = pa.table([pc.fill_null(pc.cast(t.column(c), pa.string()), 'NA') for c in COLUMNS], names=COLUMNS)
             sink = pa.BufferOutputStream()
             pcsv.write_csv(t, sink, pcsv.WriteOptions(include_header=False, delimiter='\t', quoting_style='none'))

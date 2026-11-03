@@ -155,7 +155,7 @@ class GtexV10ParquetTest(unittest.TestCase):
             table = pa.table(cols).cast(pa.schema([(c, pa.int32() if c in ("position", "ma_samples", "ac", "an")
                                                     else pa.float64() if c in ("maf", "pvalue", "beta", "se", "median_tpm")
                                                     else pa.string()) for c in cols]))
-            pq.write_table(table, root / "QTD000136.all.parquet", row_group_size=2)
+            pq.write_table(table, root / "QTD000136.all.parquet", row_group_size=3)  # the second group holds the end of 10 and all of 6
             out = root / "QTD000136.all.tsv.gz"
             self.assertEqual(fetch_gtex_eqtl.parquet_to_tabix(root / "QTD000136.all.parquet", out), 6)
             fetch_gtex_eqtl.write_manifest(root, "v10")
