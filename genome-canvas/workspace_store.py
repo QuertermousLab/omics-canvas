@@ -287,7 +287,8 @@ class WorkspaceStore:
             ).fetchone()
             if row is None:
                 raise WorkspaceError("This track is no longer on the shared list")
-            if row["workspace_id"] != workspace_id:
+            # files from views saved before the list existed have no owner: anyone may take them off
+            if row["workspace_id"] and row["workspace_id"] != workspace_id:
                 raise PermissionError("Only {} can take this track off the shared list".format(row["workspace_name"] or "its owner"))
             connection.execute("UPDATE shared_tracks SET hidden = 1 WHERE root_id = ? AND path = ?", (root_id, path))
 

@@ -687,6 +687,16 @@ subGroups biosample=Heart assay=RNA_seq
         self.assertEqual(sorted(tracks), ["sample.bed", "variants.vcf.gz"])
         self.assertEqual((tracks["sample.bed"]["ownerName"], tracks["sample.bed"]["genomes"]), ("alice", ["hg38"]))
         self.assertEqual((tracks["variants.vcf.gz"]["ownerName"], tracks["variants.vcf.gz"]["loads"]), ("", 0))
+        # a file from a link nobody owns may be taken off the list by anyone; alice's stays hers
+        self.select_workspace(server.home_workspace_id(self.bob_home))
+        tracks = {item["path"]: item for item in self.shared_tracks()}
+        self.assertEqual((tracks["variants.vcf.gz"]["removable"], tracks["sample.bed"]["removable"]), (True, False))
+        status, _, body = self.hide_shared("test", "sample.bed")
+        self.assertEqual(status, 403, body)
+        status, _, body = self.hide_shared("test", "variants.vcf.gz")
+        self.assertEqual(status, 200, body)
+        server.seed_shared_tracks(self.workspace_store, self.home_root)  # the saved link does not bring it back
+        self.assertEqual([item["path"] for item in self.shared_tracks()], ["sample.bed"])
 
 
     def post_json(self, path, payload):

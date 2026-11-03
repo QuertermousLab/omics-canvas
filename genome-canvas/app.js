@@ -1916,11 +1916,12 @@ function renderSharedFileRow(item, missing = false) {
     modified.textContent = humanDate(item.modified);
     modified.title = `${humanSize(item.size)} · first shared ${item.createdAt.slice(0, 10)}`;
     modifiedCell.append(modified);
-    if (item.mine) {
+    if (item.mine || item.removable) {
       const unshare = document.createElement("button");
       unshare.type = "button";
       unshare.className = "icon-button ghost small";
-      unshare.title = "Take it off the shared list (shared again when you load it again)";
+      unshare.title = item.mine ? "Take it off the shared list (shared again when you load it again)"
+        : "Take it off the shared list: it came from a saved view, so no workspace owns it (shared again when someone loads it)";
       unshare.setAttribute("aria-label", `Stop sharing ${item.name}`);
       unshare.innerHTML = '<svg class="icon"><use href="#i-x"/></svg>';
       unshare.addEventListener("click", () => unshareTrack(item));
@@ -1988,8 +1989,12 @@ function openTracksetEditor(set = null, members = null, mode = null) {
   $$('input[name="trackset-mode"]').forEach((input) => { input.checked = input.value === chosen; });
   $("#trackset-delete").hidden = !set;
   $("#trackset-error").hidden = true;
+  $("#trackset-add-search").value = "";
   renderTracksetMembers();
   showDialog("trackset-dialog");
+  if (!state.sharedTracks?.length) {  // the files that can be added: the lab's shared tracks
+    fetchJSON(appURL("api/shared-tracks")).then((payload) => { state.sharedTracks = payload.tracks || []; renderTracksetAdd(); }).catch(() => {});
+  }
   $("#trackset-name").focus();
 }
 
@@ -2045,6 +2050,67 @@ function renderTracksetMembers() {
   $("#trackset-member-note").textContent = overlay && notSignal
     ? `${notSignal} file${notSignal === 1 ? " is" : "s are"} not signal (bigWig, bedGraph): show them as separate tracks`
     : `${editing.members.length} file${editing.members.length === 1 ? "" : "s"}${overlay ? " · pick each layer's color" : ""}`;
+  renderTracksetAdd();
+}
+
+function addTracksetMembers(files) {
+  const editing = state.editingTrackset;
+  const have = new Set(editing.members.map(sharedKey));
+  let added = 0;
+  for (const file of files) {
+    if (have.has(sharedKey(file))) continue;
+    have.add(sharedKey(file));
+    editing.members.push({ root: file.root, path: file.path, name: file.name || file.path.split("/").pop(), color: file.color || "",
+      format: file.format || "", fallback: LAYER_COLORS[editing.members.length % LAYER_COLORS.length] });
+    added += 1;
+  }
+  renderTracksetMembers();
+  return added;
+}
+
+// shared files matching the search (not yet in the set), each added with a click
+function renderTracksetAdd() {
+  const list = $("#trackset-add-results");
+  const editing = state.editingTrackset;
+  const query = $("#trackset-add-search").value.trim().toLowerCase();
+  if (!editing || !query) { list.hidden = true; list.replaceChildren(); return; }
+  const have = new Set(editing.members.map(sharedKey));
+  const words = query.split(/\s+/);
+  const matches = (state.sharedTracks || []).filter((item) => item.kind !== "reference" && !have.has(sharedKey(item))
+    && words.every((word) => `${item.name} ${item.rootLabel} ${item.path}`.toLowerCase().includes(word))).slice(0, 40);
+  list.replaceChildren();
+  list.hidden = false;
+  if (!matches.length) {
+    const empty = document.createElement("li");
+    empty.className = "trackset-add-empty";
+    empty.textContent = state.sharedTracks?.length ? "No shared file matches (load a file once to share it)" : "Reading the shared tracks…";
+    list.append(empty);
+    return;
+  }
+  for (const item of matches) {
+    const row = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "trackset-add-item";
+    button.title = `Add ${item.name}`;
+    const icon = document.createElement("span");
+    icon.className = "file-icon";
+    icon.textContent = String(item.format || "").toUpperCase().slice(0, 5);
+    const label = document.createElement("span");
+    label.className = "shared-name";
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const folder = document.createElement("small");
+    folder.textContent = sharedFolder(item);
+    label.append(name, folder);
+    const plus = document.createElement("span");
+    plus.className = "trackset-add-plus";
+    plus.textContent = "+ Add";
+    button.append(icon, label, plus);
+    button.addEventListener("click", () => addTracksetMembers([item]));
+    row.append(button);
+    list.append(row);
+  }
 }
 
 function toHexColor(color) {
@@ -2095,7 +2161,7 @@ async function deleteTrackset() {
 }
 
 // the server files in view (a layered track: its files, colors and the overlay display)
-function tracksetFromView() {
+function serverTracksInView() {
   const members = [];
   let layered = false;
   for (const view of trackViews()) {
@@ -2107,6 +2173,11 @@ function tracksetFromView() {
       }
     }
   }
+  return { members, layered };
+}
+
+function tracksetFromView() {
+  const { members, layered } = serverTracksInView();
   if (!members.length) {
     toast("No server files in the view: tracksets group files from the shared server folders", "error");
     return;
@@ -3594,6 +3665,12 @@ function bindEvents() {
   $("#trackset-form").addEventListener("submit", saveTrackset);
   $("#trackset-delete").addEventListener("click", deleteTrackset);
   $$('input[name="trackset-mode"]').forEach((input) => input.addEventListener("change", renderTracksetMembers));
+  $("#trackset-add-search").addEventListener("input", renderTracksetAdd);
+  $("#trackset-add-search").addEventListener("keydown", (event) => { if (event.key === "Enter") event.preventDefault(); });
+  $("#trackset-add-view").addEventListener("click", () => {
+    const added = addTracksetMembers(serverTracksInView().members);
+    toast(added ? `Added ${added} track${added === 1 ? "" : "s"} from the view` : "The server tracks in view are already in the trackset", added ? "success" : "error");
+  });
   $("#liftover-button").addEventListener("click", openLiftover);
   $("#locuscompare-button").addEventListener("click", () => openLocusCompare());
   $("#lc-go").addEventListener("click", () => runLocusCompare());

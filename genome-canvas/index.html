@@ -18,14 +18,14 @@
     })();
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261103.1">
+  <link rel="stylesheet" href="styles.css?v=20261103.2">
   <!-- Start the large engine download and the module graph in parallel with
        the stylesheet. Keep these hrefs identical to the import specifiers in
        app.js (including ?v=) so the preloaded responses are reused. -->
   <link rel="preload" href="vendor/fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/igv.min.js?v=20261005-reference-cache" as="script">
-  <link rel="modulepreload" href="app.js?v=20261103.2">
+  <link rel="modulepreload" href="app.js?v=20261103.3">
   <link rel="modulepreload" href="track-colors.mjs?v=20260821.4">
   <link rel="modulepreload" href="signal-style.mjs?v=20261007.2">
   <link rel="modulepreload" href="annotation-style.mjs?v=20260821.3">
@@ -439,6 +439,13 @@
         </fieldset>
         <div class="trackset-members-head"><span>Tracks</span><small id="trackset-member-note"></small></div>
         <ol class="trackset-members" id="trackset-members"></ol>
+        <div class="trackset-add">
+          <div class="trackset-add-row">
+            <label class="search-field trackset-add-search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="trackset-add-search" type="search" placeholder="Add files: search the shared tracks by name or folder" autocomplete="off" spellcheck="false" aria-label="Search shared tracks to add"></label>
+            <button class="secondary-button small" id="trackset-add-view" type="button" title="Add the server tracks in the current view">Add tracks in view</button>
+          </div>
+          <ul class="trackset-add-results" id="trackset-add-results" hidden></ul>
+        </div>
         <p class="dialog-error" id="trackset-error" hidden></p>
       </div>
       <footer class="dialog-footer"><button class="danger-link" id="trackset-delete" type="button" hidden>Delete trackset</button><span id="trackset-owner-note">Shared with everyone in the lab; only you can change it.</span>
@@ -553,6 +560,6 @@
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
   <script defer src="vendor/igv.min.js?v=20261005-reference-cache"></script>
-  <script type="module" src="app.js?v=20261103.2"></script>
+  <script type="module" src="app.js?v=20261103.3"></script>
 </body>
 </html>

@@ -225,14 +225,16 @@ of them can also be added on its own.
 **Shared tracks** (Genome Canvas) — the card under **Open server files** lists every file loaded from the shared server
 folders, with its folder, format, genome and who loaded it. Tick and **Load selected tracks**. **Only hg38** (the
 genome in view) and **Not in this view** (the tracks you have open) are on by default. Files in Home folders are never
-listed; **×** on a file you shared first takes it off the list.
+listed; **×** on a file you shared first takes it off the list. Files marked *saved view* came from share links made
+before the list existed and belong to no one: anyone can take them off.
 
 **Tracksets** are listed there too: a named group of files, loaded together as separate tracks or as one **layered**
 track (signal files overlaid in their colors, like UCSC's *Layered H3K27Ac*; the lab has **Layered H3K27ac (ENCODE)**,
 7 cell lines on hg38). The arrow shows a set's files (each can be loaded alone); its files are not listed again on
 their own. Make one from ticked files (**Make trackset…**) or from the server tracks in view (the stack button above
 the track list): name, *One layered track* or *Separate tracks*, each layer's color. **Edit** on your own set
-renames it, changes its files or deletes it.
+renames it, reorders, recolors or removes its files, adds files (search the shared tracks by name or folder, or **Add
+tracks in view**), or deletes it.
 
 ![Shared tracks in Genome Canvas: CpG islands is in view, so only the other three are listed](images/genome-canvas-shared-tracks.png)
 

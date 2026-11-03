@@ -2112,7 +2112,9 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             if not root:
                 continue
             item["rootLabel"] = root["label"]
-            item["mine"] = item.pop("ownerId") == workspace["id"]
+            owner = item.pop("ownerId")
+            item["mine"] = owner == workspace["id"]
+            item["removable"] = item["mine"] or not owner  # nobody owns files from old saved views
             item["loadedByMe"] = workspace["name"] in item["users"]
             tracks.append(item)
         self.send_json({"tracks": tracks})
