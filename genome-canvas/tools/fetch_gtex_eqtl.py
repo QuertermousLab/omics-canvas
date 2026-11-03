@@ -8,8 +8,9 @@ read remotely. Files are ~3.5 GB each (~170 GB for all 49 tissues): pick tissues
     python3 tools/fetch_gtex_eqtl.py --out data/eQTL/GTEx_v8 --tissues artery_coronary artery_aorta artery_tibial
     python3 tools/fetch_gtex_eqtl.py --out data/eQTL/GTEx_v8 --all
 
-Downloads resume (curl -C -), are written as .part and renamed when complete, and are checked with tabix.
-Standard library only (curl and tabix are external programs).
+Downloads resume (curl -C -), are written as .part and renamed once the whole file passes gzip -t (a corrupt one
+is downloaded again from the start), then checked with tabix.
+Standard library only (curl, gzip and tabix are external programs).
 """
 
 import argparse
@@ -80,17 +81,35 @@ FIRST = ['artery_coronary', 'artery_aorta', 'artery_tibial', 'heart_left_ventric
          'liver', 'adipose_subcutaneous', 'adipose_visceral', 'blood', 'fibroblast']
 
 
-def fetch(url, target: Path, attempts=20):
+def remote_size(url):
+    head = subprocess.run(['curl', '-fsSIL', url], capture_output=True, text=True)
+    sizes = [line.split(':', 1)[1].strip() for line in head.stdout.splitlines()
+             if line.lower().startswith('content-length:')]
+    return int(sizes[-1]) if sizes and sizes[-1].isdigit() else None
+
+
+def intact(path: Path):
+    """The whole file decompresses (a resumed download can splice in bad bytes that tabix alone misses)."""
+    return subprocess.run(['gzip', '-t', str(path)], capture_output=True).returncode == 0
+
+
+def fetch(url, target: Path, attempts=20, fresh_starts=3):
     part = target.with_name(target.name + '.part')
-    for attempt in range(attempts):
-        result = subprocess.run(['curl', '-fsSL', '--retry', '5', '--retry-delay', '20', '-C', '-', '-o', str(part), url])
-        if result.returncode == 0:
+    size = remote_size(url)
+    for start in range(fresh_starts):
+        for attempt in range(attempts):
+            if size and part.is_file() and part.stat().st_size >= size:
+                break  # complete: the server answers a resume past the end with an error
+            result = subprocess.run(['curl', '-fsSL', '--retry', '5', '--retry-delay', '20', '-C', '-',
+                                     '-o', str(part), url])
+            if result.returncode in (0, 33):  # 33: range not satisfiable, the part is already complete
+                break
+            time.sleep(min(300, 30 * (attempt + 1)))
+        if part.is_file() and (not size or part.stat().st_size == size) and (url.endswith('.tbi') or intact(part)):
             part.rename(target)
             return
-        if result.returncode == 33:  # range not satisfiable: the part is already complete
-            part.rename(target)
-            return
-        time.sleep(min(300, 30 * (attempt + 1)))
+        print(f'{target.name}: incomplete or corrupt, downloading it again', flush=True)
+        part.unlink(missing_ok=True)
     raise RuntimeError(f'Could not download {url}')
 
 
