@@ -255,13 +255,14 @@ class LocusCompare:
         """[{key, label, samples, target (path or URL), local, cwd}] of an eQTL source."""
         d = source["dir"]
         out = []
-        allowed = set(source.get("tissues") or [])  # a source's "tissues": the ones offered (default: all)
+        # a source's "tissues": the ones offered (default: all); with "offerDownloaded", also any tissue downloaded
+        allowed = set(source.get("tissues") or [])
         if source.get("catalogue") == "gtex_v8":
             for qtd, key, label, n in GTEX_V8:
-                if allowed and key not in allowed:
-                    continue
                 path = d / "{}.all.tsv.gz".format(qtd)
                 local = path.is_file() and Path(str(path) + ".tbi").is_file()
+                if allowed and key not in allowed and not (local and source.get("offerDownloaded")):
+                    continue
                 if local or source.get("remote"):
                     out.append({"key": key, "label": label, "samples": n, "local": local, "columns": None,
                                 "target": str(path) if local else GTEX_V8_REMOTE.format(id=qtd), "cwd": str(d)})

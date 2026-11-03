@@ -107,6 +107,20 @@ class LocusCompareTest(unittest.TestCase):
         self.assertIn(locuscompare.allele_keys("C", "T")[0], locuscompare.allele_keys("G", "A"))
         self.assertEqual(locuscompare.allele_keys("", "A"), ())
 
+    def test_gtex_tissues_offered(self):
+        root = Path(self.tmp.name) / "gtex"
+        root.mkdir()
+        for qtd in ("QTD000136", "QTD000266"):  # artery_coronary, liver
+            (root / "{}.all.tsv.gz".format(qtd)).write_bytes(b"")
+            (root / "{}.all.tsv.gz.tbi".format(qtd)).write_bytes(b"")
+        source = {"id": "v8", "dir": root, "catalogue": "gtex_v8", "tissues": ["artery_coronary", "artery_aorta"]}
+        self.assertEqual([t["key"] for t in self.lc.tissues(source)], ["artery_coronary"])  # aorta: neither local nor remote
+        source["remote"] = True
+        self.assertEqual([(t["key"], t["local"]) for t in self.lc.tissues(source)],
+                         [("artery_aorta", False), ("artery_coronary", True)])
+        source["offerDownloaded"] = True  # liver is downloaded: offered too, never remote tissues outside the list
+        self.assertEqual([t["key"] for t in self.lc.tissues(source)], ["artery_aorta", "artery_coronary", "liver"])
+
     def test_gtex_tissue_table(self):
         keys = [t[1] for t in locuscompare.GTEX_V8]
         self.assertEqual(len(keys), 49)

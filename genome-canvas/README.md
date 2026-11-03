@@ -252,7 +252,7 @@ lead in a 1000 Genomes phase 3 population (the `ldReferenceHg19` panel, by rsid;
 `ld_r2` + `ld_reference`). A GWAS file with a `GROUP` (or `LD_POP`) column is shown one group at a time.
 
 eQTL data, set in `genomecanvas.config.json` under `locusCompare.eqtl` (each source's optional `tissues` lists the
-ones offered):
+ones offered; `"offerDownloaded": true` also offers every tissue downloaded since):
 
 - GTEx v8, every tested variant–gene pair, from the eQTL Catalogue (hg38). GTEx's own all-pairs files are only on
   requester-pays Google Cloud storage; the eQTL Catalogue serves the same data over FTP:
