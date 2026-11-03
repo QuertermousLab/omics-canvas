@@ -261,6 +261,8 @@ ones offered; `"offerDownloaded": true` also offers every tissue downloaded sinc
   tabix, one query at a time.
 - GTEx parquet releases (v10 / v11 significant pairs only, so the plot shows only variants below each gene's
   threshold): `hub/venv/bin/python tools/gtex_parquet_to_eqtl.py <GTEx_Analysis_v11_eQTL> data/eQTL/GTEx_v11_signif`.
+A source's `dir` may be anywhere on the server (on the lab server the v8 files are in
+`/nfs/boz/General_Use_Data/GTEx/GTEx_v8_eQTL_all_pairs`, next to GTEx's own v11 release).
 
 Genes come from a GENCODE table (`locusCompare.genes`, default `data/eQTL/genes.gencode_v39.hg38.tsv`: gene_id,
 symbol, chrom, start, end, strand, type; v39 is the annotation of the eQTL Catalogue's GTEx). GWAS Catalog harmonised
