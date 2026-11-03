@@ -57,8 +57,8 @@ the lab shares ([section 6](#6-shared-data)).
   bedGraph, bigWig, BAM, GTF/GFF, VCF, BEDPE).
 - **LocusCompare**: compare a GWAS track with GTEx eQTLs, as [locuscompare.com](http://locuscompare.com) does.
   - Open it from a GWAS track's menu (right-click the track → **LocusCompare with GTEx eQTLs…**), from a SNP's popup
-    (**Compare with GTEx eQTLs ›**, with that SNP as the lead) or with **LocusCompare** in the canvas toolbar (next to
-    **Export PNG**). In the Mac app, use the track's right-click menu.
+    (**Compare with GTEx eQTLs ›**, with that SNP as the lead) or with **LocusCompare** next to **Liftover** (in the Mac
+    app: the same button, or **File → LocusCompare…**, ⌥⌘C).
   - The figure plots each variant's GWAS −log₁₀ P against its eQTL −log₁₀ P, with a LocusZoom panel for each study
     and the genes below. Points are colored by r² with the lead SNP (purple diamond), as in the GWAS tracks.
   - Pick the **tissue** (GTEx v8 Artery - Coronary, Aorta or Tibial; v11 lists significant pairs only), the

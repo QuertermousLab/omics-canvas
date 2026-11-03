@@ -186,7 +186,8 @@
           <div class="source-actions">
             <button id="url-track-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-globe"/></svg>Public data</button>
             <button id="custom-reference-button" type="button" title="Load a custom reference genome"><svg class="icon" aria-hidden="true"><use href="#i-target"/></svg>Reference</button>
-            <button class="source-wide" id="liftover-button" type="button" title="Convert regions or track files between genome builds (hg19 ↔ hg38, mm10 ↔ mm39)"><svg class="icon" aria-hidden="true"><use href="#i-swap"/></svg>Liftover</button>
+            <button id="liftover-button" type="button" title="Convert regions or track files between genome builds (hg19 ↔ hg38, mm10 ↔ mm39)"><svg class="icon" aria-hidden="true"><use href="#i-swap"/></svg>Liftover</button>
+            <button id="locuscompare-button" type="button" title="LocusCompare: a GWAS track in view against GTEx eQTLs, colored by LD (also in a GWAS track's right-click menu)"><svg class="icon" aria-hidden="true"><use href="#i-scatter"/></svg>LocusCompare</button>
           </div>
         </div>
 
@@ -224,7 +225,6 @@
               <label class="highlight-color" title="Highlight color"><input id="highlight-color-input" type="color" value="#f2c94c" aria-label="Highlight color"><span aria-hidden="true"></span></label>
               <button class="tool-button" id="clear-highlights-button" type="button" title="Clear all highlights" disabled><svg class="icon" aria-hidden="true"><use href="#i-eraser"/></svg><span class="button-label">Clear</span></button>
             </div>
-            <button class="tool-button" id="locuscompare-button" type="button" title="LocusCompare: a GWAS track in view against GTEx eQTLs, colored by LD (also in a GWAS track's right-click menu)"><svg class="icon" aria-hidden="true"><use href="#i-scatter"/></svg><span class="button-label">LocusCompare</span></button>
             <button class="tool-button export-button" id="export-button" type="button" title="Export the current canvas as PNG">
               <svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><span class="export-label button-label">Export PNG</span>
             </button>
