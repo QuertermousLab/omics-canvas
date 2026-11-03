@@ -61,7 +61,8 @@ the lab shares ([section 6](#6-shared-data)).
     app: the same button, or **File → LocusCompare…**, ⌥⌘C).
   - The figure plots each variant's GWAS −log₁₀ P against its eQTL −log₁₀ P, with a LocusZoom panel for each study
     and the genes below. Points are colored by r² with the lead SNP (purple diamond), as in the GWAS tracks.
-  - Pick the **tissue** (GTEx v8 Artery - Coronary, Aorta or Tibial; v11 lists significant pairs only), the
+  - Pick the **tissue** (GTEx v8 or v10 Artery - Coronary, Aorta or Tibial, every tested pair; v11 lists
+    significant pairs only), the
     **gene** (*Best match* is the eGene whose eQTLs best overlap the GWAS signal), the **LD** population (1000
     Genomes EUR, AFR, AMR, EAS, SAS, ALL, or the study's own LD) and the region (up to 3 Mb).
   - The lead SNP is the one with the smallest sum of the two p-values. **Click a point** to make it the lead.

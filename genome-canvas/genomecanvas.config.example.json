@@ -33,6 +33,11 @@
         ]
       },
       {
+        "id": "gtex_v10",
+        "label": "GTEx v10 · all pairs (eQTL Catalogue beta)",
+        "dir": "data/eQTL/GTEx_v10"
+      },
+      {
         "id": "gtex_v11",
         "label": "GTEx v11 · significant pairs",
         "dir": "data/eQTL/GTEx_v11_signif",

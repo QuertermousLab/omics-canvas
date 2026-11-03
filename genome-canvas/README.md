@@ -259,10 +259,14 @@ ones offered; `"offerDownloaded": true` also offers every tissue downloaded sinc
   `python3 tools/fetch_gtex_eqtl.py --out data/eQTL/GTEx_v8 --tissues artery_coronary artery_aorta artery_tibial`
   (~3.5 GB per tissue; `--list` shows the 49). With `"remote": true`, tissues not downloaded are read from EBI with
   tabix, one query at a time.
+- GTEx v10, every tested pair, from the eQTL Catalogue's release 8 beta (more samples per tissue; published as
+  parquet only, so it cannot be read remotely): `hub/venv/bin/python tools/fetch_gtex_eqtl.py --release v10 --out
+  data/eQTL/GTEx_v10 --tissues artery_coronary artery_aorta artery_tibial` keeps each parquet (~4.3 GB) and converts it
+  to the v8 layout with a `manifest.json`, which the source reads (no `catalogue` key).
 - GTEx parquet releases (v10 / v11 significant pairs only, so the plot shows only variants below each gene's
   threshold): `hub/venv/bin/python tools/gtex_parquet_to_eqtl.py <GTEx_Analysis_v11_eQTL> data/eQTL/GTEx_v11_signif`.
-A source's `dir` may be anywhere on the server (on the lab server the v8 files are in
-`/nfs/boz/General_Use_Data/GTEx/GTEx_v8_eQTL_all_pairs`, next to GTEx's own v11 release).
+A source's `dir` may be anywhere on the server (on the lab server the v8 and v10 files are in
+`/nfs/boz/General_Use_Data/GTEx/GTEx_v8_eQTL_all_pairs` and `GTEx_v10_eQTL_all_pairs`, next to GTEx's own v11 release).
 
 Genes come from a GENCODE table (`locusCompare.genes`, default `data/eQTL/genes.gencode_v39.hg38.tsv`: gene_id,
 symbol, chrom, start, end, strand, type; v39 is the annotation of the eQTL Catalogue's GTEx). GWAS Catalog harmonised

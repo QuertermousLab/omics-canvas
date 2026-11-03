@@ -11,6 +11,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import locuscompare  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+import fetch_gtex_eqtl  # noqa: E402
+
+try:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+except ImportError:
+    pa = None
+
 HAVE_TABIX = bool(shutil.which("tabix") and shutil.which("bgzip"))
 
 
@@ -125,6 +134,42 @@ class LocusCompareTest(unittest.TestCase):
         keys = [t[1] for t in locuscompare.GTEX_V8]
         self.assertEqual(len(keys), 49)
         self.assertIn("artery_coronary", keys)
+
+
+@unittest.skipUnless(HAVE_TABIX and pa is not None, "needs tabix, bgzip and pyarrow")
+class GtexV10ParquetTest(unittest.TestCase):
+    def test_converts_a_release_8_parquet_to_a_source_locuscompare_reads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # as release 8 writes them: chromosomes in blocks (10 before 6), gene by gene inside each
+            rows = [("ENSG2", "10", 500), ("ENSG2", "10", 900), ("ENSG1", "10", 100), ("ENSG1", "10", 700),
+                    ("ENSG3", "6", 3000), ("ENSG3", "6", 1000)]
+            cols = {c: [] for c in fetch_gtex_eqtl.COLUMNS}
+            for gene, chrom, pos in rows:
+                values = dict(molecular_trait_id=gene, chromosome=chrom, position=pos, ref="A", alt="G",
+                              variant=f"chr{chrom}_{pos}_A_G", ma_samples=5, maf=0.1, pvalue=1e-3, beta=0.2, se=0.05,
+                              type="SNP", ac=10, an=500, r2=None, molecular_trait_object_id=gene, gene_id=gene,
+                              median_tpm=3.5, rsid=f"rs{pos}")
+                for c in cols:
+                    cols[c].append(values[c])
+            table = pa.table(cols).cast(pa.schema([(c, pa.int32() if c in ("position", "ma_samples", "ac", "an")
+                                                    else pa.float64() if c in ("maf", "pvalue", "beta", "se", "median_tpm")
+                                                    else pa.string()) for c in cols]))
+            pq.write_table(table, root / "QTD000136.all.parquet", row_group_size=2)
+            out = root / "QTD000136.all.tsv.gz"
+            self.assertEqual(fetch_gtex_eqtl.parquet_to_tabix(root / "QTD000136.all.parquet", out), 6)
+            fetch_gtex_eqtl.write_manifest(root, "v10")
+            lines = subprocess.run(["zcat", str(out)], capture_output=True, text=True).stdout.splitlines()
+            self.assertEqual(lines[0].split("\t"), fetch_gtex_eqtl.COLUMNS)
+            self.assertEqual([tuple(l.split("\t")[1:3]) for l in lines[1:]],
+                             [("10", "100"), ("10", "500"), ("10", "700"), ("10", "900"), ("6", "1000"), ("6", "3000")])
+            self.assertEqual(lines[1].split("\t")[14], "NA")
+            lc = locuscompare.LocusCompare({"locusCompare": {"eqtl": [{"id": "gtex_v10", "dir": str(root)}]}},
+                                           root, root / "state")
+            tissue = lc.tissues(lc.sources[0])
+            self.assertEqual([(t["key"], t["samples"], t["local"]) for t in tissue], [("artery_coronary", 268, True)])
+            found = lc.eqtl_rows(lc.sources[0], tissue[0], "chr6", 1, 5000)
+            self.assertEqual([r[0] for r in found["ENSG3"]], [1000, 3000])
 
 
 if __name__ == "__main__":

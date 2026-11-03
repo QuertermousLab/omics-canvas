@@ -51,8 +51,9 @@ the web app: plain HTML, CSS and ES modules.
   Home folders; "overlay" sets load as one IGV `merged` track). `data/` is not in git: it holds the lab's local
   tracks, `data/ENCODE/hg38/Layered_H3K27ac/` (UCSC's 7 ENCODE H3K27ac bigWigs, the "Layered H3K27ac (ENCODE)"
   trackset), `data/eQTL/` (LocusCompare: `GTEx_v11_signif/` converted from
-  `~/General_Use_Data/GTEx/GTEx_Analysis_v11_eQTL`, `genes.gencode_v39.hg38.tsv`; the GTEx v8 all-pairs files are in
-  `/nfs/boz/General_Use_Data/GTEx/GTEx_v8_eQTL_all_pairs/`, the live config's `locusCompare.eqtl[0].dir`),
+  `~/General_Use_Data/GTEx/GTEx_Analysis_v11_eQTL`, `genes.gencode_v39.hg38.tsv`; the GTEx v8 / v10 all-pairs files are in
+  `/nfs/boz/General_Use_Data/GTEx/GTEx_v8_eQTL_all_pairs/` and `GTEx_v10_eQTL_all_pairs/` (v10: release 8 beta
+  parquet kept next to the converted `.all.tsv.gz`), the live config's `locusCompare.eqtl` dirs),
   `CAD_Aragam2022.hg38.gwas.gz` (GWAS Catalog GCST90132314), `data/liftover/chains/` (UCSC chain files hg19↔hg38,
   mm10↔mm39) and converted files
   (`data/liftover/<build>/<key>/`, reused while the source is unchanged; `private/` for Home-folder sources).
