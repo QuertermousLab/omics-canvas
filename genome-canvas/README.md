@@ -272,6 +272,34 @@ Genes come from a GENCODE table (`locusCompare.genes`, default `data/eQTL/genes.
 symbol, chrom, start, end, strand, type; v39 is the annotation of the eQTL Catalogue's GTEx). GWAS Catalog harmonised
 files become GWAS tracks with `tools/gwas_catalog_to_track.py` (with `hg19_locus`, so the track also gets LD).
 
+### External data
+
+`tools/fetch_external_data.py` downloads the public files LocusCompare, LD and liftover use, builds what is derived
+from them, and with `--configure` adds what is missing to `genomecanvas.config.json` (it keeps every key already set;
+restart Genome Canvas afterwards). Each step skips what is already there, so a run can be repeated or resumed:
+
+```bash
+cd genome-canvas
+../hub/venv/bin/python tools/fetch_external_data.py --configure                 # all steps, into data/
+../hub/venv/bin/python tools/fetch_external_data.py --gtex-dir /big/GTEx gtex-v8 gtex-v10 gtex-v11 --configure
+```
+
+| Step | Source | Result (default under `data/`) |
+| --- | --- | --- |
+| `genes` | GENCODE v39 basic annotation (the eQTL Catalogue's GTEx annotation) | `eQTL/genes.gencode_v39.hg38.tsv` |
+| `chains` | UCSC liftOver chains hg19↔hg38, mm10↔mm39 | `liftover/chains/` |
+| `gwas` | GWAS Catalog GCST90132314 (Aragam et al. 2022, CAD), harmonised GRCh38, 1.3 GB | `GWAS/CAD_Aragam2022.hg38.gwas.gz` (+ `hg19_locus`) |
+| `ld` | 1000 Genomes phase 3 VCFs (`release/20130502`, v5b, chr1–22) and `integrated_call_samples_v3.20130502.ALL.panel`, ~15 GB | `1000G/`: VCF + index and PLINK files per chromosome (`plink2`, VCF ids kept) → `ldReferenceHg19` |
+| `gtex-v8` | eQTL Catalogue release 7, GTEx v8 all pairs | `<gtex-dir>/GTEx_v8_eQTL_all_pairs/` |
+| `gtex-v10` | eQTL Catalogue release 8 beta, GTEx v10 all pairs (parquet, converted) | `<gtex-dir>/GTEx_v10_eQTL_all_pairs/` |
+| `gtex-v11` | GTEx portal `GTEx_Analysis_v11_eQTL.tar` (significant pairs, 3.3 GB, open access) | `<gtex-dir>/GTEx_Analysis_v11_eQTL/` → `GTEx_v11_signif/` |
+
+The GTEx steps take the three arteries unless `--tissues` or `--all-tissues` is given (~3.5 GB per tissue for v8,
+~8 GB for v10 with its parquet kept); `--gtex-dir` puts the GTEx folders elsewhere (default `data/eQTL`). `gtex-v10`
+and `gtex-v11` need pyarrow, hence the hub's Python; `ld` needs `plink2`; all need `curl`, `bgzip` and `tabix`. On THOR the
+same files are in `/nfs/boz/General_Use_Data/GTEx/` (GTEx), `/nfs/baldar/lidaniel/quanyi/1000Genome/` (1000 Genomes)
+and `data/` (the rest); the live configuration points there.
+
 ### Faster Reference Loading
 
 Prepare the common assemblies once on the server:

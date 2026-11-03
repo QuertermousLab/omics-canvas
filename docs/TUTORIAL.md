@@ -61,15 +61,20 @@ the lab shares ([section 6](#6-shared-data)).
     app: the same button, or **File → LocusCompare…**, ⌥⌘C).
   - The figure plots each variant's GWAS −log₁₀ P against its eQTL −log₁₀ P, with a LocusZoom panel for each study
     and the genes below. Points are colored by r² with the lead SNP (purple diamond), as in the GWAS tracks.
-  - Pick the **tissue** (GTEx v8 or v10 Artery - Coronary, Aorta or Tibial, every tested pair; v11 lists
-    significant pairs only), the
-    **gene** (*Best match* is the eGene whose eQTLs best overlap the GWAS signal), the **LD** population (1000
-    Genomes EUR, AFR, AMR, EAS, SAS, ALL, or the study's own LD) and the region (up to 3 Mb).
+  - Pick the **eQTL source and tissue**: *GTEx v8 · all pairs* (every tested variant–gene pair; all 49 tissues on
+    THOR), *GTEx v10 · all pairs* (every tested pair with more donors, e.g. 268 instead of 213 for Artery - Coronary,
+    so eQTL p-values are often smaller; the three arteries so far) or *GTEx v11 · significant pairs* (only the pairs
+    below each gene's threshold, so the plot has fewer points). Then the **gene** (*Best match* is the eGene whose
+    eQTLs best overlap the GWAS signal), the **LD** population (1000 Genomes EUR, AFR, AMR, EAS, SAS, ALL, or the
+    study's own LD) and the region (up to 3 Mb).
   - The lead SNP is the one with the smallest sum of the two p-values. **Click a point** to make it the lead.
   - GWAS files with groups (e.g. one per ancestry) show one group at a time. A file that lists only the variants in
     high LD with its signals shows few points; use **The study's own LD** for it.
   - **SVG**, **PNG** and **Table** (both p-values, betas and r² of every shared variant) download the figure and
     its data; **Show lead** goes to the lead SNP in the browser.
+  - On a new server, `genome-canvas/tools/fetch_external_data.py --configure` downloads the public data this uses
+    (GTEx, 1000 Genomes, GENCODE genes, the Aragam 2022 CAD GWAS, liftover chains) and adds it to the configuration
+    (see [External data](../genome-canvas/README.md#external-data)).
 - **Arrange**: drag the six-dot grip to reorder tracks; right-click a track for color, height, data range and display
   mode; remove it in the track list on the left. Assay colors are automatic and stay the same in both themes.
 - **Mark**: **Highlight** then drag over the tracks to shade a region (pick the color next to it; **Clear** removes

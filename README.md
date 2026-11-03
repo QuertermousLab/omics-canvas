@@ -48,7 +48,12 @@ uv venv --python python3.12 hub/venv && VIRTUAL_ENV=hub/venv uv pip install -r h
 ./vizhubctl build          # web pages
 ./vizhubctl install        # systemd user units, generated in deploy/generated/systemd/
 loginctl enable-linger $USER && ./vizhubctl restart && ./vizhubctl status
+hub/venv/bin/python genome-canvas/tools/fetch_external_data.py --configure && ./vizhubctl restart canvas
 ```
+
+The last line downloads the public data of Genome Canvas's LocusCompare, LD and liftover (GTEx arteries, 1000 Genomes,
+GENCODE genes, a CAD GWAS, UCSC chains; ~60 GB) and adds it to its configuration
+([External data](genome-canvas/README.md#external-data)).
 
 `configure` asks for each setting (Enter keeps the shown value) or takes options, e.g. for a server that is only
 reachable through SSH port forwarding:
