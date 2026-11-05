@@ -4,6 +4,9 @@ Self-hosted viewers for a lab's genomics data, in one place:
 
 - **Genome Canvas** (`genome-canvas/`) — IGV.js-based genome and epigenome browser with a Python
   backend and a native macOS app (unchanged history; see [genome-canvas/README.md](genome-canvas/README.md)).
+- **GREAT** (`genome-canvas/great*`, at `/genome-canvas/great/`) — region set enrichment as GREAT 4.0.4 computed it
+  (great.stanford.edu is offline): its web interface, flexible region input, and its interfaces for rGREAT and
+  scripts, with request limits set live by an administrator ([details](genome-canvas/README.md#great)).
 - **Omics Canvas hub** (`hub/`) — spatial viewer, single-cell viewer and CRISPR screen explorer
   (deck.gl viewers adapted from the lab's ATHENA Co-Lab), a home page, and a data manager that finds files
   on the server and converts `.h5ad`, `.h5mu`, Seurat / Signac / SingleCellExperiment `.rds`, 10x `.h5`,
@@ -28,11 +31,12 @@ One address for everything: **http://171.65.68.140:8892/** (redirects to `/hub/`
 
 | URL | What | Served by |
 | --- | --- | --- |
-| `/hub/` | Home page: the four tools | `hub/server.py` (127.0.0.1:8893) |
+| `/hub/` | Home page: the tools | `hub/server.py` (127.0.0.1:8893) |
 | `/spatial/` · `/spatial/<dataset>/` | Your spatial datasets (manage, add, convert) · the spatial viewer | hub |
 | `/single-cell/` · `/single-cell/<dataset>/` | Your single-cell datasets · the single-cell viewer | hub |
 | `/crispr/` · `/crispr/<screen>/` | Your CRISPR screens · the CRISPR screen explorer | hub |
 | `/genome-canvas/` | Genome Canvas | `genome-canvas/server.py` (127.0.0.1:8000) |
+| `/genome-canvas/great/` | GREAT (page, `/api/great/`, rGREAT's `public/cgi-bin/*.php`, `rgreat.R`) | Genome Canvas (GREAT worker processes) |
 | `/lab` and everything else | JupyterLab | `jupyter-lab.service` (127.0.0.1:8891) |
 
 Viewer links take `?s=<slide>&assay=<assay>&gene=<gene>`; the explorer takes `?t=<target>&g=<gene>`.
@@ -51,8 +55,9 @@ loginctl enable-linger $USER && ./vizhubctl restart && ./vizhubctl status
 hub/venv/bin/python genome-canvas/tools/fetch_external_data.py --configure && ./vizhubctl restart canvas
 ```
 
-The last line downloads the public data of Genome Canvas's LocusCompare, LD and liftover (GTEx arteries, 1000 Genomes,
-GENCODE genes, a CAD GWAS, UCSC chains; ~60 GB) and adds it to its configuration
+The last line downloads the public data of Genome Canvas's LocusCompare, LD, liftover and GREAT (GTEx arteries,
+1000 Genomes, GENCODE genes, a CAD GWAS, UCSC chains, GREAT's genes and the GO / HPO / MGI ontologies; ~60 GB) and adds
+it to its configuration
 ([External data](genome-canvas/README.md#external-data)).
 
 `configure` asks for each setting (Enter keeps the shown value) or takes options, e.g. for a server that is only

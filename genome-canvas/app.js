@@ -3555,6 +3555,31 @@ async function exportLocusCompare(kind) {
   canvas.toBlob((png) => png && downloadLocusCompare(png, locusCompareFile("png")), "image/png");
 }
 
+// ---------------------------------------------------------------- GREAT
+// The GREAT page (great/, great.py): enrichment of GO terms and phenotypes near a region set. Opened from a region
+// track's menu (that track as the test regions) or the rail button; the Mac app opens it in the default browser.
+
+/** The URL of a track GREAT can read (BED-like text on the server or a public address), else null. */
+function greatRegionURL(track) {
+  const url = track?.config?.url || track?.url;
+  if (typeof url !== "string" || !/^(https?:|\/|data\/)/i.test(url)) return null;
+  let path;
+  try { path = new URL(url, location.href).pathname; } catch { return null; }
+  return /\.(bed|narrowpeak|broadpeak|bedgraph|csv|tsv|txt|xls)(\.b?gz)?$/i.test(path) ? new URL(url, location.href).toString() : null;
+}
+
+function openGREAT(track = null) {
+  const url = new URL(appURL("great/"), location.href);
+  const regions = greatRegionURL(track);
+  if (regions) {
+    url.searchParams.set("track", regions);
+    url.searchParams.set("name", track.name || "");
+  }
+  if (state.currentGenome) url.searchParams.set("genome", state.currentGenome);
+  if (desktopMode) postDesktopMessage({ type: "openURL", url: url.toString() });
+  else window.open(url.toString(), "_blank", "noopener");
+}
+
 /** "LocusCompare…" in a GWAS track's menu, and a link in its SNP popups (that SNP as the lead). */
 function installLocusCompareMenus() {
   const utils = state.browser?.menuUtils;
@@ -3566,6 +3591,9 @@ function installLocusCompareMenus() {
       const gwas = track?.type === "gwas" || String(track?.config?.format || "").toLowerCase() === "gwas";
       if (gwas && serverFileOfTrack(track)) {
         items.unshift({ label: "LocusCompare with GTEx eQTLs…", click() { void openLocusCompare(track); } }, "<hr/>");
+      }
+      if (greatRegionURL(track)) {
+        items.unshift({ label: "GREAT enrichment of these regions…", click() { openGREAT(track); } }, "<hr/>");
       }
       return items;
     };
@@ -3608,6 +3636,7 @@ window.GenomeCanvasDesktop = Object.freeze({
   openFavorites() { void openFavoriteProfiles(); return true; },
   openLiftover() { void openLiftover(); return true; },
   openLocusCompare() { void openLocusCompare(); return true; },
+  openGREAT() { openGREAT(); return true; },
   saveTracksetFromView() { tracksetFromView(); return true; },
   openWorkspace() { showWorkspaceGate(); return true; },
   share() { void shareCurrentView(); return true; },
@@ -3673,6 +3702,7 @@ function bindEvents() {
   });
   $("#liftover-button").addEventListener("click", openLiftover);
   $("#locuscompare-button").addEventListener("click", () => openLocusCompare());
+  $("#great-button").addEventListener("click", () => openGREAT());
   $("#lc-go").addEventListener("click", () => runLocusCompare());
   $("#lc-source").addEventListener("change", () => { fillLocusCompareTissues(); $("#lc-gene").value = ""; });
   $("#lc-tissue").addEventListener("change", () => { $("#lc-gene").value = ""; void runLocusCompare(); });

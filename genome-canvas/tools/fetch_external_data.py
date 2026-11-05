@@ -17,11 +17,14 @@ Steps (each skips what is already there, so a run can be repeated or resumed):
   gtex-v10  GTEx v10 all pairs, eQTL Catalogue release 8 beta (parquet, converted) -> <gtex-dir>/GTEx_v10_eQTL_all_pairs/
   gtex-v11  GTEx v11 significant pairs from the GTEx portal (3.3 GB tar) -> <gtex-dir>/GTEx_Analysis_v11_eQTL/,
             converted to <gtex-dir>/GTEx_v11_signif/
+  great     GREAT: GREAT 4.0.4's genes and curated domains, UCSC gaps, GO / HPO / MGI ontologies for hg38, hg19,
+            mm10, mm9 -> data/GREAT/ (via fetch_great_data.py; ~250 MB download, ~60 MB built)
 
 The GTEx steps take the three arteries unless --tissues or --all-tissues is given (v11 converts every tissue in its tar;
 --tissues limits the ones offered). gtex-v10 and gtex-v11 need pyarrow: run with the hub's Python
 (../hub/venv/bin/python). --configure adds the entries that are missing from genomecanvas.config.json
-(ldReferenceHg19, locusCompare.genes, locusCompare.eqtl sources) and keeps everything already set; restart Genome
+(ldReferenceHg19, locusCompare.genes, locusCompare.eqtl sources, great.dataDir when --data is not the default) and
+keeps everything already set; restart Genome
 Canvas afterwards. Needs curl, bgzip and tabix (and plink2 for ld).
 """
 
@@ -53,7 +56,7 @@ KG_VCF = 'ALL.chr{chrom}.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotyp
 KG_PANEL = 'integrated_call_samples_v3.20130502.ALL.panel'
 GTEX_V11 = 'https://storage.googleapis.com/adult-gtex/bulk-qtl/v11/single-tissue-cis-qtl/GTEx_Analysis_v11_eQTL.tar'
 ARTERIES = ['artery_coronary', 'artery_aorta', 'artery_tibial']
-STEPS = ['genes', 'chains', 'gwas', 'ld', 'gtex-v8', 'gtex-v10', 'gtex-v11']
+STEPS = ['genes', 'chains', 'gwas', 'ld', 'gtex-v8', 'gtex-v10', 'gtex-v11', 'great']
 
 
 def log(message):
@@ -156,6 +159,10 @@ def step_gtex_v11(a):
                    check=True)
 
 
+def step_great(a):
+    subprocess.run([sys.executable, str(TOOLS / 'fetch_great_data.py'), '--data', str(a.data / 'GREAT')], check=True)
+
+
 def configure(a, config_path: Path):
     config = json.loads(config_path.read_text()) if config_path.is_file() else {}
     def rel(path):  # inside genome-canvas/: relative, as the example configuration writes them
@@ -199,6 +206,11 @@ def configure(a, config_path: Path):
         if sid not in have and (folder / 'manifest.json').is_file():
             eqtl.append(dict(id=sid, dir=rel(folder), **extra))
             added.append(f'locusCompare.eqtl {sid}')
+    great = a.data / 'GREAT'
+    if (great / 'hg38' / 'manifest.json').is_file() and great != APP / 'data' / 'GREAT' and \
+            'dataDir' not in config.get('great', {}):
+        config.setdefault('great', {})['dataDir'] = rel(great)  # the server reads data/GREAT by default
+        added.append('great.dataDir')
     if not added:
         return log(f'configure: nothing to add to {config_path}')
     if config_path.is_file():

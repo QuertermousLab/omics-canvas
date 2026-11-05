@@ -2,7 +2,8 @@
 .hub { width: min(1180px, 100% - 40px); margin: 0 auto; padding: 48px 0 60px; }
 .hub__head h1 { margin: 0 0 6px; }
 .hub__head p { margin: 0 0 26px; font-size: 14px; max-width: 760px; }
-.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+@media (max-width: 1240px) { .tools { grid-template-columns: repeat(3, 1fr); } }
 .tool { display: flex; flex-direction: column; gap: 8px; padding: 18px 18px 14px; color: var(--text); text-decoration: none; transition: border-color .12s, transform .12s; }
 .tool:hover { border-color: var(--accent); color: var(--text); transform: translateY(-2px); }
 .tool__icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: var(--radius); background: var(--accent-soft); color: var(--accent-text); }

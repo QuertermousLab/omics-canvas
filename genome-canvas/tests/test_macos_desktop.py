@@ -120,6 +120,7 @@ class MacOSDesktopClientTests(unittest.TestCase):
         self.assertIn("server.py workspace_store.py resource_cache.py liftover.py locuscompare.py index.html styles.css app.js", script)
         self.assertIn("reference-resources.mjs", script)
         self.assertIn("canvas-theme.mjs", script)
+        self.assertIn("great.py great_service.py great.html great.css great.mjs", script)  # server.py imports great
         self.assertIn("vendor/fonts/*.woff2", script)
         self.assertIn('public/favicon.svg', script)
         self.assertTrue((MAC_APP / "Resources" / "GenomeCanvas-1024.png").is_file())

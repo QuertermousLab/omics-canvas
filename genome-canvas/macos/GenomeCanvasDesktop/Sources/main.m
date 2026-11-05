@@ -413,6 +413,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 @property(nonatomic, strong) NSMenuItem *tracksetMenuItem;
 @property(nonatomic, strong) GCButton *locusCompareButton;
 @property(nonatomic, strong) NSMenuItem *locusCompareMenuItem;
+@property(nonatomic, strong) GCButton *greatButton;
+@property(nonatomic, strong) NSMenuItem *greatMenuItem;
 @property(nonatomic, strong) NSMenuItem *openFilesMenuItem;
 @property(nonatomic, strong) NSMenuItem *localBackendMenuItem;
 @property(nonatomic, strong) NSMenuItem *remoteServerMenuItem;
@@ -654,6 +656,13 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     toolActions.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     toolActions.distribution = NSStackViewDistributionFillEqually;
     toolActions.spacing = 8;
+    // GO terms and phenotypes enriched near a region set (the web rail's GREAT button): the server's GREAT page,
+    // opened in the default browser; server mode only
+    self.greatButton = [GCButton buttonWithLabel:@"GREAT enrichment" symbol:@"square.stack.3d.up" style:GCButtonStyleSecondary target:self action:@selector(openGREAT:)];
+    self.greatButton.font = GCUIFont(12.5, 550);
+    self.greatButton.label = self.greatButton.label;
+    self.greatButton.toolTip = @"GREAT: GO terms and phenotypes enriched near a set of regions (also in a region track's menu)";
+    self.greatButton.identifier = @"GreatButton";
 
     NSView *secondDivider = [self dividerLine];
 
@@ -711,7 +720,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 
     NSArray<NSView *> *rows = @[
         brand, sourceLabel, segments, self.workspaceLabel, self.workspaceControls, firstDivider,
-        libraryHeading, self.filesButton, self.sharedButton, sourceActions, toolActions, secondDivider, currentHeading, trackScroll, tips, status
+        libraryHeading, self.filesButton, self.sharedButton, sourceActions, toolActions, self.greatButton, secondDivider, currentHeading, trackScroll, tips, status
     ];
     NSStackView *column = [NSStackView stackViewWithViews:rows];
     column.translatesAutoresizingMaskIntoConstraints = NO;
@@ -727,7 +736,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     [column setCustomSpacing:8 afterView:self.filesButton];
     [column setCustomSpacing:8 afterView:self.sharedButton];
     [column setCustomSpacing:8 afterView:sourceActions];
-    [column setCustomSpacing:16 afterView:toolActions];
+    [column setCustomSpacing:8 afterView:toolActions];
+    [column setCustomSpacing:16 afterView:self.greatButton];
     [column setCustomSpacing:12 afterView:secondDivider];
     [column setCustomSpacing:12 afterView:trackScroll];
     [column setCustomSpacing:12 afterView:tips];
@@ -742,7 +752,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
         [trackScroll.heightAnchor constraintGreaterThanOrEqualToConstant:96],
         [self.statusDot.widthAnchor constraintEqualToConstant:7], [self.statusDot.heightAnchor constraintEqualToConstant:7],
     ]];
-    for (NSView *row in @[segments, self.workspaceControls, firstDivider, self.filesButton, self.sharedButton, sourceActions, toolActions, secondDivider, currentHeading, trackScroll, tips]) {
+    for (NSView *row in @[segments, self.workspaceControls, firstDivider, self.filesButton, self.sharedButton, sourceActions, toolActions, self.greatButton, secondDivider, currentHeading, trackScroll, tips]) {
         [constraints addObject:[row.widthAnchor constraintEqualToAnchor:column.widthAnchor]];
     }
     [NSLayoutConstraint activateConstraints:constraints];
@@ -1220,6 +1230,10 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.locusCompareMenuItem.target = self;
     self.locusCompareMenuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     [fileMenu addItem:self.locusCompareMenuItem];
+    self.greatMenuItem = [[NSMenuItem alloc] initWithTitle:@"GREAT Enrichment…" action:@selector(openGREAT:) keyEquivalent:@"g"];
+    self.greatMenuItem.target = self;
+    self.greatMenuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
+    [fileMenu addItem:self.greatMenuItem];
     [fileMenu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *export = [[NSMenuItem alloc] initWithTitle:@"Export PNG…" action:@selector(exportPNG:) keyEquivalent:@"e"];
     export.target = self;
@@ -1289,6 +1303,8 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.tracksetMenuItem.hidden = self.localMode;
     self.locusCompareButton.hidden = self.localMode; // GTEx eQTLs and the LD panel are on the server
     self.locusCompareMenuItem.hidden = self.localMode;
+    self.greatButton.hidden = self.localMode; // GREAT's genes and ontologies are on the server
+    self.greatMenuItem.hidden = self.localMode;
     self.openFilesMenuItem.title = self.localMode ? @"Open Local Files…" : @"Open Server Files…";
     self.localBackendMenuItem.state = self.localMode ? NSControlStateValueOn : NSControlStateValueOff;
     self.remoteServerMenuItem.state = self.localMode ? NSControlStateValueOff : NSControlStateValueOn;
@@ -1517,6 +1533,12 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if (![message.name isEqualToString:@"genomeCanvas"] || ![message.body isKindOfClass:[NSDictionary class]]) return;
     NSDictionary *payload = (NSDictionary *)message.body;
+    if ([payload[@"type"] isEqualToString:@"openURL"]) {
+        // the GREAT page opens in the default browser, next to the canvas (http and https only)
+        NSURL *url = [payload[@"url"] isKindOfClass:[NSString class]] ? [NSURL URLWithString:payload[@"url"]] : nil;
+        if ([@[@"http", @"https"] containsObject:url.scheme.lowercaseString ?: @""]) [[NSWorkspace sharedWorkspace] openURL:url];
+        return;
+    }
     if ([payload[@"type"] isEqualToString:@"share"]) {
         NSString *url = payload[@"url"];
         if (url.length) {
@@ -1764,6 +1786,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 - (void)openFavorites:(id)sender { [self callDesktopMethod:@"openFavorites" arguments:@[]]; }
 - (void)openLiftover:(id)sender { [self callDesktopMethod:@"openLiftover" arguments:@[]]; }
 - (void)openLocusCompare:(id)sender { [self callDesktopMethod:@"openLocusCompare" arguments:@[]]; }
+- (void)openGREAT:(id)sender { [self callDesktopMethod:@"openGREAT" arguments:@[]]; }
 - (void)saveTrackset:(id)sender { if (!self.localMode) [self callDesktopMethod:@"saveTracksetFromView" arguments:@[]]; }
 - (void)shareView:(id)sender { [self callDesktopMethod:@"share" arguments:@[]]; }
 - (void)exportPNG:(id)sender { [self callDesktopMethod:@"exportPNG" arguments:@[]]; }

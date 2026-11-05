@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f8f9fb">
+  <meta name="description" content="GREAT: functional enrichment of genomic regions, on the Genome Canvas server.">
+  <title>GREAT — Genome Canvas</title>
+  <script>
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem("genome-canvas:theme"); } catch (error) { /* storage disabled */ }
+      var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../styles.css?v=20261103.2">
+  <link rel="stylesheet" href="../great.css?v=20261105.1">
+  <script type="module" src="../great.mjs?v=20261105.1"></script>
+</head>
+<body class="great-page">
+  <svg class="icon-sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M4 19.5h16"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5M7 9l5-5 5 5M4 19.5h16"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></symbol>
+    <symbol id="i-genome" viewBox="0 0 24 24"><path d="M3 17h18"/><path d="M5 17V9M9 17V5M13 17v-6M17 17V8"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/></symbol>
+  </svg>
+
+  <header class="gr-top">
+    <a class="gr-brand" href="./" title="New GREAT analysis">
+      <img src="../favicon.svg" alt="" width="30" height="30">
+      <span><b>GREAT</b><small>Genomic Regions Enrichment of Annotations Tool</small></span>
+    </a>
+    <nav class="gr-nav">
+      <a class="quiet-button" href="./#new"><svg class="icon"><use href="#i-plus"/></svg>New analysis</a>
+      <a class="quiet-button" href="./#api"><svg class="icon"><use href="#i-code"/></svg>API &amp; rGREAT</a>
+      <a class="quiet-button" href="../"><svg class="icon"><use href="#i-genome"/></svg>Genome Canvas</a>
+      <button class="quiet-button" id="gr-admin-button" type="button" hidden><svg class="icon"><use href="#i-settings"/></svg>Admin</button>
+      <button class="icon-button ghost theme-toggle" id="gr-theme" type="button" title="Light or dark theme" aria-label="Toggle theme">
+        <svg class="icon icon-moon"><use href="#i-moon"/></svg><svg class="icon icon-sun"><use href="#i-sun"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main class="gr-main">
+    <!-- ======================================================== new analysis -->
+    <section id="gr-view-new" class="gr-view">
+      <div class="gr-intro">
+        <h1>Functional enrichment of genomic regions</h1>
+        <p>GREAT assigns each region to the genes whose regulatory domains it falls in, then tests GO terms, phenotypes
+          and genes with a binomial test over regions and a hypergeometric test over genes
+          (<a href="https://doi.org/10.1038/nbt.1630" target="_blank" rel="noopener">McLean et al. 2010</a>).
+          This server reproduces GREAT 4.0.4, whose original site is offline, and answers rGREAT and GREAT's batch API.</p>
+        <p class="gr-status-line" id="gr-data-status"></p>
+      </div>
+
+      <form class="gr-card gr-form" id="gr-form" autocomplete="off">
+        <div class="gr-step">
+          <h2><span>1</span>Species assembly</h2>
+          <div class="gr-segmented" id="gr-assembly" role="radiogroup" aria-label="Species assembly"></div>
+        </div>
+
+        <div class="gr-step">
+          <h2><span>2</span>Test regions</h2>
+          <div class="gr-source" data-prefix="fg"></div>
+          <label class="gr-inline-field">Name <input id="gr-fg-name" type="text" placeholder="Shown on the results page (optional)"></label>
+        </div>
+
+        <div class="gr-step">
+          <h2><span>3</span>Background regions</h2>
+          <div class="gr-radio-row">
+            <label><input type="radio" name="bgChoice" value="wholeGenome" checked> Whole genome <small>binomial test over regions + hypergeometric test over genes</small></label>
+            <label><input type="radio" name="bgChoice" value="regions"> A background set <small>hypergeometric test over regions; the test set must be a subset</small></label>
+          </div>
+          <div class="gr-source" data-prefix="bg" hidden></div>
+        </div>
+
+        <div class="gr-step">
+          <h2><span>4</span>Association rule</h2>
+          <div class="gr-rules">
+            <label class="gr-rule"><input type="radio" name="rule" value="basalPlusExt" checked>
+              <span><b>Basal plus extension</b>
+                <small>Proximal <input type="number" name="upstream" value="5" min="0" step="any"> kb upstream,
+                  <input type="number" name="downstream" value="1" min="0" step="any"> kb downstream, plus distal up to
+                  <input type="number" name="span" value="1000" min="0" step="any"> kb</small></span></label>
+            <label class="gr-rule"><input type="radio" name="rule" value="twoClosest">
+              <span><b>Two nearest genes</b>
+                <small>within <input type="number" name="twoDistance" value="1000" min="0" step="any"> kb</small></span></label>
+            <label class="gr-rule"><input type="radio" name="rule" value="oneClosest">
+              <span><b>Single nearest gene</b>
+                <small>within <input type="number" name="oneDistance" value="1000" min="0" step="any"> kb</small></span></label>
+          </div>
+          <label class="gr-check"><input type="checkbox" name="includeCuratedRegDoms" checked> Include curated regulatory domains
+            <small>(SHH long-range enhancer, HOXD global control region, beta-globin LCR)</small></label>
+          <details class="gr-advanced">
+            <summary>Reading the regions</summary>
+            <div class="gr-advanced-grid">
+              <label>Coordinates
+                <select name="coordinates">
+                  <option value="auto">Detect (BED 0-based; GRanges tables, MACS .xls and chr:start-end 1-based)</option>
+                  <option value="bed">0-based, half-open (BED)</option>
+                  <option value="one">1-based, inclusive</option>
+                </select></label>
+              <label>Region position
+                <select name="anchor">
+                  <option value="midpoint">Midpoint (GREAT)</option>
+                  <option value="summit">Peak summit when the file has one (narrowPeak, MACS .xls)</option>
+                </select></label>
+            </div>
+          </details>
+        </div>
+
+        <div class="gr-submit">
+          <button class="primary-button" id="gr-submit" type="submit">Submit</button>
+          <span id="gr-submit-status" class="gr-muted"></span>
+        </div>
+      </form>
+
+      <div class="gr-card" id="gr-recent-card" hidden>
+        <div class="gr-card-head"><h2>Your recent analyses</h2><span class="gr-muted" id="gr-recent-note"></span></div>
+        <div class="gr-table-wrap"><table class="gr-table" id="gr-recent"></table></div>
+      </div>
+    </section>
+
+    <!-- ======================================================== results -->
+    <section id="gr-view-job" class="gr-view" hidden>
+      <div class="gr-card gr-job-head">
+        <div>
+          <span class="gr-kicker" id="gr-job-kicker"></span>
+          <h1 id="gr-job-title"></h1>
+          <p class="gr-muted" id="gr-job-rule"></p>
+          <div class="gr-stats" id="gr-job-stats"></div>
+        </div>
+        <div class="gr-job-actions">
+          <div class="gr-menu">
+            <button class="secondary-button" type="button" data-menu="gr-export-menu"><svg class="icon"><use href="#i-download"/></svg>Export</button>
+            <div class="gr-menu-list" id="gr-export-menu" hidden>
+              <a data-export="all">All data as .tsv (every ontology)</a>
+              <a data-export="shown-tsv">Shown data as .tsv</a>
+              <a data-export="shown-html">Shown data as HTML</a>
+              <a data-export="regions-bed">Test regions as BED</a>
+            </div>
+          </div>
+          <div class="gr-menu">
+            <button class="secondary-button" type="button" data-menu="gr-assoc-menu">Region-gene associations</button>
+            <div class="gr-menu-list" id="gr-assoc-menu" hidden>
+              <a data-assoc="region">Region → genes (.tsv)</a>
+              <a data-assoc="gene">Gene → regions (.tsv)</a>
+            </div>
+          </div>
+          <a class="secondary-button" id="gr-open-canvas" target="_blank" rel="noopener"><svg class="icon"><use href="#i-genome"/></svg>Open in Genome Canvas</a>
+          <button class="quiet-button" id="gr-copy-link" type="button"><svg class="icon"><use href="#i-link"/></svg>Copy link</button>
+        </div>
+      </div>
+
+      <div class="gr-warnings" id="gr-job-warnings"></div>
+
+      <details class="gr-card gr-report" id="gr-report">
+        <summary>How the input was read</summary>
+        <div id="gr-report-body"></div>
+      </details>
+
+      <div class="gr-card">
+        <div class="gr-card-head"><h2>Region-gene association graphs</h2>
+          <span class="gr-muted">Distances from each region's midpoint to the TSS of its genes; + is downstream</span></div>
+        <div class="gr-graphs" id="gr-graphs"></div>
+      </div>
+
+      <div class="gr-card gr-filters" id="gr-filters">
+        <label>View
+          <select id="gr-view-mode">
+            <option value="both">Significant by both tests</option>
+            <option value="binom">Significant by region-based binomial</option>
+            <option value="all">All terms (ignore significance)</option>
+          </select></label>
+        <label>FDR q ≤ <input id="gr-threshold" type="number" value="0.05" min="0" max="1" step="0.01"></label>
+        <label>Region fold enrichment ≥ <input id="gr-min-fold" type="number" value="2" min="0" step="0.1"></label>
+        <label>Observed gene hits ≥ <input id="gr-min-genes" type="number" value="1" min="0" step="1"></label>
+        <label>Term annotation count <input id="gr-min-count" type="number" value="1" min="1" step="1"> to <input id="gr-max-count" type="number" placeholder="∞" min="1" step="1"></label>
+        <label class="gr-grow">Term filter <input id="gr-term-filter" type="search" placeholder="Name or ID contains…"></label>
+      </div>
+
+      <div id="gr-ontologies"></div>
+    </section>
+
+    <!-- ======================================================== API -->
+    <section class="gr-card gr-api" id="api">
+      <div class="gr-card-head"><h2>Use GREAT from R, Python or scripts</h2><span class="gr-muted" id="gr-limits"></span></div>
+      <div class="gr-api-grid">
+        <div>
+          <h3>rGREAT (R)</h3>
+          <p>rGREAT's online functions work unchanged once its server address points here. Run once per R session:</p>
+          <pre><code id="gr-api-r"></code></pre>
+        </div>
+        <div>
+          <h3>GREAT batch interface</h3>
+          <p>GREAT's Programming Interface: a tab-separated table of every ontology (<code>outputType=batch</code>) or a
+            results page (<code>web</code>). Besides <code>requestURL</code>, a file can be posted as <code>requestFile</code>.</p>
+          <pre><code id="gr-api-batch"></code></pre>
+        </div>
+        <div>
+          <h3>Python</h3>
+          <pre><code id="gr-api-python"></code></pre>
+        </div>
+        <div>
+          <h3>Input</h3>
+          <p>BED3 to BED12, narrowPeak / broadPeak, bedGraph, MACS <code>.xls</code>, CSV or TSV tables with a header
+            (<code>chrom</code>/<code>seqnames</code>, <code>start</code>, <code>end</code> in any column), region strings
+            (<code>chr1:100-200</code>, <code>chr1-100-200</code>), <code>.gz</code>/<code>.bz2</code>/<code>.zip</code>.
+            Chromosome names such as <code>1</code> or <code>MT</code> are recognized; contigs outside the assembly are
+            skipped and reported.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="gr-footer" id="gr-footer"></footer>
+
+  <dialog class="modal gr-term-modal" id="gr-term-dialog">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <div><span id="gr-term-kicker">Term details</span><h2 id="gr-term-title"></h2></div>
+        <button class="dialog-close icon-button ghost" type="button" data-close="gr-term-dialog" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+      </header>
+      <div class="dialog-content gr-term-body" id="gr-term-body"></div>
+      <footer class="dialog-footer">
+        <span id="gr-term-note"></span>
+        <div>
+          <a class="secondary-button small" id="gr-term-canvas" target="_blank" rel="noopener"><svg class="icon"><use href="#i-genome"/></svg>Show in Genome Canvas</a>
+          <a class="secondary-button small" id="gr-term-region-tsv">Region → genes</a>
+          <a class="secondary-button small" id="gr-term-gene-tsv">Gene → regions</a>
+          <a class="secondary-button small" id="gr-term-bed">BED</a>
+        </div>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog class="modal gr-admin-modal" id="gr-admin-dialog">
+    <form class="dialog-shell" id="gr-admin-form">
+      <header class="dialog-header">
+        <div><span>Server administration</span><h2>GREAT settings</h2></div>
+        <button class="dialog-close icon-button ghost" type="button" data-close="gr-admin-dialog" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+      </header>
+      <div class="dialog-content gr-admin-body">
+        <p class="gr-muted">Changes apply immediately, also to requests waiting in the queue; no restart.</p>
+        <div class="gr-admin-grid" id="gr-admin-fields"></div>
+        <h3>Now</h3>
+        <div id="gr-admin-status"></div>
+      </div>
+      <footer class="dialog-footer">
+        <span id="gr-admin-message"></span>
+        <div>
+          <button class="quiet-button" type="button" id="gr-admin-sweep"><svg class="icon"><use href="#i-trash"/></svg>Delete expired jobs</button>
+          <button class="secondary-button" type="button" id="gr-admin-defaults">Defaults</button>
+          <button class="primary-button" type="submit">Save</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
+  <div class="toast-region" id="gr-toasts" aria-live="polite"></div>
+</body>
+</html>

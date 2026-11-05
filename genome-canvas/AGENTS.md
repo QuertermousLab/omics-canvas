@@ -21,6 +21,7 @@ the web app: plain HTML, CSS and ES modules.
 | `public-hubs.mjs`, `highlights.mjs`, `reference-resources.mjs` | Hub catalog, highlights, cached reference URLs |
 | `liftover.py` | Genome build of a track file from its header or name (`detect_build`, run on every `/api/track`, ~5 ms) and liftover of regions/files with UCSC liftOver and CrossMap (external programs; the module stays standard-library only) |
 | `locuscompare.py`, `locuscompare.mjs` | LocusCompare: `/api/locuscompare*` matches a GWAS track's variants with one tissue's eQTLs (tabix), picks the lead and gets LD (plink2 on `ldReferenceHg19` + its `panel`); the module draws the figure (SVG). Opened from GWAS track menus (`installLocusCompareMenus` wraps IGV's `trackMenuItemList`), SNP popups and the rail button next to Liftover (in the Mac app a native button and **File → LocusCompare…** call the bridge's `openLocusCompare`) |
+| `great.py`, `great_service.py`, `great.html`, `great.mjs`, `great.css` | GREAT at `/great/` (see README "GREAT"): `great.py` is the engine (region reader, GREAT's regulatory domains and statistics ported from greatTools C code, analysis, term details) and runs as worker processes (`great.py --worker <data dir>`, JSON lines on stdin/stdout); `great_service.py` holds jobs (`.genomecanvas/great/jobs/<id>/`), the worker pool, the live limits (`.genomecanvas/great/settings.json`, admin panel) and GREAT's output formats; `server.py` maps `/api/great/*` and GREAT's `.php` interfaces (`/great/public*/cgi-bin/<name>.php`, what rGREAT and greatStart.php scripts call). Keep the rGREAT formats exact (JSON rows of 15 / 12 columns, the TSV's 3 header lines, `var _sessionName`, the ontology div grid): `tests/test_great.py` checks them, and a run of real rGREAT is the final test (R and rGREAT are installed on THOR) |
 | `tools/` | Offline data prep: reference cache, GWAS LD precomputation, GTEx eQTL download (`fetch_gtex_eqtl.py`) and conversion (`gtex_parquet_to_eqtl.py`), GWAS Catalog files as GWAS tracks (`gwas_catalog_to_track.py`); `fetch_external_data.py` runs them all for a new server (plus GENCODE genes, UCSC chains, 1000 Genomes LD) and fills in missing config keys — keep its URLs and the README's External data table current when a source changes |
 | `deploy/` | examples for running Genome Canvas on its own (system service, nginx); on the lab server the units and gateway come from the root `vizhubctl` |
 | `vendor/fonts/` | Manrope, Fraunces, JetBrains Mono (woff2, SIL OFL) |
@@ -54,7 +55,8 @@ the web app: plain HTML, CSS and ES modules.
   `~/General_Use_Data/GTEx/GTEx_Analysis_v11_eQTL`, `genes.gencode_v39.hg38.tsv`; the GTEx v8 / v10 all-pairs files are in
   `/nfs/boz/General_Use_Data/GTEx/GTEx_v8_eQTL_all_pairs/` and `GTEx_v10_eQTL_all_pairs/` (v10: release 8 beta
   parquet kept next to the converted `.all.tsv.gz`), the live config's `locusCompare.eqtl` dirs),
-  `CAD_Aragam2022.hg38.gwas.gz` (GWAS Catalog GCST90132314), `data/liftover/chains/` (UCSC chain files hg19↔hg38,
+  `GREAT/<assembly>/` (GREAT's genes, curated domains, gaps, ontology tables; `tools/fetch_great_data.py`, ~10 MB
+  each, rebuilt with `--update` for new ontology releases), `CAD_Aragam2022.hg38.gwas.gz` (GWAS Catalog GCST90132314), `data/liftover/chains/` (UCSC chain files hg19↔hg38,
   mm10↔mm39) and converted files
   (`data/liftover/<build>/<key>/`, reused while the source is unchanged; `private/` for Home-folder sources).
 - Other lab machines (e.g. cvmed-loki) see the same NFS directory but have **no
@@ -94,6 +96,12 @@ the web app: plain HTML, CSS and ES modules.
 - `server.py` must stay standard-library only.
 
 ## Decisions already made (do not revisit without asking)
+
+- **GREAT** reproduces GREAT 4.0.4's method and gene sets exactly but uses current ontology releases (2019's are not
+  published). Its region position is `floor((start + end - 1) / 2)` and a minus-strand gene's TSS base is TSS − 1:
+  with these, rGREAT's vignette regions give great.stanford.edu's associations and distances bp for bp (2026-11-05).
+  Limits are live settings, defaults: 5 s per client, 3 analyses at once, 300 s queue wait, 30-day retention, exports
+  without GREAT's 500-term cap (the user asked for adjustable limits instead of GREAT's strict interval).
 
 - **Track colors never change** in any theme (the user's firmest constraint).
   The only exception the user approved: in dark mode, neutral dark-gray
@@ -221,7 +229,7 @@ The current macOS release is **1.5.2**. Check
   - `node_modules/`: only needed for `npm run vendor:update`.
   - Gateway logs are in `../gateway/logs/` (truncate them rather than delete them; Apache keeps them open). The retired
     standalone gateway's logs in `.genomecanvas/apache/` were deleted on 2026-10-15.
-  - `data/.claude/`.
+  - `data/.claude/` was deleted at the user's request on 2026-11-03 (it only held a stale permission).
 - **2026-10-12, 1.6.0:** the repository became Omics Canvas (Genome Canvas moved to
   `genome-canvas/`, history kept); transparent PNG export; pinned data-root ids; link to the
   Omics Canvas home page on the lab server. Released together with Omics Canvas 1.0.0.

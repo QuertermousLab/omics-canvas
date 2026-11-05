@@ -1,9 +1,9 @@
 # Omics Canvas tutorial
 
-Omics Canvas puts the lab's genomics data on one server page: **Genome Canvas** (genome browser), the **spatial
-viewer**, the **single-cell viewer** and the **CRISPR explorer**. Each works in the browser and in a Mac app. This guide
+Omics Canvas puts the lab's genomics data on one server page: **Genome Canvas** (genome browser, with **GREAT**
+region set enrichment), the **spatial viewer**, the **single-cell viewer** and the **CRISPR explorer**. Each works in the browser and in a Mac app. This guide
 shows every module with screenshots of public data (10x Genomics Visium human heart and PBMC 3k, CELLxGENE human arterial
-atlas and mouse SMC time course, IGVF HCASMC CRISPR screens, UCSC hg38 annotation tracks).
+atlas and mouse SMC time course, IGVF HCASMC CRISPR screens, UCSC hg38 annotation tracks, ENCODE MYB ChIP-seq peaks).
 
 - [1. Getting started](#1-getting-started)
 - [2. Genome Canvas](#2-genome-canvas)
@@ -25,7 +25,7 @@ the port over SSH and open **http://localhost:8892** instead (the Mac apps can d
 ssh -N -L 8892:127.0.0.1:8892 yourname@171.65.68.140
 ```
 
-The home page links the four modules and shows how many datasets your workspace has in each (*yours*) and how many
+The home page links the four modules and GREAT and shows how many datasets your workspace has in each (*yours*) and how many
 the lab shares ([section 6](#6-shared-data)).
 
 ![Home page, light and dark](images/hub.png)
@@ -86,6 +86,62 @@ the lab shares ([section 6](#6-shared-data)).
 - **Links from other modules** open a region with highlights and tracks, e.g.
   `/genome-canvas/?locus=chr6:33,557,481-33,857,780&highlight=chr6:33,707,481-33,707,780` (the CRISPR explorer adds
   the screen's loops this way).
+
+### GREAT: what a region set is near
+
+`/genome-canvas/great/` — GREAT (Genomic Regions Enrichment of Annotations Tool, McLean et al. 2010) as its original
+server computed it; great.stanford.edu is offline. It assigns each region to the genes whose regulatory domains hold
+it and tests GO terms, mouse and human phenotypes and single genes.
+
+![GREAT input page](images/great-form.png)
+
+- **Open it** from a region track's menu in Genome Canvas (right-click a BED / narrowPeak track → **GREAT enrichment
+  of these regions…**, which brings that track as the test set), with the **GREAT** button under the source buttons
+  (in the Mac app: the same button or **File → GREAT Enrichment…**, ⌥⌘G, which open it in your browser), or from the
+  Omics Canvas home page.
+- **Regions**: upload a file, paste regions, pick a server file or give a public URL. Any BED flavor, narrowPeak,
+  CSV/TSV tables whose header names the chromosome, start and end columns (e.g. a `GRanges` exported from R), MACS
+  `.xls` and `chr1:1,000-2,000` lists are read; `.gz` and `.zip` too. Chromosome names such as `1` or `MT` are
+  understood. Contigs outside the assembly and broken lines are skipped and listed under **How the input was read**.
+- **Background**: the whole genome (GREAT's binomial test over regions plus a hypergeometric test over genes), or
+  your own background set (a hypergeometric test over regions; e.g. all peaks of a factor, testing those without its
+  motif).
+- **Association rule**: GREAT's defaults (basal 5 kb upstream and 1 kb downstream, extended up to 1 Mb; curated
+  domains for SHH, the HOXD cluster and β-globin) or two nearest / single nearest gene. **Reading the regions** sets
+  0- or 1-based coordinates and whether peaks are placed at their summit.
+
+![GREAT results: association graphs and enrichment tables](images/great-results.png)
+
+- **Results** open after a few seconds: the three region-gene association graphs and one table per ontology.
+  The default view, as in GREAT, shows terms significant by both tests (FDR ≤ 0.05) with a region fold enrichment of
+  at least 2; switch to the binomial test only or all terms, change the thresholds, the term annotation count range or
+  search terms. Click a column to sort; **Columns** adds hidden ones (Bonferroni p, expected hits, genome fraction …).
+  Bold p-values pass the threshold; bold terms pass both tests.
+- **Click a term** for its regions and genes: graphs against all regions, region → genes and gene → regions tables,
+  links that open a region or a gene's regulatory domain in Genome Canvas with the term's regions as a track, and
+  downloads.
+
+![GREAT term details](images/great-term.png)
+
+- **Export**: all data as GREAT's `.tsv`, the shown tables as `.tsv` or HTML, the region-gene associations, the regions
+  as BED; each graph as SVG or PNG (Arial). **Copy link** shares the results (kept 30 days).
+- **From R**: rGREAT's online functions work against this server:
+
+  ```r
+  library(rGREAT)
+  source("http://171.65.68.140:8892/genome-canvas/great/rgreat.R")
+  job <- submitGreatJob(gr, genome = "hg38", request_interval = 0)
+  getEnrichmentTables(job); getRegionGeneAssociations(job); plotRegionGeneAssociations(job)
+  ```
+
+  Scripts can use GREAT's batch interface, e.g. `curl -F outputType=batch -F requestSpecies=hg38 -F
+  requestFile=@peaks.bed.gz http://171.65.68.140:8892/genome-canvas/great/public/cgi-bin/greatStart.php`; the
+  **API & rGREAT** section at the bottom of the page lists these with the server's current limits.
+- **Admin** (shown to the server's administrator): request limits — the minimum interval between analyses per
+  client, analyses per hour and at once, how long requests wait in the queue, region and file size limits, how long
+  results are kept — change at once, without a restart; the panel also lists running and waiting analyses.
+
+![GREAT admin panel](images/great-admin.png)
 
 ## 3. Spatial viewer
 
