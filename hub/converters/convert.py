@@ -747,13 +747,19 @@ def align_rows(X, cells, order):
 
 
 def locate_fragments(path, src):
-    """A fragment file, also when the object was made on another machine: a path that does not exist here (e.g.
-    /ZEUS/Projects/x/outs/atac_fragments.tsv.gz where THOR has /nfs/zeus/...) is looked for under the folders above
-    the source object, longest matching tail first (at least the file's folder and name). None if not found."""
+    """A file named in an object made on another machine (fragment files, references): a path that does not exist
+    here is looked for as /nfs/<its first folder> (THOR mounts /ZEUS/x as /nfs/Zeus/x, /BALDAR/x as /nfs/baldar/x),
+    then under the folders above the source object, longest matching tail first (at least the file's folder and
+    name). None if not found."""
     p = Path(str(path))
     if p.is_file():
         return p
     parts = [x for x in p.parts if x not in (p.anchor, '')]
+    if len(parts) > 1:
+        for top in dict.fromkeys((parts[0], parts[0].lower(), parts[0].capitalize(), parts[0].upper())):
+            c = Path('/nfs', top, *parts[1:])
+            if c.is_file():
+                return c
     src = Path(src)
     bases = []
     for b in [*Path(os.path.abspath(src)).parents, *src.resolve().parents]:
@@ -779,6 +785,22 @@ def usable_fragments(fragments, src):
             log(f'  fragment file {path} found at {p}')
         found.append((str(p), cells))
     return found
+
+
+def reference_gtf(fragments, src):
+    """The GTF of the Cell Ranger ARC reference that made the fragment files (reference_path in the run's
+    _invocation, next to outs/), or None."""
+    for path, _ in fragments:
+        run = Path(path).parent.parent
+        try:
+            m = re.search(r'reference_path\s*=\s*"([^"]+)"', (run / '_invocation').read_text(errors='replace'))
+        except OSError:
+            continue
+        if m:
+            gtf = locate_fragments(str(Path(m.group(1)) / 'genes' / 'genes.gtf.gz'), src)
+            if gtf:
+                return gtf
+    return None
 
 
 def rds_multiome(d: Path, info, order, matrices=True, src=None):
@@ -1037,7 +1059,13 @@ def main():
                         peak_names = json.loads((out / pk['features']).read_text())['names']
                     else:
                         peak_names = slide['genes'] if pk else None
-                    atac_to_viewer.build(out, fragments, annotation=annotation, gtf=a.gtf, assembly=a.assembly or genome or (slide.get('species') or ''),
+                    gtf = a.gtf
+                    if not gtf and not atac_to_viewer.has_exons(annotation):
+                        # the object's genes have no exons (or there is no annotation): the reference's GTF draws them
+                        gtf = reference_gtf(fragments, src)
+                        if gtf:
+                            log(f'  gene track from the reference GTF {gtf} (the object\'s annotation has no exons)')
+                    atac_to_viewer.build(out, fragments, annotation=annotation, gtf=gtf, assembly=a.assembly or genome or (slide.get('species') or ''),
                                          peaks=peak_names, peak_label=pk['label'] if pk else 'Peaks', workers=a.fragment_workers,
                                          only=a.atac_chroms.split(',') if a.atac_chroms else None, progress=progress, notice=notice, lo=80, hi=99)
                     mark('atac')

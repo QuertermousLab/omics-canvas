@@ -101,6 +101,12 @@ def models_from_annotation(df):
     return by_chrom
 
 
+def has_exons(df):
+    """A Signac annotation with transcript structure (GetGRangesFromEnsDb: exon / cds / utr / gap rows). One imported
+    with rtracklayer::import(gtf, feature.type = "gene") has one row per gene: the genes would draw as plain blocks."""
+    return df is not None and 'type' in df and (df['type'] == 'exon').any()
+
+
 def models_from_gtf(gtf):
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -204,7 +210,10 @@ def build(ds: Path, fragments, *, annotation=None, gtf=None, assembly='', peaks=
             chunk += len(blocks)
     np.asarray(idx, np.float64).tofile(ds / 'atac.idx')
 
-    models = models_from_annotation(annotation) if annotation is not None else models_from_gtf(gtf) if gtf else {}
+    if has_exons(annotation) or (annotation is not None and not gtf):
+        models = models_from_annotation(annotation)
+    else:
+        models = models_from_gtf(gtf) if gtf else {}
     genes_dir = ds / 'genes'
     genes_dir.mkdir(exist_ok=True)
     index = {}

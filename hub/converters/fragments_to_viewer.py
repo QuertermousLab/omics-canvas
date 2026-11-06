@@ -91,7 +91,7 @@ def gene_models(gtf, keep_types=('protein_coding', 'lncRNA')):
     """Canonical transcript per gene (Ensembl_canonical tag, else the longest) with its exons."""
     attr = re.compile(r'(\w+) "([^"]*)"')
     genes, tx_exons, tx_info, canonical = {}, defaultdict(list), {}, {}
-    with gzip.open(gtf, 'rt') as f:
+    with (gzip.open(gtf, 'rt') if str(gtf).endswith('.gz') else open(gtf)) as f:
         for line in f:
             if line.startswith('#'):
                 continue
@@ -99,12 +99,15 @@ def gene_models(gtf, keep_types=('protein_coding', 'lncRNA')):
             if kind not in ('gene', 'transcript', 'exon'):
                 continue
             a = dict(attr.findall(attrs))
-            if a.get('gene_type') not in keep_types:
+            biotype = a.get('gene_type') or a.get('gene_biotype')  # GENCODE / Ensembl
+            if biotype not in keep_types:
                 continue
             gid = a['gene_id']
             if kind == 'gene':
+                if not a.get('gene_name'):  # Ensembl GTFs: unnamed genes (as Signac annotations drop them)
+                    continue
                 genes[gid] = dict(name=a['gene_name'], chrom=chrom, start=int(start) - 1, end=int(end), strand=strand,
-                                  type=a['gene_type'])
+                                  type=biotype)
             elif kind == 'transcript':
                 tid = a['transcript_id']
                 tx_info[tid] = (gid, int(end) - int(start))
