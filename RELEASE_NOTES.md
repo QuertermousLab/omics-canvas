@@ -13,6 +13,7 @@ and **Genome Canvas 1.10.0** (genome browser).
 
 ## Omics Canvas 1.4.0
 
+- **Sign-in**: when the server asks for sign-in (THOR account or access password), its sign-in page opens in the window; with **Keep me signed in** the app stays signed in for a year. Genome Canvas.app shows it the same way (This Mac mode needs none)
 - **Server and port**: **Server…** (⌘,) sets the server address and port (default THOR, 171.65.68.140 port 8892)
 - **SSH port forwarding** for servers you cannot reach directly — off campus without the VPN, or a server that only
   listens on 127.0.0.1: tick **Connect through SSH port forwarding** and give the SSH host (and port), your account and,
