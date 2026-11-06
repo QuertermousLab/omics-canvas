@@ -1,0 +1,3 @@
+# GREAT: built data, local settings, caches
+/data/
+/great.config.json

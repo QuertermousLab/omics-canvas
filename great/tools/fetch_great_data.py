@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Download and build the data of Genome Canvas's GREAT service (great.py): genes, regulatory domains and ontologies.
+"""Download and build the data of the GREAT server (great.py): genes, regulatory domains and ontologies.
 
-    cd genome-canvas
-    python3 tools/fetch_great_data.py                    # hg38 hg19 mm10 mm9 into data/GREAT/
+    cd great
+    python3 tools/fetch_great_data.py                    # hg38 hg19 mm10 mm9 into data/
     python3 tools/fetch_great_data.py hg38 --update      # download the ontologies again (new GO/HPO/MGI releases)
 
 GREAT 4.0.4's own files (from the GREAT documentation, great-help.atlassian.net):
@@ -17,7 +17,7 @@ Ontologies, current releases (GREAT 4.0.4 itself used 2019 releases, which are n
 Mouse annotations reach human genes (and human phenotypes mouse genes) through MGI's mouse-human homology classes;
 human gene symbols are matched through HGNC (current, previous and alias symbols, Ensembl and Entrez ids).
 
-Output, per assembly: data/GREAT/<assembly>/{genes.tsv, curated.tsv, chrom.sizes, gaps.bed, <ontology>.json.gz,
+Output, per assembly: data/<assembly>/{genes.tsv, curated.tsv, chrom.sizes, gaps.bed, <ontology>.json.gz,
 manifest.json}. As in GREAT, annotations propagate to parent terms (is_a; GO also part_of) and a parent term whose
 genes are exactly those of one of its children is not tested. Standard library only; needs curl.
 """
@@ -494,7 +494,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('assemblies', nargs='*', metavar='assembly', help='some of {} (default: all)'.format(
         ', '.join(ASSEMBLIES)))
-    ap.add_argument('--data', type=Path, default=APP / 'data' / 'GREAT', help='output folder (default data/GREAT)')
+    ap.add_argument('--data', type=Path, default=APP / 'data', help='output folder (default great/data)')
     ap.add_argument('--update', action='store_true', help='download the ontology files again (new releases)')
     ap.add_argument('--keep-downloads', action='store_true', help='keep <data>/downloads (~250 MB) after building')
     a = ap.parse_args()

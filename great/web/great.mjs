@@ -1,12 +1,13 @@
-// GREAT page of Genome Canvas: submit regions, browse the enrichment tables (GREAT's views, filters and columns),
+// GREAT page of Omics Canvas: submit regions, browse the enrichment tables (GREAT's views, filters and columns),
 // term details with region-gene tables and graphs, exports, the API notes and the admin panel.
-// The analysis runs on the server (great.py / great_service.py, /api/great/*).
+// The analysis runs on the GREAT server (great/server.py, /great/api/*); workspaces and server files are Genome
+// Canvas's (its API at CANVAS, where the workspace cookie applies).
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-// Genome Canvas, which runs GREAT: its API (where the workspace cookie applies) and pages
-const CANVAS = document.querySelector('meta[name="genome-canvas-base"]')?.content.replace(/^@.*@$/, "../") || "../";
-const api = (path) => new URL(`${CANVAS}api/great/${path}`, location.href).toString();
+// GREAT's API next to this page; Genome Canvas (workspaces, server files, the genome browser) at CANVAS
+const CANVAS = document.querySelector('meta[name="genome-canvas-base"]')?.content.replace(/^@.*@$/, "/genome-canvas/") || "/genome-canvas/";
+const api = (path) => new URL(`api/${path}`, new URL(".", location.href)).toString();
 const appURL = (path) => new URL(`${CANVAS}${path}`, location.href).toString();
 
 const ASSEMBLY_NAMES = {
@@ -26,6 +27,7 @@ const ROW_CHOICES = [20, 50, 100, 500, 0];
 
 const state = {
   status: null,
+  workspaceId: null,
   job: null,
   rows: {},
   sort: {},
@@ -46,8 +48,10 @@ function toast(message, kind = "") {
   setTimeout(() => node.remove(), kind === "error" ? 9000 : 4500);
 }
 
-async function fetchJSON(url, options) {
-  const response = await fetch(url, options);
+async function fetchJSON(url, options = {}) {
+  // GREAT's API learns the Genome Canvas workspace from this header (as the hub's pages send it)
+  const headers = { ...(options.headers || {}), ...(state.workspaceId && url.startsWith(api("")) ? { "X-Vizhub-Workspace": state.workspaceId } : {}) };
+  const response = await fetch(url, { ...options, headers });
   let payload = null;
   try { payload = await response.json(); } catch { /* not JSON */ }
   if (!response.ok) {
@@ -923,6 +927,9 @@ async function start() {
     const url = params.get("track");
     state.linkedTrack = { url, name: params.get("name") || decodeURIComponent(url.split(/[?#]/)[0].split("/").pop()) };
   }
+  try {
+    state.workspaceId = (await fetchJSON(appURL("api/workspaces")))?.selected?.id || null;
+  } catch { /* Genome Canvas unreachable: GREAT works without a workspace */ }
   try {
     state.status = await fetchJSON(api("status"));
   } catch (error) {

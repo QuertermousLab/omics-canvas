@@ -1,5 +1,6 @@
 import gzip
 import http.client
+import http.server
 import io
 import json
 import math
@@ -13,7 +14,6 @@ from pathlib import Path
 import great
 import great_service
 import server
-from workspace_store import WorkspaceStore
 
 # A small assembly worked out by hand. chrA (100 kb, a gap at 90-100 kb) holds g1 (+, TSS 10 kb), g2 (-, 30 kb) and
 # g3 (+, 60 kb); chrB (50 kb) holds g4 (-, 20 kb) with a curated domain over all of chrB.
@@ -215,7 +215,7 @@ class ServiceTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
         self.data = write_assembly(root / "data")
-        self.service = great_service.GreatService({"great": {"dataDir": str(self.data)}}, root, root / "state")
+        self.service = great_service.GreatService(self.data, root / "state")
 
     def tearDown(self):
         self.service.pool.stop()
@@ -321,25 +321,50 @@ def multipart(fields):
     return b"".join(parts) + "--{}--\r\n".format(boundary).encode(), "multipart/form-data; boundary=" + boundary
 
 
+ALICE = "home-0123456789abcdef01"
+BED_OF_ALICE = b"chrA\t20000\t20002\tfromCanvas\n"
+
+
+class FakeCanvas(http.server.BaseHTTPRequestHandler):
+    """Genome Canvas's two APIs GREAT uses: the workspace list and workspace-scoped /data/ files."""
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        if self.path == "/api/workspaces":
+            body = json.dumps({"workspaces": [{"id": ALICE, "name": "alice", "kind": "home"}]}).encode()
+        elif self.path == "/data/{}/root1/peaks/a.bed".format(ALICE):
+            body = BED_OF_ALICE
+        else:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 class InterfaceTests(unittest.TestCase):
-    """GREAT's .php interfaces over HTTP, as rGREAT and scripts call them."""
+    """GREAT's server over HTTP: its page and API, and GREAT's .php interfaces as rGREAT and scripts call them."""
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.previous = server.GREAT
-        server.GREAT = great_service.GreatService({"great": {"dataDir": str(write_assembly(root / "data"))}}, root,
-                                                  root / "state")
-        self.httpd = server.GenomeCanvasHTTPServer(("127.0.0.1", 0), server.GenomeCanvasHandler,
-                                                   WorkspaceStore(root / "workspaces.sqlite3"), root / "homes")
+        self.canvas_httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeCanvas)
+        threading.Thread(target=self.canvas_httpd.serve_forever, daemon=True).start()
+        self.service = great_service.GreatService(write_assembly(root / "data"), root / "state", admins=["alice"])
+        canvas = server.Canvas("http://127.0.0.1:{}".format(self.canvas_httpd.server_address[1]), "/genome-canvas/")
+        self.httpd = server.GreatServer(("127.0.0.1", 0), self.service, canvas)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
 
     def tearDown(self):
         self.httpd.shutdown()
         self.httpd.server_close()
-        server.GREAT.pool.stop()
-        server.GREAT = self.previous
+        self.canvas_httpd.shutdown()
+        self.canvas_httpd.server_close()
+        self.service.pool.stop()
         self.temporary.cleanup()
 
     def request(self, method, path, body=None, headers=None):
@@ -348,7 +373,7 @@ class InterfaceTests(unittest.TestCase):
         response = connection.getresponse()
         data = response.read()
         connection.close()
-        return response.status, response.getheader("Content-Type", ""), data.decode("utf-8")
+        return response.status, response.getheader("Content-Type", ""), data.decode("utf-8", errors="replace")
 
     def test_rgreat_calls(self):
         bed = gzip.compress(b"chrA\t5000\t5010\t/chrA:5000-5010\nchrA\t20000\t20002\t/chrA:20000-20002\n")
@@ -396,39 +421,56 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(status, 400)  # private addresses are never fetched
 
     def test_page_and_its_address(self):
-        status, content_type, page = self.request("GET", "/great/")
-        self.assertIn('<meta name="genome-canvas-base" content="/">', page)
-        status, content_type, _ = self.request("GET", "/great/styles.css")
-        self.assertEqual((status, content_type.split(";")[0]), (200, "text/css"))
-        gateway = {"X-Forwarded-Prefix": "/genome-canvas", "X-Great-Prefix": "/great", "Host": "lab:8892"}
-        status, _, page = self.request("GET", "/great/", headers=gateway)
-        self.assertIn('content="/genome-canvas/"', page)
-        status, _, script = self.request("GET", "/great/rgreat.R", headers=gateway)
+        status, content_type, page = self.request("GET", "/great/", headers={"Host": "lab:8892"})
+        self.assertIn('<meta name="genome-canvas-base" content="/genome-canvas/">', page)
+        self.assertIn('href="base.css?v=', page)
+        for asset, kind in (("base.css", "text/css"), ("great.mjs", "text/javascript"), ("favicon.svg", "image/svg+xml"),
+                            ("fonts/manrope-latin-wght-normal.woff2", "font/woff2")):
+            status, content_type, _ = self.request("GET", "/great/" + asset)
+            self.assertEqual((status, content_type.split(";")[0]), (200, kind), asset)
+        status, _, script = self.request("GET", "/great/rgreat.R", headers={"Host": "lab:8892"})
         self.assertIn('server <- "http://lab:8892/great"', script)
-        connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=10)
-        connection.request("GET", "/great/?track=x", headers={"X-Forwarded-Prefix": "/genome-canvas", "Host": "lab:8892"})
-        response = connection.getresponse()
-        self.assertEqual((response.status, response.getheader("Location")), (301, "http://lab:8892/great/?track=x"))
-        connection.close()
-        status, _, text = self.request("GET", "/api/great/status", headers={"X-Forwarded-Prefix": "/genome-canvas", "Host": "lab:8892"})
+        status, _, text = self.request("GET", "/great/api/status", headers={"Host": "lab:8892"})
         self.assertEqual(json.loads(text)["greatBase"], "http://lab:8892/great")
+        self.assertEqual(self.request("GET", "/great/api/health")[0], 200)
 
     def test_page_api(self):
-        status, _, text = self.request("GET", "/api/great/status")
+        status, _, text = self.request("GET", "/great/api/status")
         status_payload = json.loads(text)
         self.assertEqual([a["name"] for a in status_payload["assemblies"]], ["hg38"])
         self.assertFalse(status_payload["admin"])
         body, content_type = multipart({"assembly": "hg38", "fgText": "chrA:5,001-5,010\n", "fgName": "pasted"})
-        status, _, text = self.request("POST", "/api/great/jobs", body, {"Content-Type": content_type})
+        status, _, text = self.request("POST", "/great/api/jobs", body, {"Content-Type": content_type})
         job = json.loads(text)["job"]
         self.assertEqual((job["name"], job["summary"]["regions"]), ("pasted", 1))
         self.assertNotIn("client", job)
-        status, _, text = self.request("GET", "/api/great/jobs/{}/term?ontology=GOBiologicalProcess&term=T:1".format(job["id"]))
+        status, _, text = self.request("GET", "/great/api/jobs/{}/term?ontology=GOBiologicalProcess&term=T:1".format(job["id"]))
         self.assertEqual(json.loads(text)["byGene"][0]["gene"], "GENE1")
-        status, _, _ = self.request("GET", "/api/great/settings")
+        status, _, _ = self.request("GET", "/great/api/settings")
         self.assertEqual(status, 403)
-        status, _, _ = self.request("POST", "/api/great/jobs", body, {"Content-Type": content_type, "Origin": "http://evil"})
+        status, _, _ = self.request("POST", "/great/api/jobs", body, {"Content-Type": content_type, "Origin": "http://evil"})
         self.assertEqual(status, 403)
+
+    def test_workspaces_and_files_come_from_genome_canvas(self):
+        alice = {"X-Vizhub-Workspace": ALICE, "Host": "lab:8892"}
+        status, _, text = self.request("GET", "/great/api/status", headers=alice)
+        payload = json.loads(text)
+        self.assertEqual((payload["workspace"]["name"], payload["admin"]), ("alice", True))
+        self.assertEqual(self.request("GET", "/great/api/settings", headers=alice)[0], 200)
+        self.assertFalse(json.loads(self.request("GET", "/great/api/status", headers={"X-Vizhub-Workspace": "home-ffffffffffffffffff"})[2])["admin"])
+        body, content_type = multipart({"assembly": "hg38", "fgTrack": "http://lab:8892/genome-canvas/data/{}/root1/peaks/a.bed".format(ALICE)})
+        status, _, text = self.request("POST", "/great/api/jobs", body, dict(alice, **{"Content-Type": content_type}))
+        job = json.loads(text)["job"]
+        self.assertEqual((job["name"], job["owner"], job["summary"]["regions"]), ("a.bed", ALICE, 1))
+        body, content_type = multipart({"assembly": "hg38", "fgRoot": "root1", "fgPath": "peaks/a.bed"})
+        status, _, text = self.request("POST", "/great/api/jobs", body, dict(alice, **{"Content-Type": content_type}))
+        self.assertEqual(json.loads(text)["job"]["summary"]["regions"], 1)
+        status, _, text = self.request("POST", "/great/api/jobs", body, {"Content-Type": content_type})
+        self.assertEqual(status, 403)  # server files need a workspace
+        listed = json.loads(self.request("GET", "/great/api/jobs", headers=alice)[2])["jobs"]
+        self.assertEqual(len(listed), 2)
+        status, _, text = self.request("GET", "/great/api/admin/jobs", headers=alice)
+        self.assertEqual({r["ownerName"] for r in json.loads(text)["jobs"]}, {"alice"})
 
 
 if __name__ == "__main__":

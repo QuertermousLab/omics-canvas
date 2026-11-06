@@ -1,7 +1,7 @@
 # Omics Canvas — guide for agents and new sessions
 
 Read this before changing anything. User documentation: [README.md](README.md). Genome Canvas has its
-own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follow it for anything in
+own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) (GREAT: [great/AGENTS.md](great/AGENTS.md)) — follow it for anything in
 `genome-canvas/` (cache-busting rules, decisions such as "track colors never change", macOS client).
 
 ## Layout and where it runs
@@ -19,8 +19,11 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
   `hub/converters/` turn source files into the ATHENA viewer format (`convert.py` dispatches;
   `rds_export.R` reads R objects; `atac_to_viewer.py` builds accessibility tracks).
   `hub/web/` is the page source (TypeScript, esbuild): `./vizhubctl build` → `hub/static/`.
-- GREAT (`genome-canvas/great*.py`, page `/great/`, routed by the gateway to Genome Canvas) lives in Genome Canvas's server; the hub home page
-  has a card for it (`hub/web/pages/hub.html`, status from `/genome-canvas/api/great/status`).
+- `great/` (standard library, `great/server.py` on 127.0.0.1:8894, `vizhub-great.service`): GREAT region set enrichment at
+  `/great/`; see [great/AGENTS.md](great/AGENTS.md). Its workspaces and server files are Genome Canvas's.
+- The home page groups the tools (`hub/web/pages/hub.html`, `.tool-group`): *Genome and regions* (Genome Canvas,
+  GREAT) and *Single-cell, spatial and CRISPR screens*; a new tool joins a group or gets its own. Service cards
+  (Genome Canvas, GREAT) show online / offline from `hub/config.json` `services` (written by `./vizhubctl configure`).
 - `desktop/OmicsCanvasDesktop/`: Objective-C AppKit + WKWebView app (only compiles on macOS; CI builds it).
   `desktop/Shared/OCConnection.{h,m}` (compiled into both Mac apps): server, port and optional SSH port forwarding
   (password in the Keychain, handed to ssh by the app itself as `SSH_ASKPASS`); `macos-connection.yml` tests it

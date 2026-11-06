@@ -15,11 +15,8 @@ Genome Canvas is a local-network genome browser for laboratories and research te
 - Genome build check: a loaded file whose header (chromosome sizes of bigWig, bigBed, BAM, VCF, .hic) or name says it is on another build than the view is offered a liftover; the check reads a few kilobytes (about 5 ms)
 - Liftover between builds with UCSC chain files: pasted regions or the view (liftOver), and track files — BED/narrowPeak, bedGraph/WIG/bigWig, BAM/CRAM, GFF/GTF, VCF, BEDPE — with CrossMap; converted files are written under the Genome Canvas data folder, never next to the source
 - LocusCompare (as [locuscompare.com](http://locuscompare.com), Liu et al. 2019): a GWAS track in view against the GTEx eQTLs of one gene — the two studies' −log10 p against each other and a LocusZoom panel for each, colored by LD with the lead SNP (1000 Genomes population, or the study's own LD); from a GWAS track's menu, a SNP's popup or the LocusCompare button; SVG, PNG and table downloads
-- GREAT (Genomic Regions Enrichment of Annotations Tool, McLean et al. 2010) at `/great/`: GO, phenotype and gene
-  enrichment of a region set, computed as GREAT 4.0.4 did (great.stanford.edu is offline) with its gene sets and
-  regulatory domains, the original web interface's tables, filters, graphs and term pages, flexible input (any BED
-  flavor, narrowPeak, CSV/TSV tables, MACS .xls, region strings), and GREAT's own interfaces for rGREAT and scripts;
-  request limits are settings changed live in an admin panel
+- GREAT enrichment of a track's regions (the [GREAT module](../great/README.md) beside Genome Canvas): from a BED-like
+  track's menu or the GREAT button
 - Automatic discovery of `.bai`, `.crai`, `.tbi`, `.csi`, and `.fai` indexes
 - Major formats including BAM, CRAM, VCF, BCF, BigWig, BigBed, BED, BEDGraph, WIG, GFF/GFF3, GTF, Hi-C contact heatmaps, BEDPE, SEG, MAF, GWAS, and QTL
 - LocusZoom-style regional association plots for indexed GWAS summary statistics, with p-value guides, lead-variant labels, and complete variant tooltips
@@ -279,65 +276,14 @@ files become GWAS tracks with `tools/gwas_catalog_to_track.py` (with `hg19_locus
 
 ### GREAT
 
-`/great/` (`great.py` computes, `great_service.py` runs jobs; standard library only) reproduces GREAT 4.0.4. Genome
-Canvas serves it at `/great/` of its own address; the lab server's gateway puts it at its root, beside
-`/genome-canvas/` (http://171.65.68.140:8892/great/; the page then calls `/genome-canvas/api/great/`, where the
-workspace cookie applies, and `/genome-canvas/great/` redirects there). Its
-original server no longer answers, so it follows GREAT's published core code (greatTools:
-`createRegulatoryDomains.c`, `calculateBinomialP.c`, ported line by line) and documentation:
-
-- **Genes and domains**: GREAT 4.0.4's own gene sets (one canonical TSS per gene; 18,777 genes in hg38, 18,549 in
-  hg19, 21,395 in mm10, 19,996 in mm9) and curated regulatory domains (SHH, HOXD, β-globin). Rules: basal plus
-  extension (5 kb up, 1 kb down, extended to the nearest basal domains up to 1 Mb), two nearest genes, single nearest
-  gene. A region belongs to every gene whose domain holds its midpoint, `floor((start + end − 1) / 2)` in 0-based
-  coordinates; distances are to the TSS (a minus-strand gene's first base is its TSS − 1). With rGREAT's example
-  regions this gives the same 885 associated regions, the same 1,418 genes and the same distances as
-  great.stanford.edu.
-- **Statistics**: binomial test over regions (p = the non-gap fraction of the genome in the term's domains, UCSC gap
-  tables; GREAT's incomplete-beta code), hypergeometric test over genes; with a background set, a hypergeometric test
-  over regions (test regions missing from the background are added to it, with a warning). Bonferroni and GREAT's FDR
-  (m·p/rank) over the terms tested; the page recomputes them when the term annotation count range changes.
-- **Ontologies**: GO Molecular Function / Biological Process / Cellular Component, Mouse Phenotype, Mouse Phenotype
-  Single KO, Human Phenotype, Ensembl Genes, built from current releases (GREAT's 2019 ones are no longer published;
-  results therefore differ from old GREAT runs in the terms, not in the method). Annotations propagate to parent terms
-  (is_a, GO also part_of) and a parent with exactly a child's genes is not tested, as in GREAT. Mouse phenotypes reach
-  human genes, and human phenotypes mouse genes, through MGI's homology classes.
-- **Input** (`read_regions`): BED3–BED12, narrowPeak / broadPeak (optionally placed at the summit), bedGraph, CSV / TSV
-  tables with a header naming the columns (`chrom`/`seqnames`, `start`, `end`, `name` … in any column; GRanges-style
-  tables are 1-based), MACS `.xls`, region strings (`chr1:1,000-2,000`, `chr1-1000-2000`), positions, `.gz` `.bz2`
-  `.xz` `.zip`; `1`/`MT`/PLINK 23-24 chromosome names are mapped, and contigs outside the assembly, swapped or
-  out-of-range coordinates are reported instead of failing the job. Sources: upload, paste, a server file, a
-  Genome Canvas track (right-click a BED-like track → **GREAT enrichment of these regions…**) or a public URL.
-- **Page**: GREAT's views (significant by both tests / by the binomial test / all), FDR, fold enrichment, gene hit,
-  annotation count and text filters, column choice and sorting, the three region-gene association graphs, term pages
-  (graphs against all regions, region → genes and gene → regions tables, links into Genome Canvas), and exports:
-  all data as GREAT's `.tsv`, shown data as `.tsv` / HTML, associations, BED of a term's regions, graphs as SVG / PNG
-  (Arial).
-- **rGREAT and scripts**: GREAT's interfaces under `/great/public/cgi-bin/` (and `/great/public-4.0.4/…`):
-  `greatWeb.php` (rGREAT's `submitGreatJob`), `readJsFromFile.php`, `downloadAllTSV.php`, `downloadAssociations.php`
-  and `showTermDetails.php` (rGREAT's result functions) and `greatStart.php`, GREAT's batch Programming Interface
-  (`requestURL` or, added here, a posted `requestFile`; `outputType=batch` returns every ontology as a table).
-  `source("http://<server>/great/rgreat.R")` points rGREAT at this server for the R session (it rewrites
-  rGREAT's `BASE_URL_LIST`); then `submitGreatJob(gr, genome = "hg38", request_interval = 0)`,
-  `getEnrichmentTables`, `getRegionGeneAssociations` and `plotRegionGeneAssociations` work as with the original.
-- **Limits** (`<state>/great/settings.json`, edited in the page's **Admin** panel by an administrator workspace and
-  applied at once, also to waiting requests): minimum interval between analyses per client (default 5 s; GREAT asked
-  for 60), analyses per client per hour, analyses at once (worker processes), queue wait before HTTP 429, region and
-  file size limits, result retention (default 30 days) and storage limit (default 20 GB: above it the oldest results
-  go), terms per ontology in batch exports (default all; GREAT: 500),
-  remote URLs on/off, the API on/off, exempt and blocked clients. The panel also shows running and waiting analyses,
-  workers and the clients of the last hour, and lists every stored analysis (workspace, size, age) to delete selected
-  ones, those older than N days or all. A cleanup thread applies the retention and the storage limit every 10 minutes. Administrators: `great.admins` in `genomecanvas.config.json` (workspace
-  ids or names), by default the Home workspace of the account that runs the server.
-
-Data: `python3 tools/fetch_great_data.py` (or the `great` step below) downloads GREAT's gene and curated-domain
-files, UCSC chromosome sizes and gaps, and the ontology releases, and builds `data/GREAT/<assembly>/` (~10 MB each;
-`great.dataDir` in the config points elsewhere). Rebuild it with `--update` for new GO / HPO / MGI releases. Jobs are
-kept in `<state>/great/jobs/`.
+GREAT (region set enrichment, GREAT 4.0.4) is its own module of Omics Canvas, beside Genome Canvas:
+[`../great/`](../great/README.md), at `/great/` on the lab server. Genome Canvas links to it: the **GREAT** button under
+the source buttons and **GREAT enrichment of these regions…** in a BED-like track's menu (shown when the server has
+GREAT), and `/api/files?regions=1` lists the region tables its file picker offers.
 
 ### External data
 
-`tools/fetch_external_data.py` downloads the public files LocusCompare, LD, liftover and GREAT use, builds what is derived
+`tools/fetch_external_data.py` downloads the public files LocusCompare, LD and liftover use, builds what is derived
 from them, and with `--configure` adds what is missing to `genomecanvas.config.json` (it keeps every key already set;
 restart Genome Canvas afterwards). Each step skips what is already there, so a run can be repeated or resumed:
 
@@ -356,7 +302,6 @@ cd genome-canvas
 | `gtex-v8` | eQTL Catalogue release 7, GTEx v8 all pairs | `<gtex-dir>/GTEx_v8_eQTL_all_pairs/` |
 | `gtex-v10` | eQTL Catalogue release 8 beta, GTEx v10 all pairs (parquet, converted) | `<gtex-dir>/GTEx_v10_eQTL_all_pairs/` |
 | `gtex-v11` | GTEx portal `GTEx_Analysis_v11_eQTL.tar` (significant pairs, 3.3 GB, open access) | `<gtex-dir>/GTEx_Analysis_v11_eQTL/` → `GTEx_v11_signif/` |
-| `great` | GREAT 4.0.4 gene sets and curated domains (great-help.atlassian.net), UCSC chrom.sizes + gap tables, GO (go-basic.obo, GOA human, MGI GAF), HPO (hp.obo, genes_to_phenotype), MGI (mp.obo, phenotype and homology reports), HGNC; ~250 MB, deleted after building | `GREAT/hg38`, `hg19`, `mm10`, `mm9` |
 
 The GTEx steps take the three arteries unless `--tissues` or `--all-tissues` is given (~3.5 GB per tissue for v8,
 ~8 GB for v10 with its parquet kept); `--gtex-dir` puts the GTEx folders elsewhere (default `data/eQTL`). `gtex-v10`
@@ -449,7 +394,7 @@ Remote descriptors and track files must allow cross-origin browser access with C
 
 ## Security Boundary
 
-This is a LAN tool, not a multi-user account system. The backend only serves files within `dataRoots` and blocks path traversal. Any authenticated web user can read supported tracks visible in those roots, and every file a workspace loads from a shared root (not from a Home folder) is listed for all workspaces under Shared tracks. Do not expose the service directly to the public internet; use a VPN, reverse-proxy authentication, or firewall controls in sensitive environments. GREAT results are open to anyone with the job's link (as GREAT's sessions were), GREAT fetches only public URLs, and its admin panel is protected only by the password-free workspace selection.
+This is a LAN tool, not a multi-user account system. The backend only serves files within `dataRoots` and blocks path traversal. Any authenticated web user can read supported tracks visible in those roots, and every file a workspace loads from a shared root (not from a Home folder) is listed for all workspaces under Shared tracks. Do not expose the service directly to the public internet; use a VPN, reverse-proxy authentication, or firewall controls in sensitive environments.
 
 ## Verification
 

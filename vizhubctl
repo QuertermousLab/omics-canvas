@@ -3,7 +3,7 @@
 set -uo pipefail
 
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-units=(vizhub-hub.service genome-canvas.service vizhub-gateway.service)
+units=(vizhub-hub.service genome-canvas.service vizhub-great.service vizhub-gateway.service)
 
 # deploy/site.env (written by configure), else the THOR defaults
 settings="$dir/deploy/site.env"
@@ -24,8 +24,8 @@ Usage: ./vizhubctl <command>
                         (asks, Enter keeps a value; ./vizhubctl configure --help lists the options)
   install               generate the files from deploy/site.env, link the systemd units and enable them
   status                services, health checks, addresses and the port forwarding command
-  start | stop | restart [hub|canvas|gateway]   (default: all three; JupyterLab is never touched)
-  logs [hub|canvas|gateway]                      follow systemd logs (default: hub)
+  start | stop | restart [hub|canvas|great|gateway]   (default: all four; JupyterLab is never touched)
+  logs [hub|canvas|great|gateway]                follow systemd logs (default: hub)
   access                                         follow the gateway's access and error logs
   build                                          rebuild the web pages (hub/web -> hub/static)
 
@@ -37,6 +37,7 @@ unit_for() {
   case "${1:-}" in
     hub) echo vizhub-hub.service ;;
     canvas|genome-canvas) echo genome-canvas.service ;;
+    great) echo vizhub-great.service ;;
     gateway) echo vizhub-gateway.service ;;
     "") echo "${units[@]}" ;;
     *) echo "unknown service: $1" >&2; exit 2 ;;
@@ -58,13 +59,15 @@ status() {
   echo "Health"
   check "hub backend" "http://127.0.0.1:${VIZHUB_HUB_PORT:-8893}/hub/api/health"
   check "Genome Canvas backend" "http://127.0.0.1:${VIZHUB_CANVAS_PORT:-8000}/api/health"
+  check "GREAT backend" "http://127.0.0.1:${VIZHUB_GREAT_PORT:-8894}/great/api/health"
   [[ -n "${VIZHUB_JUPYTER_PORT:-}" ]] && check "JupyterLab backend" "http://127.0.0.1:${VIZHUB_JUPYTER_PORT}/api"
   check "gateway: home" "$gateway/"
   check "gateway: Genome Canvas" "$gateway/genome-canvas/api/health"
+  check "gateway: GREAT" "$gateway/great/api/health"
   [[ -n "${VIZHUB_JUPYTER_PORT:-}" ]] && check "gateway: JupyterLab" "$gateway/lab"
   echo "Open"
   echo "  $public/   (the home page; /hub/ redirects there)"
-  echo "  $public/genome-canvas/   $public/spatial/   $public/single-cell/   $public/crispr/${VIZHUB_JUPYTER_PORT:+   $public/lab}"
+  echo "  $public/genome-canvas/   $public/great/   $public/spatial/   $public/single-cell/   $public/crispr/${VIZHUB_JUPYTER_PORT:+   $public/lab}"
   if [[ -n "${VIZHUB_SSH_HOST:-}" ]]; then
     local ssh_port="" target="127.0.0.1"
     [[ "${VIZHUB_SSH_PORT:-22}" != 22 ]] && ssh_port=" -p ${VIZHUB_SSH_PORT}"

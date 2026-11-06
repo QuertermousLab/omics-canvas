@@ -1,0 +1,9 @@
+{
+  "host": "127.0.0.1",
+  "port": 8894,
+  "canvas": "http://127.0.0.1:8000",
+  "canvasPath": "/genome-canvas/",
+  "dataDir": "data",
+  "stateDir": "../state/great",
+  "admins": []
+}

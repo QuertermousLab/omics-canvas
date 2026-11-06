@@ -25,7 +25,7 @@
   <link rel="preload" href="vendor/fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="vendor/igv.min.js?v=20261005-reference-cache" as="script">
-  <link rel="modulepreload" href="app.js?v=20261105.1">
+  <link rel="modulepreload" href="app.js?v=20261106.1">
   <link rel="modulepreload" href="track-colors.mjs?v=20260821.4">
   <link rel="modulepreload" href="signal-style.mjs?v=20261007.2">
   <link rel="modulepreload" href="annotation-style.mjs?v=20260821.3">
@@ -188,7 +188,7 @@
             <button id="custom-reference-button" type="button" title="Load a custom reference genome"><svg class="icon" aria-hidden="true"><use href="#i-target"/></svg>Reference</button>
             <button id="liftover-button" type="button" title="Convert regions or track files between genome builds (hg19 ↔ hg38, mm10 ↔ mm39)"><svg class="icon" aria-hidden="true"><use href="#i-swap"/></svg>Liftover</button>
             <button id="locuscompare-button" type="button" title="LocusCompare: a GWAS track in view against GTEx eQTLs, colored by LD (also in a GWAS track's right-click menu)"><svg class="icon" aria-hidden="true"><use href="#i-scatter"/></svg>LocusCompare</button>
-            <button id="great-button" class="source-wide" type="button" title="GREAT: GO terms and phenotypes enriched near a set of regions (also in a region track's right-click menu)"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>GREAT</button>
+            <button id="great-button" class="source-wide" type="button" hidden title="GREAT: GO terms and phenotypes enriched near a set of regions (also in a region track's right-click menu)"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>GREAT</button>
           </div>
         </div>
 
@@ -561,6 +561,6 @@
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
   <script defer src="vendor/igv.min.js?v=20261005-reference-cache"></script>
-  <script type="module" src="app.js?v=20261105.1"></script>
+  <script type="module" src="app.js?v=20261106.1"></script>
 </body>
 </html>

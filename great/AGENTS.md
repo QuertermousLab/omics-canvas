@@ -1,0 +1,37 @@
+# GREAT — guide for agents and new sessions
+
+User documentation: [README.md](README.md). The repository rules in [../AGENTS.md](../AGENTS.md) apply.
+
+## Where it runs
+
+- THOR: `great/server.py` on 127.0.0.1:8894 (`VIZHUB_GREAT_PORT`), systemd user unit `vizhub-great.service` from
+  `../deploy/systemd/vizhub-great.service.in`; the gateway routes `/great/` there with the path unchanged.
+  `../vizhubctl restart great` after any change to the Python files (web files are served from disk, no restart;
+  bump their `?v=` in `web/index.html`). Restarting stops the analyses in progress: check the admin panel's *Running*.
+- Data: `data/<assembly>/` (not in git; `tools/fetch_great_data.py`, ~10 MB each, `--update` for new ontology
+  releases). State: `../state/great/` (`jobs/<id>/`, `settings.json`; not in git) — the jobs are users' results, kept
+  by the retention and storage limit; never delete them by hand except test jobs you made yourself.
+- Workspaces and files are Genome Canvas's (`--canvas http://127.0.0.1:8000`): the page sends `X-Vizhub-Workspace`,
+  `server.py` checks it against Genome Canvas's `/api/workspaces` and reads tracks through its `/data/<workspace>/…`
+  URLs. Genome Canvas links here (GREAT button, track menu) when `/great/api/health` answers, and redirects its old
+  `/genome-canvas/great/…` links.
+
+## Rules
+
+- Keep the rGREAT formats exact (JSON rows of 15 / 12 columns, the TSV's 3 header lines, `var _sessionName`, the
+  ontology div grid): `tests/test_great.py` checks them, and a run of real rGREAT is the final test (R and rGREAT are
+  installed on THOR): `source("http://171.65.68.140:8892/great/rgreat.R")`, then rGREAT's own example
+  (`randomRegions(nr = 1000, genome = "hg19")`, seed 123) must give 885 associated regions and the vignette's distances.
+- Standard library only, Python 3.8+ (CI runs the tests on 3.8). `web/base.css` copies Genome Canvas's tokens and
+  components (Nord light / dark, fonts in `web/fonts/`): keep it in step with `../genome-canvas/styles.css`.
+- Test with a server of your own: `python3 server.py --port 8790 --state <scratch>/state` (its own state; it still
+  reads data/ and Genome Canvas's workspaces) — never submit test jobs to the live one without deleting them.
+
+## Decisions already made
+
+- **GREAT** reproduces GREAT 4.0.4's method and gene sets exactly but uses current ontology releases (2019's are not
+  published). Its region position is `floor((start + end - 1) / 2)` and a minus-strand gene's TSS base is TSS − 1:
+  with these, rGREAT's vignette regions give great.stanford.edu's associations and distances bp for bp (2026-11-05).
+  Limits are live settings, defaults: 5 s per client, 3 analyses at once, 300 s queue wait, 30-day retention, a 20 GB
+  storage limit (a cleanup thread applies both every 10 minutes; the admin panel deletes by hand), exports
+  without GREAT's 500-term cap (the user asked for adjustable limits instead of GREAT's strict interval).

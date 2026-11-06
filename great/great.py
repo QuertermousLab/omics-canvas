@@ -1,10 +1,10 @@
-"""GREAT for Genome Canvas: functional enrichment of genomic regions (McLean et al. 2010, Nat Biotechnol; GREAT 4.0.4).
+"""GREAT for Omics Canvas: functional enrichment of genomic regions (McLean et al. 2010, Nat Biotechnol; GREAT 4.0.4).
 
 great.stanford.edu is no longer served; this is a reimplementation that follows GREAT's published core code
 (greatTools: createRegulatoryDomains.c, calculateBinomialP.c) and documentation:
 
 - Genes: GREAT 4.0.4's gene sets (one canonical TSS per gene) and curated regulatory domains, per assembly
-  (tools/fetch_great_data.py builds data/GREAT/<assembly>/).
+  (tools/fetch_great_data.py builds data/<assembly>/).
 - Regulatory domains: basal plus extension (5 kb up, 1 kb down, extended up to 1 Mb to the nearest basal domains),
   two nearest genes, or single nearest gene; curated domains replace the computed ones of their genes.
 - A region is associated with every gene whose regulatory domain holds its midpoint (or its summit, an option).
@@ -583,7 +583,7 @@ class Ontology:
 
 
 class Assembly:
-    """data/GREAT/<assembly>/ as written by tools/fetch_great_data.py."""
+    """data/<assembly>/ as written by tools/fetch_great_data.py."""
 
     def __init__(self, folder):
         self.folder = Path(folder)

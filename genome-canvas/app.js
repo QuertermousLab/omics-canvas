@@ -3556,8 +3556,9 @@ async function exportLocusCompare(kind) {
 }
 
 // ---------------------------------------------------------------- GREAT
-// The GREAT page (great/, great.py): enrichment of GO terms and phenotypes near a region set. Opened from a region
-// track's menu (that track as the test regions) or the rail button; the Mac app opens it in the default browser.
+// The GREAT module (../great/, at the gateway's /great/): enrichment of GO terms and phenotypes near a region set.
+// Opened from a region track's menu (that track as the test regions) or the rail button, when this server has it
+// (greatAvailable); the Mac app opens it in the default browser.
 
 /** The URL of a track GREAT can read (BED-like text on the server or a public address), else null. */
 function greatRegionURL(track) {
@@ -3568,8 +3569,20 @@ function greatRegionURL(track) {
   return /\.(bed|narrowpeak|broadpeak|bedgraph|csv|tsv|txt|xls)(\.b?gz)?$/i.test(path) ? new URL(url, location.href).toString() : null;
 }
 
+const GREAT_URL = new URL("/great/", location.origin);
+let greatAvailable = false;
+
+async function detectGREAT() {
+  // GREAT sits beside Genome Canvas behind the gateway; not in This Mac mode or a stand-alone Genome Canvas
+  if (!location.pathname.startsWith("/genome-canvas/")) return;
+  try {
+    greatAvailable = (await fetch(new URL("api/health", GREAT_URL))).ok;
+  } catch { greatAvailable = false; }
+  $("#great-button").hidden = !greatAvailable;
+}
+
 function openGREAT(track = null) {
-  const url = new URL(appURL("great/"), location.href);
+  const url = new URL(GREAT_URL);
   const regions = greatRegionURL(track);
   if (regions) {
     url.searchParams.set("track", regions);
@@ -3592,7 +3605,7 @@ function installLocusCompareMenus() {
       if (gwas && serverFileOfTrack(track)) {
         items.unshift({ label: "LocusCompare with GTEx eQTLs…", click() { void openLocusCompare(track); } }, "<hr/>");
       }
-      if (greatRegionURL(track)) {
+      if (greatAvailable && greatRegionURL(track)) {
         items.unshift({ label: "GREAT enrichment of these regions…", click() { openGREAT(track); } }, "<hr/>");
       }
       return items;
@@ -3703,6 +3716,7 @@ function bindEvents() {
   $("#liftover-button").addEventListener("click", openLiftover);
   $("#locuscompare-button").addEventListener("click", () => openLocusCompare());
   $("#great-button").addEventListener("click", () => openGREAT());
+  void detectGREAT();
   $("#lc-go").addEventListener("click", () => runLocusCompare());
   $("#lc-source").addEventListener("change", () => { fillLocusCompareTissues(); $("#lc-gene").value = ""; });
   $("#lc-tissue").addEventListener("change", () => { $("#lc-gene").value = ""; void runLocusCompare(); });

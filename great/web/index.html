@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#f8f9fb">
-  <meta name="description" content="GREAT: functional enrichment of genomic regions, on the Genome Canvas server.">
-  <!-- Genome Canvas, whose API this page calls (the server fills it in: /genome-canvas/ behind the gateway) -->
+  <meta name="description" content="GREAT: functional enrichment of genomic regions, on the Omics Canvas server.">
+  <!-- Genome Canvas, whose workspace and file APIs this page calls (server.py fills it in: /genome-canvas/) -->
   <meta name="genome-canvas-base" content="@CANVAS_BASE@">
-  <title>GREAT — Genome Canvas</title>
+  <title>GREAT · Omics Canvas</title>
   <script>
     (function () {
       var saved = null;
@@ -17,9 +17,9 @@
     })();
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261103.2">
-  <link rel="stylesheet" href="great.css?v=20261105.5">
-  <script type="module" src="great.mjs?v=20261105.4"></script>
+  <link rel="stylesheet" href="base.css?v=20261105.1">
+  <link rel="stylesheet" href="great.css?v=20261105.6">
+  <script type="module" src="great.mjs?v=20261105.6"></script>
 </head>
 <body class="great-page">
   <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -40,8 +40,8 @@
     <div class="gr-top-left">
     <a class="hub-home-button" id="gr-hub-home" href="/" title="Back to the Omics Canvas home page" hidden><img src="/hub/static/favicon.svg" alt="" width="16" height="16">Omics Canvas</a>
     <script>
-      // Served through the lab server's gateway: back to the Omics Canvas home page, as on the other pages
-      if (document.querySelector('meta[name="genome-canvas-base"]').content !== "/") document.getElementById("gr-hub-home").hidden = false;
+      // Behind the Omics Canvas gateway: back to the home page, as on the other pages
+      if (location.pathname.indexOf("/great/") === 0) document.getElementById("gr-hub-home").hidden = false;
     </script>
     <a class="gr-brand" href="./" title="New GREAT analysis">
       <img src="favicon.svg" alt="" width="30" height="30">

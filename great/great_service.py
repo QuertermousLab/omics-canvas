@@ -1,12 +1,13 @@
-"""The GREAT service of Genome Canvas: jobs, worker processes, request limits and GREAT's own interfaces.
+"""The GREAT service of Omics Canvas: jobs, worker processes, request limits and GREAT's output formats.
 
-- Jobs live in <state>/great/jobs/<id>/ (job.json, the regions, one table per ontology), kept jobRetentionDays.
+- Jobs live in <state>/jobs/<id>/ (job.json, the regions, one table per ontology), kept jobRetentionDays and within
+  maxStorageMB (a cleanup thread, start_maintenance).
 - Analyses run in worker processes (great.py --worker), at most maxConcurrentJobs at once.
 - Request limits (minimum interval per client, jobs per hour, queue wait, sizes) are settings in
-  <state>/great/settings.json, changed live from the admin panel (PUT /api/great/settings) without a restart.
+  <state>/settings.json, changed live from the admin panel (POST /great/api/settings) without a restart.
 - GREAT's interfaces, for rGREAT and scripts: greatWeb.php (form POST, rGREAT's submitGreatJob), readJsFromFile.php,
   downloadAllTSV.php and downloadAssociations.php (rGREAT's result calls), greatStart.php (the GREAT Programming
-  Interface, outputType=web|batch). server.py maps <prefix>/great/public/cgi-bin/<name>.php here.
+  Interface, outputType=web|batch). server.py maps /great/public/cgi-bin/<name>.php here.
 
 Standard library only.
 """
@@ -174,14 +175,13 @@ class WorkerPool:
 # ---------------------------------------------------------------- the service
 
 class GreatService:
-    def __init__(self, settings, app_dir, state_dir):
-        config = settings.get("great") if isinstance(settings.get("great"), dict) else {}
-        data_dir = config.get("dataDir") or Path(app_dir) / "data" / "GREAT"
-        self.data_dir = Path(os.path.expanduser(str(data_dir)))
-        self.state_dir = Path(state_dir) / "great"
+    def __init__(self, data_dir, state_dir, admins=()):
+        """data_dir: the built genes and ontologies (data/<assembly>/); state_dir: jobs/ and settings.json."""
+        self.data_dir = Path(data_dir)
+        self.state_dir = Path(state_dir)
         self.jobs_dir = self.state_dir / "jobs"
         self.settings_file = self.state_dir / "settings.json"
-        self.admins = [str(a) for a in config.get("admins", [])]
+        self.admins = [str(a) for a in admins or []]
         self.lock = threading.Condition()
         self.running = OrderedDict()   # job id -> {client, assembly, started}
         self.waiting = OrderedDict()   # ticket -> {client, since}
@@ -625,7 +625,7 @@ def session_page(job, ui_url):
     warnings = "".join("<p><strong>Warning:</strong> {}</p>".format(html.escape(w)) for w in job.get("warnings", []))
     return ("<!doctype html><html><head><meta charset=\"utf-8\"><title>GREAT job {id}</title>"
             "<script>var _sessionName = \"{id}\";</script></head><body>"
-            "<p>GREAT {version} (Genome Canvas): job <a href=\"{url}\">{id}</a> finished: {regions} regions, {assembly}.</p>"
+            "<p>GREAT {version} (Omics Canvas): job <a href=\"{url}\">{id}</a> finished: {regions} regions, {assembly}.</p>"
             "{warnings}<div class=\"gc_ontologies\">{cells}</div>"
             "<script>if (!/rgreat|curl|wget|python/i.test(navigator.userAgent)) location.replace({url_js});</script>"
             "</body></html>").format(
@@ -652,7 +652,7 @@ def export_header(job, columns):
     bg = "whole genome" if job.get("background") != "regions" else "{} ({:,} regions)".format(
         job.get("backgroundName") or "Background regions", job["summary"].get("backgroundRegions", 0))
     return [
-        "# GREAT version {} (Genome Canvas)\tSpecies assembly: {}\tAssociation rule: {}".format(
+        "# GREAT version {} (Omics Canvas)\tSpecies assembly: {}\tAssociation rule: {}".format(
             great.GREAT_VERSION, job["assembly"], job.get("rule") or great.rule_description(params)),
         "# Test set: {}\tBackground: {}\tJob: {}".format(fg, bg, job["id"]),
         "# Output generated on {}".format(time.strftime("%Y-%m-%d %H:%M:%S %Z")),
@@ -719,7 +719,7 @@ def export_tsv(service, job, keys=None, limit=None, min_count=1, max_count=None)
 def association_table(service, job, kind="region", ontology=None, term=None):
     """downloadAssociations.php: region -> "GENE (+distance), ..." (or NONE), or gene -> regions."""
     params = job["params"]
-    header = "# GREAT version {} (Genome Canvas)\tSpecies assembly: {}\tAssociation rule: {}".format(
+    header = "# GREAT version {} (Omics Canvas)\tSpecies assembly: {}\tAssociation rule: {}".format(
         great.GREAT_VERSION, job["assembly"], job.get("rule") or great.rule_description(params))
     folder = service.job_dir(job["id"])
     if ontology and term:

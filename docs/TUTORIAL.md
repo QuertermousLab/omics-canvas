@@ -26,7 +26,8 @@ ssh -N -L 8892:127.0.0.1:8892 yourname@171.65.68.140
 ```
 
 The home page (`/`; every module has its own address below it: `/genome-canvas/`, `/great/`, `/spatial/`,
-`/single-cell/`, `/crispr/`) links the modules and shows how many datasets your workspace has in each (*yours*) and how many
+`/single-cell/`, `/crispr/`) groups the modules — *Genome and regions* (Genome Canvas, GREAT) and *Single-cell, spatial
+and CRISPR screens* — and shows whether each service is online and how many datasets your workspace has in each (*yours*) and how many
 the lab shares ([section 6](#6-shared-data)).
 
 ![Home page, light and dark](images/hub.png)

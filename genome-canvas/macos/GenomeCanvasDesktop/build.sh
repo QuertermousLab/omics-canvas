@@ -96,7 +96,7 @@ for file in \
   server.py workspace_store.py resource_cache.py liftover.py locuscompare.py index.html styles.css app.js \
   track-colors.mjs signal-style.mjs annotation-style.mjs hic-heatmap.mjs \
   manhattan-style.mjs public-hubs.mjs highlights.mjs reference-resources.mjs \
-  canvas-theme.mjs locuscompare.mjs great.py great_service.py great.html great.css great.mjs; do
+  canvas-theme.mjs locuscompare.mjs; do
   cp "${repo_dir}/${file}" "${local_backend}/${file}"
 done
 cp "${repo_dir}/public/favicon.svg" "${local_backend}/public/favicon.svg"

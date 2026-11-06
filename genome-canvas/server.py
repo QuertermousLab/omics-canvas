@@ -30,8 +30,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-import great as great_tools
-import great_service
 import liftover as liftover_tools
 import locuscompare as locuscompare_tools
 from workspace_store import WorkspaceError, WorkspaceStore
@@ -103,8 +101,6 @@ STATIC_FILES = {
     "/hic-heatmap.mjs": ("hic-heatmap.mjs", "text/javascript; charset=utf-8"),
     "/manhattan-style.mjs": ("manhattan-style.mjs", "text/javascript; charset=utf-8"),
     "/locuscompare.mjs": ("locuscompare.mjs", "text/javascript; charset=utf-8"),
-    "/great.mjs": ("great.mjs", "text/javascript; charset=utf-8"),
-    "/great.css": ("great.css", "text/css; charset=utf-8"),
     "/public-hubs.mjs": ("public-hubs.mjs", "text/javascript; charset=utf-8"),
     "/highlights.mjs": ("highlights.mjs", "text/javascript; charset=utf-8"),
     "/reference-resources.mjs": ("reference-resources.mjs", "text/javascript; charset=utf-8"),
@@ -209,29 +205,6 @@ def private_liftover(path):
 
 # LocusCompare (locuscompare.py): a GWAS track against GTEx eQTLs in one region, LD from the 1000 Genomes panel
 LOCUSCOMPARE = locuscompare_tools.LocusCompare(SETTINGS, APP_DIR, STATE_DIR)
-# GREAT (great.py, great_service.py): region set enrichment, its web page at /great/ and GREAT's own .php interfaces
-# (rGREAT, the GREAT Programming Interface) at /great/public/cgi-bin/
-GREAT = great_service.GreatService(SETTINGS, APP_DIR, STATE_DIR)
-RGREAT_HELPER = r"""# Use rGREAT's online functions with the GREAT service of Genome Canvas (great.stanford.edu is offline).
-#   library(rGREAT)
-#   source("@SERVER@/rgreat.R")
-#   job <- submitGreatJob(gr, genome = "hg38", request_interval = 0)   # the server applies its own limits
-#   tables <- getEnrichmentTables(job)                                    # also getRegionGeneAssociations(job)
-# It points rGREAT's server addresses (BASE_URL_LIST, every GREAT version) at this server for this R session.
-local({
-  server <- "@SERVER@"
-  ns <- asNamespace("rGREAT")
-  urls <- get("BASE_URL_LIST", envir = ns)
-  urls[] <- sub("^https?://great\\.stanford\\.edu", server, urls)
-  if (bindingIsLocked("BASE_URL_LIST", ns)) {
-    unlockBinding("BASE_URL_LIST", ns)
-    on.exit(lockBinding("BASE_URL_LIST", ns))
-  }
-  assign("BASE_URL_LIST", urls, envir = ns)
-  message("rGREAT now uses ", server, " (GREAT 4.0.4 compatible, Genome Canvas)")
-})
-"""
-GREAT_COMPAT = re.compile(r"/great/public(?:-[0-9.]+)?/cgi-bin/([A-Za-z]+)\.php")
 
 
 def within_root(candidate, root):
@@ -1574,9 +1547,6 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         query = parse_qs(parsed.query)
-        if path.startswith("/great/") and ("/" + path[7:] in STATIC_FILES and path[7:] not in ("", "index.html")
-                                           or path.startswith("/great/vendor/fonts/")):
-            path = path[6:]  # the GREAT page's assets (styles, fonts, modules) next to it at /great/
 
         try:
             if path == "/api/health":
@@ -1596,7 +1566,7 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
                 reference = REFERENCE_CACHE.resolve(path[len("/reference/"):])
                 self.send_file(reference, cache_control="public, max-age=3600", memory_cache=True)
             elif path == "/great" or path.startswith(("/great/", "/api/great/")):
-                self.handle_great("GET", path, query)
+                self.redirect_to_great(path)
             elif path.startswith("/data/"):
                 # IGV.js may omit cookies on a subset of parallel byte-range
                 # requests. New local-data URLs carry their workspace id so
@@ -1692,7 +1662,7 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         if path.startswith(("/great/", "/api/great/")):
-            self.handle_great("POST", unquote(path), parse_qs(urlparse(self.path).query))
+            self.redirect_to_great(unquote(path))
             return
         if path == "/api/workspaces":
             self.handle_create_workspace()
@@ -1995,9 +1965,6 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = unquote(urlparse(self.path).path)
-        if path.startswith("/api/great/"):
-            self.handle_great("DELETE", path, parse_qs(urlparse(self.path).query))
-            return
         if path.startswith("/api/workspaces/"):
             if self.reject_local_workspace_mutation("Workspaces are disabled in local mode"):
                 return
@@ -2060,386 +2027,22 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
         self.send_json({"deleted": profile_id})
 
     # ---------------------------------------------------------------- GREAT
-
-    def great_client(self):
-        """The client's address: the last X-Forwarded-For entry (added by the gateway) for proxied requests."""
-        address = self.client_address[0]
-        forwarded = self.headers.get("X-Forwarded-For", "")
-        try:
-            proxied = ipaddress.ip_address(address).is_loopback
-        except ValueError:
-            proxied = False
-        if forwarded and proxied:
-            address = forwarded.split(",")[-1].strip() or address
-        return address
-
-    def public_base(self):
-        """scheme://host[:port]/prefix of this server as the client reached it (no trailing slash)."""
-        host = self.headers.get("X-Forwarded-Host", "").split(",")[0].strip() or self.headers.get("Host", "")
-        if not re.fullmatch(r"[A-Za-z0-9.\-:\[\]]{1,255}", host or ""):
-            host = "{}:{}".format(*self.server.server_address[:2])
-        scheme = self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower()
-        return "{}://{}{}".format(scheme if scheme in ("http", "https") else "http", host, self.cookie_path().rstrip("/"))
-
-    def great_public_base(self):
-        """Where GREAT is reached, no trailing slash: /great at the gateway's root (beside /genome-canvas/), else
-        <Genome Canvas>/great when Genome Canvas runs on its own."""
-        base = self.public_base()
-        prefix = self.cookie_path().rstrip("/")
-        great_prefix = self.headers.get("X-Great-Prefix", "").strip()
-        if not re.fullmatch(r"/[A-Za-z0-9._~/-]+", great_prefix):
-            great_prefix = "/great" if prefix else ""
-        if not great_prefix:
-            return base + "/great"
-        return (base[:-len(prefix)] if prefix and base.endswith(prefix) else base) + great_prefix.rstrip("/")
-
-    def great_ui_url(self, job_id, extra=""):
-        return "{}/#job={}{}".format(self.great_public_base(), job_id, extra)
-
-    def handle_great_page(self):
-        """great.html with the Genome Canvas base its API calls use; behind the gateway the page lives at /great/."""
-        if self.headers.get("X-Forwarded-Prefix") and not self.headers.get("X-Great-Prefix"):
-            query = urlparse(self.path).query
-            self.send_redirect(self.great_public_base() + "/" + ("?" + query if query else ""), 301)
+    def redirect_to_great(self, path):
+        """GREAT was served here before it became its own module (great/, at the gateway's /great/): send old links on."""
+        prefix = self.headers.get("X-Forwarded-Prefix", "").strip()
+        if not prefix:
+            self.send_error(404, "Not found")
             return
-        page = (APP_DIR / "great.html").read_text(encoding="utf-8").replace("@CANVAS_BASE@", self.cookie_path())
-        self.send_text(page, "text/html; charset=utf-8")
-
-    def read_great_body(self):
-        if self.headers.get("Transfer-Encoding"):
-            self.close_connection = True
-            raise great_tools.InputError("Send the request with a Content-Length header")
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
-            raise great_tools.InputError("Invalid Content-Length")
-        limit = 2 * int(GREAT.settings()["maxUploadMB"]) * 1048576 + 1048576  # a test and a background file
-        if length > limit:
-            self.close_connection = True
-            raise great_service.LimitError(413, "The upload is larger than this server's limit of {} MB per file".format(
-                GREAT.settings()["maxUploadMB"]))
-        return self.rfile.read(length) if length > 0 else b""
-
-    def send_text(self, text, content_type="text/plain; charset=utf-8", status=200, headers=None, filename=None):
-        body = text.encode("utf-8") if isinstance(text, str) else text
-        compressed = len(body) >= GZIP_MIN_BYTES and self.accepts_gzip()
-        if compressed:
-            body = gzip.compress(body, compresslevel=5, mtime=0)
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Vary", "Accept-Encoding")
-        if compressed:
-            self.send_header("Content-Encoding", "gzip")
-        if filename:
-            self.send_header("Content-Disposition", 'attachment; filename="{}"'.format(re.sub(r'[^A-Za-z0-9._-]+', "_", filename)))
-        for name, value in (headers or {}).items():
-            self.send_header(name, value)
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(body)
-
-    def send_redirect(self, location, status=302):
-        self.send_response(status)
-        self.send_header("Location", location)
+        host = self.headers.get("X-Forwarded-Host", "").split(",")[0].strip() or self.headers.get("Host", "")
+        rest = path[len("/api/great/"):] if path.startswith("/api/great/") else path[len("/great/"):] if path.startswith("/great/") else ""
+        target = "http://{}/great/{}{}".format(host, "api/" if path.startswith("/api/great/") else "", rest)
+        query = urlparse(self.path).query
+        self.send_response(307)  # keeps the method and body of posted forms
+        self.send_header("Location", target + ("?" + query if query else ""))
         self.send_header("Content-Length", "0")
         self.end_headers()
-
-    def great_owner(self):
-        workspace = None if LOCAL_MODE else self.current_workspace()
-        return workspace["id"] if workspace else None
-
-    def great_file_bytes(self, path):
-        maximum = int(GREAT.settings()["maxUploadMB"]) * 1048576
-        if not path or not Path(path).is_file():
-            raise great_tools.InputError("The regions file was not found")
-        if Path(path).stat().st_size > maximum:
-            raise great_tools.InputError("The regions file is larger than this server's limit of {} MB".format(
-                GREAT.settings()["maxUploadMB"]))
-        return Path(path).read_bytes()
-
-    def great_url_bytes(self, url):
-        """A regions file from a URL: this server's own /data/ URLs are read from disk, others fetched (public only)."""
-        if not GREAT.settings()["allowRemoteURLs"]:
-            raise great_tools.InputError("This server does not fetch regions from URLs; upload the file instead")
-        parsed = urlparse(url.strip())
-        own_hosts = {self.headers.get("Host", ""), self.headers.get("X-Forwarded-Host", "").split(",")[0].strip()}
-        data_prefix = self.cookie_path().rstrip("/") + "/data/"
-        if parsed.netloc in own_hosts and parsed.path.startswith(data_prefix):
-            return self.great_track_bytes(parsed.path[len(self.cookie_path().rstrip("/")):])
-        try:
-            validate_public_url(url)
-        except ValueError:
-            raise great_tools.InputError("The regions URL must be a public http(s) address")
-        maximum = int(GREAT.settings()["maxUploadMB"]) * 1048576
-        try:
-            with HUB_HTTP_OPENER.open(Request(url, headers={"User-Agent": "GenomeCanvas-GREAT/1.0"}), timeout=60) as response:
-                body = response.read(maximum + 1)
-        except HTTPError as exc:
-            raise great_tools.InputError("The regions URL returned HTTP {}".format(exc.code))
-        except (URLError, TimeoutError, socket.timeout, ValueError, OSError) as exc:
-            raise great_tools.InputError("Could not read the regions URL: {}".format(getattr(exc, "reason", exc)))
-        if len(body) > maximum:
-            raise great_tools.InputError("The regions URL holds more than {} MB".format(GREAT.settings()["maxUploadMB"]))
-        return body
-
-    def great_track_bytes(self, data_url):
-        """A Genome Canvas track file named by its /data/... URL (as the canvas loads it)."""
-        path = urlparse(data_url).path
-        index = path.find("/data/")
-        if index < 0:
-            return self.great_url_bytes(data_url)  # a track loaded from a public address
-        if not self.current_workspace() and not LOCAL_MODE:
-            raise PermissionError("Select a Genome Canvas workspace to analyze its files")
-        return self.great_file_bytes(self.data_file_path(path[index:]))
-
-    def great_input(self, fields, prefix):
-        """(bytes, label) from the form fields <prefix>File, Text, Track, Root+Path or URL; (None, "") if none."""
-        upload = fields.get(prefix + "File")
-        if isinstance(upload, bytes) and upload:
-            return upload, fields.get(prefix + "File__filename") or "uploaded regions"
-        text = fields.get(prefix + "Text") or fields.get(prefix + "Data")
-        if isinstance(text, bytes):
-            text = text.decode("utf-8", errors="replace")
-        if text and text.strip():
-            return text.encode("utf-8"), "pasted regions"
-        if fields.get(prefix + "Track"):
-            track = fields[prefix + "Track"]
-            return self.great_track_bytes(track), unquote(Path(urlparse(track).path).name)
-        if fields.get(prefix + "Root") and fields.get(prefix + "Path"):
-            path = resolve_data_path(fields[prefix + "Root"], fields[prefix + "Path"], self.data_roots())
-            return self.great_file_bytes(path), path.name
-        if fields.get(prefix + "URL"):
-            return self.great_url_bytes(fields[prefix + "URL"]), Path(urlparse(fields[prefix + "URL"]).path).name or "URL"
-        return None, ""
-
-    def handle_great(self, method, path, query):
-        try:
-            match = GREAT_COMPAT.fullmatch(path)
-            if match:
-                self.handle_great_compat(method, match.group(1), query)
-            elif path == "/great":
-                self.send_redirect("great/", 301)
-            elif path in ("/great/", "/great/index.html") and method == "GET":
-                self.handle_great_page()
-            elif path == "/great/rgreat.R":
-                self.send_text(RGREAT_HELPER.replace("@SERVER@", self.great_public_base()), "text/plain; charset=utf-8")
-            elif path.startswith("/api/great/"):
-                self.handle_great_api(method, path[len("/api/great/"):], query)
-            else:
-                self.send_error(404, "Not found")
-        except great_tools.InputError as exc:
-            self.send_api_error(400, str(exc))
-        except great_service.LimitError as exc:
-            headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
-            self.send_json({"error": str(exc), "retryAfter": exc.retry_after}, exc.status, headers)
-        except FileNotFoundError as exc:
-            self.send_api_error(404, str(exc))
-        except PermissionError as exc:
-            self.send_api_error(403, str(exc))
-        except (OSError, ValueError) as exc:
-            self.send_api_error(400, str(exc))
-        except RuntimeError as exc:
-            print("GREAT error: {}".format(exc), file=sys.stderr)
-            self.send_api_error(500, "GREAT could not finish: {}".format(exc))
-
-    def handle_great_api(self, method, route, query):
-        q = lambda name, default="": query.get(name, [default])[0]
-        workspace = None if LOCAL_MODE else self.current_workspace()
-        admin = GREAT.is_admin(workspace)
-        if method in ("POST", "DELETE") and not self.same_origin_request():
-            raise PermissionError("Cross-site GREAT requests are not allowed; use the GREAT interfaces under great/public/cgi-bin/")
-        if route == "status" and method == "GET":
-            settings = GREAT.settings()
-            self.send_json({
-                "version": great_tools.GREAT_VERSION, "assemblies": GREAT.assemblies(),
-                "defaults": great_tools.DEFAULT_PARAMS, "admin": admin, "base": self.public_base(),
-                "greatBase": self.great_public_base(),
-                "workspace": self.public_workspace(workspace), "localMode": LOCAL_MODE,
-                "limits": {k: settings[k] for k in ("minIntervalSeconds", "maxJobsPerHour", "maxRegions",
-                                                    "maxBackgroundRegions", "maxUploadMB", "jobRetentionDays", "maxStorageMB",
-                                                    "allowRemoteURLs", "apiEnabled")},
-            })
-        elif route == "settings":
-            if not admin:
-                raise PermissionError("Only an administrator workspace can see or change GREAT's settings")
-            if method == "POST":
-                payload = self.read_json_body(64 * 1024, "Settings")
-                self.send_json({"settings": GREAT.update_settings(payload), "defaults": great_service.DEFAULT_SETTINGS})
-            else:
-                self.send_json({"settings": GREAT.settings(), "defaults": great_service.DEFAULT_SETTINGS})
-        elif route in ("admin", "admin/jobs", "admin/cleanup"):
-            if not admin:
-                raise PermissionError("Only an administrator workspace can see or clean GREAT's analyses")
-            if route == "admin/jobs":
-                names = {item["id"]: item["name"] for item in workspace_catalog(self.workspace_store, self.server.home_root)}
-                records = GREAT.job_records()
-                for record in records:
-                    record["ownerName"] = names.get(record["owner"], "") if record["owner"] else ""
-                settings = GREAT.settings()
-                self.send_json({"jobs": records, "totalBytes": sum(r["bytes"] for r in records),
-                                "retentionDays": settings["jobRetentionDays"], "maxStorageMB": settings["maxStorageMB"]})
-            elif route == "admin/cleanup" and method == "POST":
-                payload = self.read_json_body(1024 * 1024, "Cleanup")
-                self.send_json(GREAT.cleanup(str(payload.get("action", "")), payload.get("days"),
-                                             payload.get("jobs"), payload.get("owner")))
-            elif method == "POST" and q("action") == "sweep":
-                self.send_json(GREAT.cleanup("expired"))
-            else:
-                self.send_json(GREAT.status())
-        elif route == "jobs" and method == "GET":
-            self.send_json({"jobs": GREAT.jobs_of(self.great_owner())})
-        elif route == "jobs" and method == "POST":
-            fields = great_service.parse_form(self.headers.get("Content-Type"), self.read_great_body())
-            fg, fg_label = self.great_input(fields, "fg")
-            if fg is None:
-                raise great_tools.InputError("Give the test regions: a file, pasted regions, a track or a URL")
-            bg, bg_label = (None, "")
-            if fields.get("bgChoice", "wholeGenome") != "wholeGenome":
-                bg, bg_label = self.great_input(fields, "bg")
-                if bg is None:
-                    raise great_tools.InputError("Give the background regions, or choose the whole genome")
-            job = GREAT.submit(fields.get("assembly", "hg38"), fg, bg, fields, self.great_client(), self.great_owner(),
-                               "web", fields.get("fgName") or fg_label, fields.get("bgName") or bg_label)
-            self.send_json({"job": great_service.public_job(job)})
-        elif route.startswith("jobs/"):
-            parts = route.split("/")
-            job = GREAT.job(parts[1])
-            rest = "/".join(parts[2:])
-            if method == "DELETE" and not rest:
-                GREAT.delete(job["id"], self.great_owner())
-                self.send_json({"deleted": job["id"]})
-            elif not rest:
-                self.send_json({"job": great_service.public_job(job)})
-            elif len(parts) == 4 and parts[2] == "ontologies":
-                self.send_json({"rows": GREAT.rows(job["id"], parts[3])})
-            elif rest == "term":
-                self.send_json(GREAT.term(job["id"], q("ontology"), q("term")))
-            elif rest == "export.tsv":
-                keys = [q("ontology")] if q("ontology") else None
-                self.send_text(great_service.export_tsv(GREAT, job, keys, limit=0), "text/tab-separated-values; charset=utf-8",
-                               filename="great-{}{}.tsv".format(job["id"], "-" + q("ontology") if q("ontology") else ""))
-            elif rest == "associations.tsv":
-                table = "gene" if q("table") == "gene" else "region"
-                self.send_text(great_service.association_table(GREAT, job, table, q("ontology") or None, q("term") or None),
-                               "text/tab-separated-values; charset=utf-8",
-                               filename="great-{}-{}{}.tsv".format(job["id"], table, "-" + q("term") if q("term") else ""))
-            elif rest == "regions.bed":
-                self.send_text(great_service.regions_bed(GREAT, job), "text/plain; charset=utf-8")
-            elif rest == "term.bed":
-                self.send_text(great_service.term_bed(GREAT, job, q("ontology"), q("term")), "text/plain; charset=utf-8")
-            else:
-                raise FileNotFoundError("Not found")
-        else:
-            raise FileNotFoundError("Not found")
-
-    def handle_great_compat(self, method, name, query):
-        """GREAT's .php interfaces (rGREAT and the GREAT Programming Interface)."""
-        fields = {k: v[0] for k, v in query.items()}
-        html_type = "text/html; charset=utf-8"
-        try:
-            if method == "POST":
-                fields.update(great_service.parse_form(self.headers.get("Content-Type"), self.read_great_body()))
-        except (great_tools.InputError, great_service.LimitError) as exc:
-            self.send_text(great_service.error_page(str(exc)), html_type, getattr(exc, "status", 200))
-            return
-        if name == "showTermDetails":
-            self.send_redirect(self.great_ui_url(fields.get("sessionName", ""), "&ontology={}&term={}".format(
-                quote(fields.get("ontoName", "")), quote(fields.get("termId", "")))))
-            return
-        if not GREAT.settings()["apiEnabled"]:
-            self.send_text(great_service.error_page("GREAT's programming interface is turned off on this server."),
-                           html_type, 403)
-            return
-        client, owner = self.great_client(), self.great_owner()
-        agent = self.headers.get("User-Agent", "")
-        if name == "greatWeb":
-            if method == "GET" and not fields:
-                self.send_redirect(self.great_public_base() + "/")
-                return
-            try:
-                fg, label = self.great_input(fields, "fg")
-                if fg is None:
-                    raise great_tools.InputError("No test regions were sent (fgFile)")
-                bg, bg_label = None, ""
-                if fields.get("bgChoice") in ("file", "data"):
-                    bg, bg_label = self.great_input(fields, "bg")
-                    if bg is None:
-                        raise great_tools.InputError("No background regions were sent (bgFile)")
-                job = GREAT.submit(fields.get("species") or "hg19", fg, bg, fields, client, owner,
-                                   "rGREAT" if "rgreat" in agent.lower() or "libcurl" in agent.lower() else "greatWeb",
-                                   label, bg_label)
-                self.send_text(great_service.session_page(job, self.great_ui_url(job["id"])), html_type)
-            except great_tools.InputError as exc:
-                self.send_text(great_service.error_page(str(exc)), html_type)
-            except great_service.LimitError as exc:
-                self.send_text(great_service.error_page(str(exc)), html_type, exc.status,
-                               {"Retry-After": str(exc.retry_after)} if exc.retry_after else None)
-        elif name == "readJsFromFile":
-            match = re.search(r"results/([0-9]{8}-[0-9]{6}-[a-z0-9]{8})\.d/([A-Za-z0-9]+)\.js$", fields.get("path", ""))
-            try:
-                rows = GREAT.rows(match.group(1), match.group(2)) if match else None
-            except FileNotFoundError:
-                rows = None
-            if rows is None:
-                self.send_text("", "application/json")  # rGREAT reads 0 bytes as an expired job
-            else:
-                self.send_json(rows)
-        elif name == "downloadAllTSV":
-            match = re.search(r"([0-9]{8}-[0-9]{6}-[a-z0-9]{8})\.d", fields.get("outputDir", "") or fields.get("outputPath", ""))
-            try:
-                job = GREAT.job(match.group(1) if match else "")
-            except FileNotFoundError:
-                self.send_text("GREAT is unable to locate a session with this name; please submit the job again.\n")
-                return
-            key = fields.get("ontoName", "")
-            counts = re.search(r"@([0-9]+)-([0-9]+|Inf)$", fields.get("ontoList", ""))
-            self.send_text(great_service.export_tsv(GREAT, job, [key] if key else None,
-                                                    min_count=int(counts.group(1)) if counts else 1,
-                                                    max_count=None if not counts or counts.group(2) == "Inf" else int(counts.group(2))))
-        elif name == "downloadAssociations":
-            try:
-                job = GREAT.job(fields.get("sessionName", ""))
-            except FileNotFoundError:
-                self.send_text("GREAT is unable to locate a session with this name; please submit the job again.\n")
-                return
-            try:
-                text = great_service.association_table(GREAT, job, "gene" if fields.get("table") == "gene" else "region",
-                                                       fields.get("ontoName") or None, fields.get("termId") or None)
-            except great_tools.InputError:
-                text = "\n"  # an unknown term: rGREAT reports an empty table
-            self.send_text(text)
-        elif name == "greatStart":
-            batch = fields.get("outputType", "web") == "batch"
-            try:
-                fg, label = self.great_input(fields, "request")
-                if fg is None:
-                    raise great_tools.InputError("Give requestURL (or upload requestFile / send requestData)")
-                bg, bg_label = self.great_input(fields, "bg")
-                title = ": ".join(x for x in (fields.get("requestSender", ""), fields.get("requestName", "")) if x)
-                job = GREAT.submit(fields.get("requestSpecies") or fields.get("species") or "hg19", fg, bg, fields, client,
-                                   owner, "batch" if batch else "greatStart", title or label or "external data",
-                                   fields.get("bgName") or bg_label or ("external background data" if bg else ""))
-                if batch:
-                    self.send_text(great_service.export_tsv(GREAT, job))
-                else:
-                    self.send_redirect(self.great_ui_url(job["id"]))
-            except great_tools.InputError as exc:
-                if batch:
-                    self.send_text("# GREAT error: {}\n".format(exc), status=400)
-                else:
-                    self.send_text(great_service.error_page(str(exc)), html_type, 400)
-            except great_service.LimitError as exc:
-                # GREAT answered HTTP 500 when busy and its greatBatchQuery.py retries on exactly that
-                status = 500 if batch and exc.status == 429 else exc.status
-                headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
-                if batch:
-                    self.send_text("# GREAT busy: {}\n".format(exc), status=status, headers=headers)
-                else:
-                    self.send_text(great_service.error_page(str(exc)), html_type, status, headers)
-        else:
-            self.send_text(great_service.error_page("Unknown GREAT interface {}.php".format(name)), html_type, 404)
+        if self.command == "POST":
+            self.close_connection = True
 
     def handle_get_session(self, session_id):
         if not re.fullmatch(r"[A-Za-z0-9]{6,32}", session_id):
@@ -2851,9 +2454,6 @@ def main():
             encoding="utf-8",
         )
         temporary_ready_file.replace(ready_file)
-    if not LOCAL_MODE:
-        GREAT.warm()  # load the default assembly into a GREAT worker in the background
-        GREAT.start_maintenance()  # delete expired results and keep the storage limit, every 10 minutes
     print("Genome Canvas is running on http://{}:{}".format(bound_host, bound_port))
     print("Serving {} configured data root(s):".format(len(DATA_ROOTS)))
     for item in DATA_ROOTS.values():

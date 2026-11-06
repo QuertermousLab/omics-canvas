@@ -4,9 +4,9 @@ Self-hosted viewers for a lab's genomics data, in one place:
 
 - **Genome Canvas** (`genome-canvas/`) — IGV.js-based genome and epigenome browser with a Python
   backend and a native macOS app (unchanged history; see [genome-canvas/README.md](genome-canvas/README.md)).
-- **GREAT** (`genome-canvas/great*`, at `/great/`) — region set enrichment as GREAT 4.0.4 computed it
-  (great.stanford.edu is offline): its web interface, flexible region input, and its interfaces for rGREAT and
-  scripts, with request limits set live by an administrator ([details](genome-canvas/README.md#great)).
+- **GREAT** (`great/`, at `/great/`) — region set enrichment as GREAT 4.0.4 computed it (great.stanford.edu is
+  offline): its web interface, flexible region input, and its interfaces for rGREAT and scripts, with request limits
+  and result cleanup set live by an administrator ([great/README.md](great/README.md)).
 - **Omics Canvas hub** (`hub/`) — spatial viewer, single-cell viewer and CRISPR screen explorer
   (deck.gl viewers adapted from the lab's ATHENA Co-Lab), a home page, and a data manager that finds files
   on the server and converts `.h5ad`, `.h5mu`, Seurat / Signac / SingleCellExperiment `.rds`, 10x `.h5`,
@@ -36,7 +36,7 @@ One address for everything: **http://171.65.68.140:8892/**, the home page, with 
 | `/single-cell/` · `/single-cell/<dataset>/` | Your single-cell datasets · the single-cell viewer | hub |
 | `/crispr/` · `/crispr/<screen>/` | Your CRISPR screens · the CRISPR screen explorer | hub |
 | `/genome-canvas/` | Genome Canvas | `genome-canvas/server.py` (127.0.0.1:8000) |
-| `/great/` | GREAT (page, rGREAT's `public/cgi-bin/*.php`, `rgreat.R`; its page calls `/genome-canvas/api/great/`) | Genome Canvas (GREAT worker processes) |
+| `/great/` | GREAT: page, API, rGREAT's `public/cgi-bin/*.php`, `rgreat.R` | `great/server.py` (127.0.0.1:8894, worker processes) |
 | `/lab` and everything else | JupyterLab | `jupyter-lab.service` (127.0.0.1:8891) |
 
 Viewer links take `?s=<slide>&assay=<assay>&gene=<gene>`; the explorer takes `?t=<target>&g=<gene>`.
@@ -53,11 +53,12 @@ uv venv --python python3.12 hub/venv && VIRTUAL_ENV=hub/venv uv pip install -r h
 ./vizhubctl install        # systemd user units, generated in deploy/generated/systemd/
 loginctl enable-linger $USER && ./vizhubctl restart && ./vizhubctl status
 hub/venv/bin/python genome-canvas/tools/fetch_external_data.py --configure && ./vizhubctl restart canvas
+python3 great/tools/fetch_great_data.py && ./vizhubctl restart great
 ```
 
-The last line downloads the public data of Genome Canvas's LocusCompare, LD, liftover and GREAT (GTEx arteries,
-1000 Genomes, GENCODE genes, a CAD GWAS, UCSC chains, GREAT's genes and the GO / HPO / MGI ontologies; ~60 GB) and adds
-it to its configuration
+The last two lines download the public data of Genome Canvas's LocusCompare, LD and liftover (GTEx arteries,
+1000 Genomes, GENCODE genes, a CAD GWAS, UCSC chains; ~60 GB) and add it to its configuration, and build GREAT's genes
+and GO / HPO / MGI ontologies (~250 MB download, ~40 MB kept)
 ([External data](genome-canvas/README.md#external-data)).
 
 `configure` asks for each setting (Enter keeps the shown value) or takes options, e.g. for a server that is only
@@ -77,18 +78,20 @@ Genome Canvas keeps its own `genome-canvas/genomecanvas.config.json` (data roots
 
 ```
 omics-canvas/            (on THOR: /nfs/baldar/quanyiz/vizhub)
-  vizhubctl              status | start | stop | restart [hub|canvas|gateway] | logs | access | install | build
+  vizhubctl              status | start | stop | restart [hub|canvas|great|gateway] | logs | access | install | build
   gateway/apache.conf.in the Apache gateway template (apache.conf is generated; logs in gateway/logs/)
   deploy/                site.env.example (server settings), configure.py, systemd/*.in unit templates
-                         (vizhub-hub, genome-canvas, vizhub-gateway alias genome-canvas-gateway, JupyterLab drop-in)
+                         (vizhub-hub, genome-canvas, vizhub-great, vizhub-gateway alias genome-canvas-gateway, JupyterLab drop-in)
   genome-canvas/         Genome Canvas (web app, server, macOS app)
+  great/                 GREAT (server.py, engine great.py, web/, tools/fetch_great_data.py, data/ not in git)
   hub/
     server.py config.json  backend (FastAPI) and its settings (config.example.json in git; roots, Rscript, jobs)
     converters/           convert.py (dispatch), detect.py, rds_export.R, crispr_to_viewer.py,
                           xenium_to_viewer.py / h5ad_to_viewer.py / igvf_to_viewer.py (from ATHENA)
     web/                  page sources (TypeScript; viewer code from QuertermousLab/athena) -> static/ via `./vizhubctl build`
     venv/                 Python 3.12 environment from requirements.txt (not in git)
-  state/                 registry.json (datasets), jobs.json + jobs/<id>.log, converted/ (not in git)
+  state/                 registry.json (datasets), jobs.json + jobs/<id>.log, converted/, great/ (GREAT's jobs and
+                         settings) (not in git)
   desktop/               Omics Canvas macOS app (spatial, single-cell, CRISPR; see desktop/OmicsCanvasDesktop/README.md)
 ```
 

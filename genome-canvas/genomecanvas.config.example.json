@@ -58,9 +58,5 @@
       "label": "Sequencing storage",
       "path": "/mnt/sequencing"
     }
-  ],
-  "great": {
-    "dataDir": "data/GREAT",
-    "admins": []
-  }
+  ]
 }

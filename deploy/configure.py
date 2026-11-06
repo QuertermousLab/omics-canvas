@@ -5,7 +5,7 @@ Reads deploy/site.env (or the THOR defaults in deploy/site.env.example), asks fo
 takes them as options, writes deploy/site.env and generates from the templates:
   gateway/apache.conf                      from gateway/apache.conf.in
   deploy/generated/systemd/*.service       from deploy/systemd/*.service.in (linked by ./vizhubctl install)
-  hub/config.json                          host, port, publicUrl, workspaceApi, Genome Canvas health (other keys kept)
+  hub/config.json                          host, port, publicUrl, workspaceApi, Genome Canvas and GREAT health (other keys kept)
 
   ./vizhubctl configure                                   ask, with the current values as defaults
   ./vizhubctl configure --yes                             regenerate from deploy/site.env without asking
@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / 'deploy' / 'site.env'
 EXAMPLE = ROOT / 'deploy' / 'site.env.example'
-UNITS = ['vizhub-hub.service', 'genome-canvas.service', 'vizhub-gateway.service']
+UNITS = ['vizhub-hub.service', 'genome-canvas.service', 'vizhub-great.service', 'vizhub-gateway.service']
 GENERATED = ROOT / 'deploy' / 'generated' / 'systemd'
 
 # (key, option, question) in the order they are asked
@@ -33,6 +33,7 @@ SETTINGS = [
     ('VIZHUB_SERVER_NAME', 'server-name', 'Server name (host name or IP)'),
     ('VIZHUB_HUB_PORT', 'hub-port', 'Hub backend port (127.0.0.1)'),
     ('VIZHUB_CANVAS_PORT', 'canvas-port', 'Genome Canvas port (127.0.0.1)'),
+    ('VIZHUB_GREAT_PORT', 'great-port', 'GREAT port (127.0.0.1)'),
     ('VIZHUB_JUPYTER_PORT', 'jupyter-port', 'JupyterLab port behind the gateway (empty: none)'),
     ('VIZHUB_JUPYTER_BIN', 'jupyter-bin', 'JupyterLab executable'),
     ('VIZHUB_SSH_HOST', 'ssh-host', 'SSH host for port forwarding from outside (empty: none)'),
@@ -41,7 +42,7 @@ SETTINGS = [
     ('VIZHUB_APACHE_BIN', 'apache-bin', 'Apache executable'),
     ('VIZHUB_APACHE_MODULES', 'apache-modules', 'Apache modules folder'),
 ]
-PORTS = {'VIZHUB_PORT', 'VIZHUB_HUB_PORT', 'VIZHUB_CANVAS_PORT', 'VIZHUB_SSH_PORT'}
+PORTS = {'VIZHUB_PORT', 'VIZHUB_HUB_PORT', 'VIZHUB_CANVAS_PORT', 'VIZHUB_GREAT_PORT', 'VIZHUB_SSH_PORT'}
 
 
 def read_env(path):
@@ -103,8 +104,10 @@ def update_hub_config(values):
     canvas = values['VIZHUB_CANVAS_PORT']
     config.update(host='127.0.0.1', port=int(values['VIZHUB_HUB_PORT']), publicUrl=values['VIZHUB_PUBLIC_URL'].rstrip('/'),
                   workspaceApi=f'http://127.0.0.1:{canvas}/api/workspaces')
-    services = [s for s in config.get('services') or [] if s.get('id') != 'genome-canvas']
-    config['services'] = [dict(id='genome-canvas', name='Genome Canvas', url='/genome-canvas/', health=f'http://127.0.0.1:{canvas}/api/health')] + services
+    great = values['VIZHUB_GREAT_PORT']
+    services = [s for s in config.get('services') or [] if s.get('id') not in ('genome-canvas', 'great')]
+    config['services'] = [dict(id='genome-canvas', name='Genome Canvas', url='/genome-canvas/', health=f'http://127.0.0.1:{canvas}/api/health'),
+                          dict(id='great', name='GREAT', url='/great/', health=f'http://127.0.0.1:{great}/great/api/health')] + services
     if created:
         roots = [r for r in values['VIZHUB_DATA_ROOTS'].split(':') if r]
         config['roots'] = [dict(label=r if r != '/nfs' else 'Shared NFS', path=r) for r in roots]
@@ -141,9 +144,9 @@ def main():
         elif not valid(key, values.get(key, '')):
             raise SystemExit(f'{key}={values.get(key, "")!r} is not valid (--{option})')
     values['VIZHUB_PUBLIC_URL'] = values['VIZHUB_PUBLIC_URL'].rstrip('/')
-    used = [values[k] for k in ('VIZHUB_PORT', 'VIZHUB_HUB_PORT', 'VIZHUB_CANVAS_PORT', 'VIZHUB_JUPYTER_PORT') if values[k]]
+    used = [values[k] for k in ('VIZHUB_PORT', 'VIZHUB_HUB_PORT', 'VIZHUB_CANVAS_PORT', 'VIZHUB_GREAT_PORT', 'VIZHUB_JUPYTER_PORT') if values[k]]
     if len(set(used)) != len(used):
-        raise SystemExit(f'the gateway, hub, Genome Canvas and JupyterLab need different ports: {", ".join(used)}')
+        raise SystemExit(f'the gateway, hub, Genome Canvas, GREAT and JupyterLab need different ports: {", ".join(used)}')
 
     write_env(values)
     context = dict(values, VIZHUB_DIR=str(ROOT), VIZHUB_USER=getpass.getuser())
