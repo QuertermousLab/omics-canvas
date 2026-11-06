@@ -17,13 +17,7 @@ atlas and mouse SMC time course, IGVF HCASMC CRISPR screens, UCSC hg38 annotatio
 
 ## 1. Getting started
 
-Open **http://171.65.68.140:8892** (THOR). From outside Stanford connect the VPN first — or, without the VPN, forward
-the port over SSH and open **http://localhost:8892** instead (the Mac apps can do this for you,
-[section 8](#8-mac-apps)):
-
-```bash
-ssh -N -L 8892:127.0.0.1:8892 yourname@171.65.68.140
-```
+Open **http://171.65.68.140:8892** (THOR). From outside Stanford, connect to the Stanford VPN first.
 
 **Sign in** first — any page sends you to the sign-in page and back to that page afterwards:
 
