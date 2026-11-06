@@ -1,8 +1,8 @@
 # GREAT
 
 GREAT (Genomic Regions Enrichment of Annotations Tool; McLean et al. 2010, *Nat Biotechnol* 28:495) for Omics Canvas:
-GO, phenotype and gene enrichment of a set of genomic regions, as GREAT 4.0.4 computed it, with its web interface, a
-more flexible region reader and GREAT's own interfaces for rGREAT and scripts. great.stanford.edu no longer answers,
+GO, phenotype and gene enrichment of a set of genomic regions, as GREAT 4.0.4 (the default) and GREAT 3.0.0 computed it,
+with its web interface, a more flexible region reader and GREAT's own interfaces for rGREAT and scripts. great.stanford.edu no longer answers,
 so this follows GREAT's published core code (greatTools: `createRegulatoryDomains.c`, `calculateBinomialP.c`, ported
 line by line) and documentation.
 
@@ -46,7 +46,20 @@ On the lab server: **http://171.65.68.140:8892/great/** (the gateway routes `/gr
   (graphs against all regions, region → genes and gene → regions tables, links into Genome Canvas), and exports:
   all data as GREAT's `.tsv`, shown data as `.tsv` / HTML, associations, BED of a term's regions, graphs as SVG / PNG
   (Arial).
-- **rGREAT and scripts**: GREAT's interfaces under `/great/public/cgi-bin/` (and `/great/public-4.0.4/…`):
+- **GREAT 3.0.0** (the version selector on the page, `version=3` in the API, `/great/public-3.0.0/…` for rGREAT's
+  `version = "3.0.0"`): GREAT 3.0.0's own gene sets (UCSC Known Genes' canonical TSSs with Ensembl 73 ids; 18,041 genes
+  in hg19, 21,902 in mm10, 21,176 in mm9; its danRer7 is not offered), the same curated domains and method, and its
+  ontologies in its order and categories, from current releases: GO, Mouse Phenotype, Human Phenotype, Disease Ontology
+  (the Alliance's human gene-disease associations), MSigDB Oncogenic and Immunologic Signatures, Cancer Neighborhood,
+  Pathway, Perturbation, Predicted Promoter Motifs and miRNA Motifs (MSigDB C6, C7 ImmuneSigDB, C4 CGN, C2 CP, C2 CGP,
+  C3 TFT and MIR legacy), PANTHER Pathway, MGI Expression: Detected (Theiler stage × EMAPA structure), InterPro,
+  TreeFam (TreeFam 9), HGNC Gene Families (human), Ensembl Genes. Placenta Disorders (dbPTB, PESNPdb) and BioCyc
+  Pathway (licensed) can no longer be built. Against the GREAT 3.0.0 run in rGREAT's 2018 vignette (hg19, 1,005 random
+  regions; submit them with `gr_is_zero_based = TRUE`, as rGREAT then did) the total gene count (18,041), a regulatory
+  domain's genome fraction (PNP: 1.435477e-05) and the distances are the same; 1,586 genes are hit instead of 1,585
+  (one of the HOXD curated domains, which could not be pinned down). Data: `data/v3/<assembly>/`.
+- **rGREAT and scripts**: GREAT's interfaces under `/great/public/cgi-bin/` (and `/great/public-4.0.4/…`,
+  `/great/public-3.0.0/…`; other versions answer with an error; a `version` field also chooses one):
   `greatWeb.php` (rGREAT's `submitGreatJob`), `readJsFromFile.php`, `downloadAllTSV.php`, `downloadAssociations.php`
   and `showTermDetails.php` (rGREAT's result functions) and `greatStart.php`, GREAT's batch Programming Interface
   (`requestURL` or, added here, a posted `requestFile`; `outputType=batch` returns every ontology as a table).
@@ -68,14 +81,16 @@ On the lab server: **http://171.65.68.140:8892/great/** (the gateway routes `/gr
 
 ```bash
 cd great
-python3 tools/fetch_great_data.py                 # data/hg38, hg19, mm10, mm9 (~250 MB download, ~40 MB kept)
+python3 tools/fetch_great_data.py                 # GREAT 4.0.4 data/<assembly> and 3.0.0 data/v3/<assembly> (~450 MB download, ~90 MB kept)
 python3 server.py --port 8894 --canvas http://127.0.0.1:8000
 ```
 
-`tools/fetch_great_data.py` downloads GREAT 4.0.4's gene and curated-domain files (great-help.atlassian.net), UCSC
-chromosome sizes and gaps, GO (go-basic.obo, GOA human, MGI GAF), HPO (hp.obo, genes_to_phenotype), MGI (mp.obo,
-phenotype and homology reports) and HGNC, builds `data/<assembly>/` and deletes the downloads (`--keep-downloads`
-keeps them). Run it again with `--update` for new GO / HPO / MGI releases, then restart GREAT.
+`tools/fetch_great_data.py` downloads GREAT 4.0.4's and 3.0.0's gene and curated-domain files
+(great-help.atlassian.net), UCSC chromosome sizes and gaps, GO (go-basic.obo, GOA human, MGI GAF), HPO (hp.obo,
+genes_to_phenotype), MGI (mp.obo, phenotype and homology reports) and HGNC and, for GREAT 3.0.0, DOID and the
+Alliance's disease and expression files, EMAPA, MSigDB's XML, PANTHER's pathway table, UniProt, InterPro and TreeFam 9;
+it builds `data/<assembly>/` and `data/v3/<assembly>/` (`--great 4` or `--great 3` for one version) and deletes the
+downloads (`--keep-downloads` keeps them). Run it again with `--update` for new releases, then restart GREAT.
 
 On the lab server `./vizhubctl restart great` (unit `vizhub-great.service`, port `VIZHUB_GREAT_PORT` in
 `deploy/site.env`) and `./vizhubctl logs great`. Options: `--host`, `--port`, `--canvas` (Genome Canvas's internal

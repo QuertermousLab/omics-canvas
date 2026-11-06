@@ -4,8 +4,8 @@ Self-hosted viewers for a lab's genomics data, in one place:
 
 - **Genome Canvas** (`genome-canvas/`) — IGV.js-based genome and epigenome browser with a Python
   backend and a native macOS app (unchanged history; see [genome-canvas/README.md](genome-canvas/README.md)).
-- **GREAT** (`great/`, at `/great/`) — region set enrichment as GREAT 4.0.4 computed it (great.stanford.edu is
-  offline): its web interface, flexible region input, and its interfaces for rGREAT and scripts, with request limits
+- **GREAT** (`great/`, at `/great/`) — region set enrichment as GREAT 4.0.4 (default) and GREAT 3.0.0 computed it
+  (great.stanford.edu is offline): its web interface, flexible region input, and its interfaces for rGREAT and scripts, with request limits
   and result cleanup set live by an administrator ([great/README.md](great/README.md)).
 - **Omics Canvas hub** (`hub/`) — spatial viewer, single-cell viewer and CRISPR screen explorer
   (deck.gl viewers adapted from the lab's ATHENA Co-Lab), a home page, and a data manager that finds files

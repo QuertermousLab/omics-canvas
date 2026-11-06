@@ -275,7 +275,7 @@ files become GWAS tracks with `tools/gwas_catalog_to_track.py` (with `hg19_locus
 
 ### GREAT
 
-GREAT (region set enrichment, GREAT 4.0.4) is its own module of Omics Canvas, beside Genome Canvas:
+GREAT (region set enrichment, GREAT 4.0.4 and 3.0.0) is its own module of Omics Canvas, beside Genome Canvas:
 [`../great/`](../great/README.md), at `/great/` on the lab server. Genome Canvas links to it: the **GREAT** button under
 the source buttons and **GREAT enrichment of these regions…** in a BED-like track's menu (shown when the server has
 GREAT), and `/api/files?regions=1` lists the region tables its file picker offers.

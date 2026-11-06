@@ -1,10 +1,12 @@
-"""GREAT for Omics Canvas: functional enrichment of genomic regions (McLean et al. 2010, Nat Biotechnol; GREAT 4.0.4).
+"""GREAT for Omics Canvas: functional enrichment of genomic regions (McLean et al. 2010, Nat Biotechnol; GREAT 4.0.4
+and 3.0.0).
 
 great.stanford.edu is no longer served; this is a reimplementation that follows GREAT's published core code
 (greatTools: createRegulatoryDomains.c, calculateBinomialP.c) and documentation:
 
 - Genes: GREAT 4.0.4's gene sets (one canonical TSS per gene) and curated regulatory domains, per assembly
-  (tools/fetch_great_data.py builds data/<assembly>/).
+  (tools/fetch_great_data.py builds data/<assembly>/); GREAT 3.0.0's gene sets and ontologies in data/v3/<assembly>/.
+  A job names its version ("version") and assembly; data_key() gives its data folder.
 - Regulatory domains: basal plus extension (5 kb up, 1 kb down, extended up to 1 Mb to the nearest basal domains),
   two nearest genes, or single nearest gene; curated domains replace the computed ones of their genes.
 - A region is associated with every gene whose regulatory domain holds its midpoint (or its summit, an option).
@@ -35,8 +37,10 @@ from bisect import bisect_right
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 
-GREAT_VERSION = "4.0.4"
-ASSEMBLIES = ("hg38", "hg19", "mm10", "mm9")
+GREAT_VERSION = "4.0.4"  # the default
+# GREAT versions: their data folder under data/ and their assemblies
+VERSIONS = OrderedDict([("4.0.4", ("", ("hg38", "hg19", "mm10", "mm9"))), ("3.0.0", ("v3", ("hg19", "mm10", "mm9")))])
+ASSEMBLIES = VERSIONS[GREAT_VERSION][1]
 SPECIES = {"hg38": "human", "hg19": "human", "mm10": "mouse", "mm9": "mouse"}
 RULES = ("basalPlusExt", "twoClosest", "oneClosest")
 RULE_NAMES = {"basalPlusExt": "Basal plus extension", "twoClosest": "Two nearest genes", "oneClosest": "Single nearest gene"}
@@ -49,6 +53,35 @@ DISTANCE_BINS = (5000, 50000, 500000)
 
 class InputError(ValueError):
     """A problem with the user's input, reported to them as is."""
+
+
+def great_version(value):
+    """A GREAT version from a request: 4.0.4 (the default; also 4, 4.0, v4) or 3.0.0 (3, 3.0, v3)."""
+    text = str(value or "").strip().lower()
+    text = text[1:] if text.startswith("v") else text
+    if text in ("", "default", "latest"):
+        return GREAT_VERSION
+    for version in VERSIONS:
+        if text in (version, version.split(".")[0], ".".join(version.split(".")[:2])):
+            return version
+    raise InputError("GREAT version {} is not available on this server: use {}".format(value, " or ".join(VERSIONS)))
+
+
+def data_key(version, assembly):
+    """The data folder of a version's assembly under data/: "hg38" (GREAT 4.0.4), "v3/hg19" (GREAT 3.0.0)."""
+    folder, assemblies = VERSIONS[great_version(version)]
+    if assembly not in assemblies:
+        raise InputError("GREAT {} has no assembly {} (it has {})".format(great_version(version), assembly,
+                                                                         ", ".join(assemblies)))
+    return folder + "/" + assembly if folder else assembly
+
+
+def job_key(job):
+    """The data folder of a job (jobs made before versions were added are GREAT 4.0.4's)."""
+    return data_key(job.get("version") or GREAT_VERSION, job["assembly"])
+
+
+DATA_KEYS = tuple(data_key(v, a) for v, (_, names) in VERSIONS.items() for a in names)
 
 
 # ---------------------------------------------------------------- statistics (calculateBinomialP.c)
@@ -820,11 +853,12 @@ class Engine:
         self.max_models = max_models
 
     def available(self):
-        return [a for a in ASSEMBLIES if (self.data_dir / a / "manifest.json").is_file()]
+        return [a for a in DATA_KEYS if (self.data_dir / a / "manifest.json").is_file()]
 
     def assembly(self, name):
+        """name: a data key (data_key()), such as hg38 or v3/hg19."""
         if name not in self.assemblies:
-            if name not in ASSEMBLIES or not (self.data_dir / name / "manifest.json").is_file():
+            if name not in DATA_KEYS or not (self.data_dir / name / "manifest.json").is_file():
                 raise InputError("Assembly {} is not available on this server".format(name))
             self.assemblies[name] = Assembly(self.data_dir / name)
         return self.assemblies[name]
@@ -1081,8 +1115,8 @@ def analyze(engine, job_dir):
     job_dir = Path(job_dir)
     job = json.loads((job_dir / "job.json").read_text())
     params = job["params"]
-    assembly = engine.assembly(job["assembly"])
-    model = engine.model(job["assembly"], params)
+    assembly = engine.assembly(job_key(job))
+    model = engine.model(job_key(job), params)
     fg = read_job_regions(job_dir, "fg.tsv.gz")
     bg = read_job_regions(job_dir, "bg.tsv.gz")
     fg_assoc = associate(model, fg, params)
@@ -1137,7 +1171,7 @@ def term_details(engine, job_dir, ontology_key, term_id):
     """The regions and genes behind one term: region -> genes and gene -> regions tables, the term's graphs."""
     job_dir = Path(job_dir)
     job = json.loads((job_dir / "job.json").read_text())
-    assembly = engine.assembly(job["assembly"])
+    assembly = engine.assembly(job_key(job))
     ontology = assembly.ontology(ontology_key)
     term = ontology.index.get(term_id)
     if term is None:
@@ -1156,7 +1190,7 @@ def term_details(engine, job_dir, ontology_key, term_id):
             for g, d in kept:
                 by_gene[g].append([label, d, index])
             term_assoc.append((None, kept))
-    model = engine.model(job["assembly"], job["params"])
+    model = engine.model(job_key(job), job["params"])
     genes = []
     for g in sorted(by_gene, key=lambda g: (-len(by_gene[g]), assembly.genes[g][1])):
         domain = model.domains[g]
@@ -1176,7 +1210,7 @@ def term_region_names(engine, job_dir, ontology_key, term_ids):
     """{term: (region labels, gene symbols)} for export tables."""
     job_dir = Path(job_dir)
     job = json.loads((job_dir / "job.json").read_text())
-    assembly = engine.assembly(job["assembly"])
+    assembly = engine.assembly(job_key(job))
     ontology = assembly.ontology(ontology_key)
     associations = read_associations(job_dir)
     regions_of_gene = defaultdict(list)

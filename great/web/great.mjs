@@ -20,7 +20,16 @@ const TERM_LINKS = [
   [/^MP:/, (id) => `https://www.informatics.jax.org/vocab/mp_ontology/${id}`],
   [/^ENSG/, (id) => `https://www.ensembl.org/Homo_sapiens/Gene/Summary?g=${id}`],
   [/^ENSMUSG/, (id) => `https://www.ensembl.org/Mus_musculus/Gene/Summary?g=${id}`],
+  // GREAT 3.0.0's ontologies
+  [/^DOID:/, (id) => `https://disease-ontology.org/?id=${id}`],
+  [/^IPR\d+$/, (id) => `https://www.ebi.ac.uk/interpro/entry/InterPro/${id}/`],
+  [/^P\d{5}$/, (id) => `https://www.pantherdb.org/pathway/pathwayDiagram.jsp?catAccession=${id}`],
+  [/^TS\d\d:EMAPA:/, (id) => `https://www.informatics.jax.org/vocab/gxd/anatomy/${id.slice(5)}`],
+  [/^HGNCGroup:/, (id) => `https://www.genenames.org/data/genegroup/#!/group/${id.split(":")[1]}`],
+  [/^[A-Z0-9][A-Za-z0-9.$-]*_[A-Za-z0-9_.$-]+$/, (id) => `https://www.gsea-msigdb.org/gsea/msigdb/human/geneset/${encodeURIComponent(id)}.html`],
 ];
+// GREAT 3.0.0's genes (one canonical TSS per gene, as GREAT 4.0.4's) came from UCSC Known Genes
+const VERSION_NOTES = { "4.0.4": "Default · Ensembl 90 genes", "3.0.0": "Earlier analyses · more ontologies" };
 // Bars of the association graphs: data colors, the same in both themes and in exports
 const SERIES_COLORS = ["#4c7a86", "#d08770"];
 const ROW_CHOICES = [20, 50, 100, 500, 0];
@@ -99,9 +108,33 @@ function setupTheme() {
 
 // ---------------------------------------------------------------- the form
 
+function versionOf(name) {
+  const wanted = String(name || "").replace(/^v/i, "");
+  return (state.status.versions || []).find((v) => v.version === wanted || v.version.split(".")[0] === wanted
+    || v.version.split(".").slice(0, 2).join(".") === wanted);
+}
+
+function renderVersions() {
+  // GREAT 4.0.4 by default; GREAT 3.0.0 (its genes and ontologies) when its data are built; ?version=3 selects it
+  const versions = (state.status.versions || [{ version: state.status.version, default: true, assemblies: state.status.assemblies }])
+    .filter((v) => v.assemblies.length || v.default);
+  const wanted = versionOf(new URLSearchParams(location.search).get("version"))?.version;
+  $("#gr-version").replaceChildren(...versions.map((v) => {
+    const label = document.createElement("label");
+    label.innerHTML = `<input type="radio" name="version" value="${v.version}" ${(wanted ? v.version === wanted : v.default) ? "checked" : ""}>
+      <span><b>GREAT ${escapeHTML(v.version)}</b><small>${escapeHTML(VERSION_NOTES[v.version] || "")}</small></span>`;
+    return label;
+  }));
+  $("#gr-version").hidden = versions.length < 2;
+  for (const radio of $$('input[name="version"]')) radio.addEventListener("change", renderAssemblies);
+  renderAssemblies();
+}
+
 function renderAssemblies() {
   const box = $("#gr-assembly");
-  const assemblies = state.status.assemblies;
+  const version = $('input[name="version"]:checked')?.value || state.status.version;
+  const assemblies = versionOf(version)?.assemblies || state.status.assemblies;
+  const previous = $('input[name="assembly"]:checked')?.value || new URLSearchParams(location.search).get("genome");
   box.replaceChildren(...assemblies.map((assembly, index) => {
     const [species, build] = ASSEMBLY_NAMES[assembly.name] || [assembly.species, assembly.name];
     const label = document.createElement("label");
@@ -109,24 +142,27 @@ function renderAssemblies() {
       <span><b>${escapeHTML(species)}</b> ${escapeHTML(build)}<small>${formatNumber(assembly.genes)} genes</small></span>`;
     return label;
   }));
+  $("#gr-submit").disabled = !assemblies.length;
   if (!assemblies.length) {
     box.innerHTML = '<p class="gr-error">No GREAT data on this server yet: run <code>tools/fetch_great_data.py</code> (see genome-canvas/README.md).</p>';
-    $("#gr-submit").disabled = true;
   }
-  const params = new URLSearchParams(location.search);
-  const wanted = params.get("genome");
-  const match = assemblies.find((a) => a.name === wanted);
+  const match = assemblies.find((a) => a.name === previous);
   if (match) $(`input[name="assembly"][value="${match.name}"]`).checked = true;
   const built = assemblies.map((a) => a.built).filter(Boolean).sort().pop();
-  const versions = new Map();
+  // ontology releases: a date when the release names one, else its label (MSigDB 2026.2.Hs, PANTHER 3.6.8 …)
+  const releases = new Map();
   for (const assembly of assemblies) {
     for (const o of assembly.ontologies) {
-      const date = /\d{4}-\d{2}-\d{2}/.exec(o.version || "");
-      if (date) versions.set(o.name, date[0]);
+      if (o.key === "EnsemblGenes") continue;
+      const release = /\d{4}-\d{2}-\d{2}/.exec(o.version || "")?.[0] || o.version;
+      if (!release) continue;
+      if (!releases.has(release)) releases.set(release, new Set());
+      releases.get(release).add(o.name);
     }
   }
+  const missing = assemblies[0]?.notBuilt?.length ? ` Not available any more: ${assemblies[0].notBuilt.join(", ")}.` : "";
   $("#gr-data-status").textContent = assemblies.length
-    ? `Genes, TSSs and curated regulatory domains: GREAT 4.0.4. Ontologies (built ${built}): ${[...versions].map(([name, date]) => `${name} ${date}`).join(", ")}.`
+    ? `Genes, TSSs and curated regulatory domains: GREAT ${version}. Ontologies (built ${built}): ${[...releases].map(([release, names]) => `${[...names].join(", ")} ${release}`).join("; ")}.${missing}`
     : "";
 }
 
@@ -229,6 +265,7 @@ async function submitForm(event) {
   const formElement = $("#gr-form");
   const data = new FormData();
   const value = (name) => formElement.elements[name]?.value;
+  data.append("version", $('input[name="version"]:checked')?.value || state.status.version);
   data.append("assembly", $('input[name="assembly"]:checked')?.value || "hg38");
   for (const name of ["rule", "upstream", "downstream", "span", "twoDistance", "oneDistance", "coordinates", "anchor"]) {
     const field = formElement.elements[name];
@@ -264,7 +301,7 @@ async function renderRecent() {
     $("#gr-recent-card").hidden = !jobs.length;
     $("#gr-recent-note").textContent = `kept ${state.status.limits.jobRetentionDays} days`;
     $("#gr-recent").innerHTML = `<thead><tr><th>Analysis</th><th>Assembly</th><th>Regions</th><th>Background</th><th>Submitted</th><th></th></tr></thead><tbody>${jobs.map((job) => `
-      <tr><td><a href="#job=${job.id}">${escapeHTML(job.name)}</a></td><td>${job.assembly}</td>
+      <tr><td><a href="#job=${job.id}">${escapeHTML(job.name)}</a></td><td>${job.assembly}${job.version && job.version !== state.status.version ? ` <small>GREAT ${escapeHTML(job.version)}</small>` : ""}</td>
       <td>${formatNumber(job.summary?.regions)}</td><td>${job.background === "regions" ? escapeHTML(job.backgroundName) : "whole genome"}</td>
       <td>${new Date(job.created * 1000).toLocaleString()}</td>
       <td><button class="icon-button ghost small" type="button" data-delete="${job.id}" title="Delete"><svg class="icon"><use href="#i-trash"/></svg></button></td></tr>`).join("")}</tbody>`;
@@ -759,12 +796,17 @@ source("${base}/rgreat.R")      # points rGREAT at this server
 job <- submitGreatJob(gr, genome = "hg38", request_interval = 0)
 tables <- getEnrichmentTables(job, category = "GO")
 regions <- getRegionGeneAssociations(job)
-plotRegionGeneAssociations(job)`;
+plotRegionGeneAssociations(job)
+# GREAT 3.0.0 (hg19, mm10, mm9; its ontologies such as MSigDB and InterPro)
+job3 <- submitGreatJob(gr, genome = "hg19", version = "3.0.0", request_interval = 0)`;
   $("#gr-api-batch").textContent = `# results of every ontology as a table (GREAT's batch mode)
 curl "${base}/public/cgi-bin/greatStart.php?outputType=batch&requestSpecies=hg38&requestURL=https%3A%2F%2Fexample.org%2Fpeaks.bed"
 # or post the file itself
 curl -F outputType=batch -F requestSpecies=hg38 -F requestFile=@peaks.bed.gz \\
-     "${base}/public/cgi-bin/greatStart.php" > great.tsv`;
+     "${base}/public/cgi-bin/greatStart.php" > great.tsv
+# GREAT 3.0.0: add version=3
+curl -F outputType=batch -F version=3 -F requestSpecies=hg19 -F requestFile=@peaks.bed.gz \\
+     "${base}/public/cgi-bin/greatStart.php" > great3.tsv`;
   $("#gr-api-python").textContent = `import requests, io, pandas as pd
 r = requests.post("${base}/public/cgi-bin/greatStart.php",
                   data={"outputType": "batch", "requestSpecies": "hg38",
@@ -774,7 +816,7 @@ r.raise_for_status()
 lines = r.text.splitlines()
 table = pd.read_csv(io.StringIO("\\n".join([lines[3].lstrip("# ")] + [l for l in lines[4:] if not l.startswith("#")])), sep="\\t")`;
   $("#gr-limits").textContent = `This server: ${limits.minIntervalSeconds ? `one analysis per ${limits.minIntervalSeconds} s per client` : "no minimum interval"}${limits.maxJobsPerHour ? `, ${limits.maxJobsPerHour} per hour` : ""}; up to ${formatNumber(limits.maxRegions)} regions, ${limits.maxUploadMB} MB; results kept ${limits.jobRetentionDays} days.${limits.apiEnabled ? "" : " The batch interface is turned off."}`;
-  $("#gr-footer").innerHTML = `GREAT ${state.status.version} reimplemented in Genome Canvas from GREAT's published code and documentation (McLean CY et al., <i>Nat Biotechnol</i> 28:495, 2010; Tanigawa Y et al., <i>Hum Genet</i> 2022). Please cite GREAT when you use these results.`;
+  $("#gr-footer").innerHTML = `GREAT ${(state.status.versions || [{ version: state.status.version }]).map((v) => v.version).join(" and ")} reimplemented in Genome Canvas from GREAT's published code and documentation (McLean CY et al., <i>Nat Biotechnol</i> 28:495, 2010; Tanigawa Y et al., <i>Hum Genet</i> 2022). Please cite GREAT when you use these results.`;
 }
 
 // ---------------------------------------------------------------- start
@@ -807,7 +849,7 @@ async function start() {
     $(".gr-intro").insertAdjacentHTML("beforeend", `<p class="gr-error">GREAT is not available: ${escapeHTML(error.message)}</p>`);
     return;
   }
-  renderAssemblies();
+  renderVersions();
   for (const container of $$(".gr-source")) sourcePicker(container);
   if (state.linkedTrack) $("#gr-fg-name").value = state.linkedTrack.name;
   renderAPI();

@@ -18,8 +18,8 @@
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="base.css?v=20261105.1">
-  <link rel="stylesheet" href="great.css?v=20261106.1">
-  <script type="module" src="great.mjs?v=20261106.1"></script>
+  <link rel="stylesheet" href="great.css?v=20261106.2">
+  <script type="module" src="great.mjs?v=20261106.2"></script>
 </head>
 <body class="great-page">
   <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -67,13 +67,15 @@
         <p>GREAT assigns each region to the genes whose regulatory domains it falls in, then tests GO terms, phenotypes
           and genes with a binomial test over regions and a hypergeometric test over genes
           (<a href="https://doi.org/10.1038/nbt.1630" target="_blank" rel="noopener">McLean et al. 2010</a>).
-          This server reproduces GREAT 4.0.4, whose original site is offline, and answers rGREAT and GREAT's batch API.</p>
+          This server reproduces GREAT 4.0.4, whose original site is offline, and GREAT 3.0.0 for earlier analyses,
+          and answers rGREAT and GREAT's batch API.</p>
         <p class="gr-status-line" id="gr-data-status"></p>
       </div>
 
       <form class="gr-card gr-form" id="gr-form" autocomplete="off">
         <div class="gr-step">
-          <h2><span>1</span>Species assembly</h2>
+          <h2><span>1</span>GREAT version and species assembly</h2>
+          <div class="gr-segmented" id="gr-version" role="radiogroup" aria-label="GREAT version"></div>
           <div class="gr-segmented" id="gr-assembly" role="radiogroup" aria-label="Species assembly"></div>
         </div>
 
@@ -212,7 +214,8 @@
         <div>
           <h3>GREAT batch interface</h3>
           <p>GREAT's Programming Interface: a tab-separated table of every ontology (<code>outputType=batch</code>) or a
-            results page (<code>web</code>). Besides <code>requestURL</code>, a file can be posted as <code>requestFile</code>.</p>
+            results page (<code>web</code>). Besides <code>requestURL</code>, a file can be posted as <code>requestFile</code>.
+            Add <code>version=3</code> (or call <code>public-3.0.0/cgi-bin/</code>) for GREAT 3.0.0; the default is 4.0.4.</p>
           <pre><code id="gr-api-batch"></code></pre>
         </div>
         <div>

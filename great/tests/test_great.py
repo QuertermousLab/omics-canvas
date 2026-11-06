@@ -22,7 +22,8 @@ GENES = [("G1", "GENE1", "chrA", 10000, "+"), ("G2", "GENE2", "chrA", 30000, "-"
 SIZES = {"chrA": 100000, "chrB": 50000}
 
 
-def write_assembly(folder, name="hg38"):
+def write_assembly(folder, name="hg38", label=""):
+    """data/<name>/ in folder; label starts the GO term names (GREAT 3.0.0's data in data/v3/ get "v3 ")."""
     folder = Path(folder) / name
     folder.mkdir(parents=True)
     (folder / "genes.tsv").write_text("#id\tchrom\ttss\tstrand\tsymbol\n" + "".join(
@@ -31,7 +32,8 @@ def write_assembly(folder, name="hg38"):
     (folder / "gaps.bed").write_text("chrA\t90000\t100000\n")
     (folder / "curated.tsv").write_text("#chrom\tstart\tend\tgene_id\tnote\nchrB\t0\t50000\tG4\ttest\n")
     ontologies = [("GOBiologicalProcess", "GO Biological Process", "GO",
-                   [["T:1", "term one"], ["T:2", "term two"], ["T:3", "term three"]], [[0, 1], [2], [3]]),
+                   [["T:1", label + "term one"], ["T:2", label + "term two"], ["T:3", label + "term three"]],
+                   [[0, 1], [2], [3]]),
                   ("EnsemblGenes", "Ensembl Genes", "Genes", [[g[0], g[1]] for g in GENES], [[0], [1], [2], [3]])]
     for key, title, category, terms, genes in ontologies:
         with gzip.open(str(folder / (key + ".json.gz")), "wt") as handle:
@@ -42,6 +44,12 @@ def write_assembly(folder, name="hg38"):
         "ontologies": [{"key": o[0], "name": o[1], "category": o[2], "terms": len(o[3]), "version": "test"}
                        for o in ontologies]}))
     return folder.parent
+
+
+def write_versions(folder):
+    """GREAT 4.0.4's hg38 and GREAT 3.0.0's hg19 (data/v3/hg19)."""
+    write_assembly(Path(folder) / "v3", "hg19", label="v3 ")
+    return write_assembly(folder)
 
 
 def binomial_exact(n, k, p):
@@ -210,11 +218,23 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(summary["associatedRegions"], 0)  # 10 kb around g4's TSS ends at 30 kb
 
 
+class VersionTests(unittest.TestCase):
+    def test_versions_and_their_data(self):
+        self.assertEqual([great.great_version(v) for v in ("", None, "4", "4.0", "v4", "4.0.4", "default")], ["4.0.4"] * 7)
+        self.assertEqual([great.great_version(v) for v in ("3", "3.0", "3.0.0", "V3")], ["3.0.0"] * 4)
+        with self.assertRaises(great.InputError):
+            great.great_version("2.0.2")
+        self.assertEqual((great.data_key("4.0.4", "hg38"), great.data_key("3", "hg19")), ("hg38", "v3/hg19"))
+        with self.assertRaises(great.InputError):
+            great.data_key("3.0.0", "hg38")  # GREAT 3.0.0 has hg19, mm10, mm9
+        self.assertEqual(great.job_key({"assembly": "mm10"}), "mm10")  # jobs from before versions: GREAT 4.0.4
+
+
 class ServiceTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.data = write_assembly(root / "data")
+        self.data = write_versions(root / "data")
         self.service = great_service.GreatService(self.data, root / "state")
 
     def tearDown(self):
@@ -236,6 +256,21 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(table[1:3], ["r1\tGENE1 (-4996)", "r2\tGENE1 (+10000), GENE2 (+9999)"])
         by_gene = great_service.association_table(self.service, job, "gene").splitlines()
         self.assertIn("GENE1\tr1 (-4996), r2 (+10000)", by_gene)
+
+    def test_great_3(self):
+        fg = b"chrA\t5000\t5010\tr1\nchrA\t20000\t20002\tr2\n"
+        job = self.service.submit("hg19", fg, client="10.0.0.9", version="3")
+        self.assertEqual((job["version"], job["assembly"]), ("3.0.0", "hg19"))
+        rows = {r[0]: r for r in self.service.rows(job["id"], "GOBiologicalProcess")}
+        self.assertEqual(rows["T:1"][1], "v3 term one")  # data/v3/hg19
+        self.assertTrue(great_service.export_tsv(self.service, job).startswith("# GREAT version 3.0.0 (Omics Canvas)"))
+        self.assertEqual(self.service.term(job["id"], "GOBiologicalProcess", "T:1")["name"], "v3 term one")
+        with self.assertRaises(great.InputError):
+            self.service.submit("hg38", fg, client="10.0.0.9", version="3.0.0")
+        with self.assertRaises(great.InputError):
+            self.service.submit("hg19", fg, client="10.0.0.9")  # GREAT 4.0.4's hg19 is not built here
+        self.assertEqual([(v["version"], [a["name"] for a in v["assemblies"]]) for v in self.service.versions()],
+                         [("4.0.4", ["hg38"]), ("3.0.0", ["hg19"])])
 
     def test_background_set_must_hold_the_test_set(self):
         job = self.service.submit("hg38", b"chrA\t5000\t5010\n", b"chrA\t70000\t70010\nchrB\t10\t20\n", client="10.0.0.2")
@@ -353,7 +388,7 @@ class InterfaceTests(unittest.TestCase):
         root = Path(self.temporary.name)
         self.canvas_httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeCanvas)
         threading.Thread(target=self.canvas_httpd.serve_forever, daemon=True).start()
-        self.service = great_service.GreatService(write_assembly(root / "data"), root / "state", admins=["alice"])
+        self.service = great_service.GreatService(write_versions(root / "data"), root / "state", admins=["alice"])
         canvas = server.Canvas("http://127.0.0.1:{}".format(self.canvas_httpd.server_address[1]), "/genome-canvas/")
         self.httpd = server.GreatServer(("127.0.0.1", 0), self.service, canvas)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
@@ -404,6 +439,32 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual((status, text), (200, ""))  # rGREAT: an expired job
         status, _, script = self.request("GET", "/great/rgreat.R")
         self.assertIn('sub("^https?://great\\\\.stanford\\\\.edu", server, urls)', script)
+
+    def test_great_3_through_rgreat_and_the_batch_interface(self):
+        bed = gzip.compress(b"chrA\t5000\t5010\t/chrA:5000-5010\n")
+        fields = {"species": "hg19", "rule": "basalPlusExt", "includeCuratedRegDoms": "1", "fgChoice": "file",
+                  "fgFile": ("file1.gz", bed), "bgChoice": "wholeGenome"}
+        body, content_type = multipart(fields)
+        status, _, page = self.request("POST", "/great/public-3.0.0/cgi-bin/greatWeb.php", body,
+                                       {"Content-Type": content_type})  # rGREAT's version = "3"
+        self.assertIn("GREAT 3.0.0 (Omics Canvas)", page)
+        job = re.search(r'var _sessionName = "(.*?)";', page).group(1)
+        status, _, text = self.request("GET", "/great/public-3.0.0/cgi-bin/readJsFromFile.php?path=/scratch/great/tmp/"
+                                              "results/{}.d/GOBiologicalProcess.js".format(job))
+        self.assertEqual(json.loads(text)[0][1], "v3 term one")
+        status, _, page = self.request("POST", "/great/public-2.0.2/cgi-bin/greatWeb.php", body,
+                                       {"Content-Type": content_type})
+        self.assertIn("GREAT version 2.0.2 is not available", page)
+        body, content_type = multipart({"outputType": "batch", "requestSpecies": "hg19", "version": "3",
+                                        "requestFile": ("x.bed", b"chrA\t5000\t5010\n")})
+        status, _, tsv = self.request("POST", "/great/public/cgi-bin/greatStart.php", body, {"Content-Type": content_type})
+        self.assertTrue(tsv.startswith("# GREAT version 3.0.0"), tsv[:200])
+        self.assertIn("v3 term one", tsv)
+        body, content_type = multipart({"assembly": "hg19", "version": "3.0.0", "fgText": "chrA:5,001-5,010\n"})
+        status, _, text = self.request("POST", "/great/api/jobs", body, {"Content-Type": content_type})
+        self.assertEqual(json.loads(text)["job"]["version"], "3.0.0")
+        versions = json.loads(self.request("GET", "/great/api/status")[2])["versions"]
+        self.assertEqual([v["version"] for v in versions], ["4.0.4", "3.0.0"])
 
     def test_user_errors_and_the_batch_interface(self):
         body, content_type = multipart({"species": "hg38", "fgFile": ("x.bed", b"chrZ\t1\t5\n")})

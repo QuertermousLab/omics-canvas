@@ -8,7 +8,8 @@ The gateway routes http://<server>:8892/great/ here (paths unchanged). Routes:
                                file APIs the page calls)
   /great/api/...               the page's API (jobs, results, term details, exports, settings, admin)
   /great/public*/cgi-bin/*.php GREAT's interfaces: greatWeb.php, readJsFromFile.php, downloadAllTSV.php,
-                               downloadAssociations.php, showTermDetails.php (rGREAT), greatStart.php (batch API)
+                               downloadAssociations.php, showTermDetails.php (rGREAT), greatStart.php (batch API);
+                               /great/public-3.0.0/… (rGREAT's version = "3") or a version=3 field runs GREAT 3.0.0
   /great/rgreat.R              points rGREAT at this server for an R session
 
 Sign-in: with OMICS_CANVAS_AUTH set (the lab server's unit), the page and its API need an Omics Canvas session
@@ -47,7 +48,7 @@ STATIC = {
     "base.css": "text/css; charset=utf-8",
     "favicon.svg": "image/svg+xml",
 }
-COMPAT = re.compile(r"/great/public(?:-[0-9.]+)?/cgi-bin/([A-Za-z]+)\.php")
+COMPAT = re.compile(r"/great/public(?:-([0-9.]+))?/cgi-bin/([A-Za-z]+)\.php")
 WORKSPACE_ID = re.compile(r"(?:home|manual)-[a-f0-9]{18}|local")
 GZIP_MIN_BYTES = 1400
 RGREAT_HELPER = r"""# Use rGREAT's online functions with the GREAT server of Omics Canvas (great.stanford.edu is offline).
@@ -55,6 +56,7 @@ RGREAT_HELPER = r"""# Use rGREAT's online functions with the GREAT server of Omi
 #   source("@SERVER@/rgreat.R")
 #   job <- submitGreatJob(gr, genome = "hg38", request_interval = 0)   # the server applies its own limits
 #   tables <- getEnrichmentTables(job)                                    # also getRegionGeneAssociations(job)
+#   job3 <- submitGreatJob(gr, genome = "hg19", version = "3.0.0", request_interval = 0)   # GREAT 3.0.0
 # It points rGREAT's server addresses (BASE_URL_LIST, every GREAT version) at this server for this R session.
 local({
   server <- "@SERVER@"
@@ -66,7 +68,7 @@ local({
     on.exit(lockBinding("BASE_URL_LIST", ns))
   }
   assign("BASE_URL_LIST", urls, envir = ns)
-  message("rGREAT now uses ", server, " (GREAT 4.0.4 compatible, Omics Canvas)")
+  message("rGREAT now uses ", server, " (GREAT 4.0.4 and 3.0.0, Omics Canvas)")
 })
 """
 
@@ -397,7 +399,7 @@ class GreatHandler(BaseHTTPRequestHandler):
             match = COMPAT.fullmatch(path)
             if match:
                 self.server_files = False
-                self.handle_compat(method, match.group(1), query)
+                self.handle_compat(method, match.group(2), query, match.group(1))
             elif not self.signed_in(path):
                 return
             elif path in ("/", "/great"):
@@ -469,7 +471,7 @@ class GreatHandler(BaseHTTPRequestHandler):
         if route == "status" and method == "GET":
             settings = great.settings()
             self.send_json({
-                "version": great_tools.GREAT_VERSION, "assemblies": great.assemblies(),
+                "version": great_tools.GREAT_VERSION, "assemblies": great.assemblies(), "versions": great.versions(),
                 "defaults": great_tools.DEFAULT_PARAMS, "admin": admin, "greatBase": self.public_base(),
                 "canvasBase": self.canvas.path, "workspace": workspace and {k: workspace.get(k) for k in ("id", "name", "kind")},
                 "user": self.identity and {k: self.identity.get(k) for k in ("user", "method", "admin")},
@@ -515,7 +517,8 @@ class GreatHandler(BaseHTTPRequestHandler):
                 if bg is None:
                     raise great_tools.InputError("Give the background regions, or choose the whole genome")
             job = great.submit(fields.get("assembly", "hg38"), fg, bg, fields, self.client(), owner, "web",
-                               fields.get("fgName") or fg_label, fields.get("bgName") or bg_label)
+                               fields.get("fgName") or fg_label, fields.get("bgName") or bg_label,
+                               version=fields.get("version") or q("version"))
             self.send_json({"job": great_service.public_job(job)})
         elif route.startswith("jobs/"):
             parts = route.split("/")
@@ -548,8 +551,9 @@ class GreatHandler(BaseHTTPRequestHandler):
         else:
             raise FileNotFoundError("Not found")
 
-    def handle_compat(self, method, name, query):
-        """GREAT's .php interfaces (rGREAT and the GREAT Programming Interface)."""
+    def handle_compat(self, method, name, query, path_version=None):
+        """GREAT's .php interfaces (rGREAT and the GREAT Programming Interface). The version is the path's
+        (/great/public-3.0.0/cgi-bin/, as rGREAT's version argument chooses), else a version field, else 4.0.4."""
         great = self.great
         fields = {k: v[0] for k, v in query.items()}
         html_type = "text/html; charset=utf-8"
@@ -570,6 +574,7 @@ class GreatHandler(BaseHTTPRequestHandler):
         workspace = self.workspace()
         client, owner = self.client(), workspace["id"] if workspace else None
         agent = self.headers.get("User-Agent", "").lower()
+        version = path_version or fields.get("version")
         if name == "greatWeb":
             if method == "GET" and not fields:
                 self.send_redirect(self.public_base() + "/")
@@ -584,7 +589,8 @@ class GreatHandler(BaseHTTPRequestHandler):
                     if bg is None:
                         raise great_tools.InputError("No background regions were sent (bgFile)")
                 job = great.submit(fields.get("species") or "hg19", fg, bg, fields, client, owner,
-                                   "rGREAT" if "rgreat" in agent or "libcurl" in agent else "greatWeb", label, bg_label)
+                                   "rGREAT" if "rgreat" in agent or "libcurl" in agent else "greatWeb", label, bg_label,
+                                   version=version)
                 self.send_text(great_service.session_page(job, self.ui_url(job["id"])), html_type)
             except great_tools.InputError as exc:
                 self.send_text(great_service.error_page(str(exc)), html_type)
@@ -635,7 +641,8 @@ class GreatHandler(BaseHTTPRequestHandler):
                 title = ": ".join(x for x in (fields.get("requestSender", ""), fields.get("requestName", "")) if x)
                 job = great.submit(fields.get("requestSpecies") or fields.get("species") or "hg19", fg, bg, fields, client,
                                    owner, "batch" if batch else "greatStart", title or label or "external data",
-                                   fields.get("bgName") or bg_label or ("external background data" if bg else ""))
+                                   fields.get("bgName") or bg_label or ("external background data" if bg else ""),
+                                   version=version)
                 if batch:
                     self.send_text(great_service.export_tsv(great, job))
                 else:

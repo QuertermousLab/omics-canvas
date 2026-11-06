@@ -146,6 +146,11 @@ it and tests GO terms, mouse and human phenotypes and single genes.
   Scripts can use GREAT's batch interface, e.g. `curl -F outputType=batch -F requestSpecies=hg38 -F
   requestFile=@peaks.bed.gz http://171.65.68.140:8892/great/public/cgi-bin/greatStart.php`; the
   **API & rGREAT** section at the bottom of the page lists these with the server's current limits.
+- **GREAT 3.0.0**: step 1 of the form chooses the GREAT version (4.0.4 by default). GREAT 3.0.0 (hg19, mm10, mm9) uses
+  its own gene sets and its larger list of ontologies (Disease Ontology, MSigDB, PANTHER, MGI Expression, InterPro,
+  TreeFam, HGNC gene families), rebuilt from current releases, for consistency with analyses made with it. From R:
+  `submitGreatJob(gr, genome = "hg19", version = "3.0.0", request_interval = 0)`; in scripts add `version=3`
+  (or call `…/great/public-3.0.0/cgi-bin/`). `?version=3` in the page's address selects it.
 
 ## 3. Spatial viewer
 

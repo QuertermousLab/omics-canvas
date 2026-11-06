@@ -259,25 +259,33 @@ class GreatService:
 
     # ---------- data
 
-    def assemblies(self):
+    def assemblies(self, version=great.GREAT_VERSION):
+        """The built assemblies of one GREAT version."""
         out = []
-        for name in great.ASSEMBLIES:
-            path = self.data_dir / name / "manifest.json"
+        for name in great.VERSIONS[version][1]:
+            key = great.data_key(version, name)
+            path = self.data_dir / key / "manifest.json"
             try:
                 stat = path.stat()
             except OSError:
                 continue
-            cached = self.manifests.get(name)
+            cached = self.manifests.get(key)
             if not cached or cached[0] != stat.st_mtime_ns:
                 cached = (stat.st_mtime_ns, json.loads(path.read_text()))
-                self.manifests[name] = cached
+                self.manifests[key] = cached
             manifest = cached[1]
             out.append({"name": name, "species": great.SPECIES[name], "genes": manifest.get("genes"),
-                        "built": manifest.get("built"), "ontologies": manifest.get("ontologies", [])})
+                        "built": manifest.get("built"), "ontologies": manifest.get("ontologies", []),
+                        "notBuilt": manifest.get("notBuilt", [])})
         return out
 
-    def available(self, assembly):
-        return any(a["name"] == assembly for a in self.assemblies())
+    def versions(self):
+        """Every GREAT version with its built assemblies, the default first."""
+        return [{"version": v, "default": v == great.GREAT_VERSION, "assemblies": self.assemblies(v)}
+                for v in great.VERSIONS]
+
+    def available(self, assembly, version=great.GREAT_VERSION):
+        return any(a["name"] == assembly for a in self.assemblies(version))
 
     def warm(self, assemblies=("hg38",)):
         names = [a for a in assemblies if self.available(a)]
@@ -364,7 +372,8 @@ class GreatService:
             created = job.get("created") or newest or now
             records.append({
                 "id": folder.name, "name": job.get("name", ""), "owner": job.get("owner"), "client": job.get("client", ""),
-                "assembly": job.get("assembly", ""), "source": job.get("source", ""), "status": job.get("status", "?"),
+                "assembly": job.get("assembly", ""), "version": job.get("version") or great.GREAT_VERSION,
+                "source": job.get("source", ""), "status": job.get("status", "?"),
                 "regions": (job.get("summary") or {}).get("regions"), "background": job.get("background", ""),
                 "created": created, "ageDays": round((now - created) / 86400, 2), "bytes": size,
                 "running": folder.name in self.running,
@@ -447,14 +456,18 @@ class GreatService:
         self.maintenance.start()
 
     def submit(self, assembly, fg_bytes, bg_bytes=None, raw_params=None, client="", owner=None, source="web",
-               name="", bg_name=""):
-        """Read the regions, wait for the limits, run the analysis; returns the finished job (job.json)."""
+               name="", bg_name="", version=None):
+        """Read the regions, wait for the limits, run the analysis with GREAT `version` (4.0.4, 3.0.0; aliases such
+        as 3 are accepted); returns the finished job (job.json)."""
         s = self.settings()
-        if not self.available(assembly):
-            raise great.InputError("Assembly {} is not available on this server (available: {})".format(
-                assembly, ", ".join(a["name"] for a in self.assemblies()) or "none; run tools/fetch_great_data.py"))
+        version = great.great_version(version)
+        if not self.available(assembly, version):
+            raise great.InputError("Assembly {} is not available for GREAT {} on this server (available: {})".format(
+                assembly, version, ", ".join(a["name"] for a in self.assemblies(version))
+                or "none; run tools/fetch_great_data.py"))
+        key = great.data_key(version, assembly)
         params = great.normalized_params(raw_params or {})
-        sizes = self._sizes(assembly)
+        sizes = self._sizes(key)
         maximum = int(s["maxUploadMB"]) * 1048576
         fg, fg_report = great.read_regions(fg_bytes, sizes, params["coordinates"], maximum, int(s["maxRegions"]))
         bg, bg_report, warnings = None, None, []
@@ -473,12 +486,12 @@ class GreatService:
         self.admit(client)
         job_id = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(4)
         with self.lock:
-            self.running[job_id] = {"client": client, "assembly": assembly, "started": time.time(),
+            self.running[job_id] = {"client": client, "assembly": assembly, "version": version, "started": time.time(),
                                     "regions": len(fg), "source": source}
         folder = self.jobs_dir / job_id
         try:
             folder.mkdir(parents=True)
-            job = {"id": job_id, "version": great.GREAT_VERSION, "created": time.time(), "assembly": assembly,
+            job = {"id": job_id, "version": version, "created": time.time(), "assembly": assembly,
                    "params": params, "rule": great.rule_description(params), "name": name or "Test regions",
                    "backgroundName": bg_name or ("Background regions" if bg is not None else ""),
                    "background": "regions" if bg is not None else "wholeGenome", "client": client, "owner": owner,
@@ -489,7 +502,7 @@ class GreatService:
             if bg is not None:
                 great.write_job_regions(folder, "bg.tsv.gz", bg)
             started = time.time()
-            self.pool.call({"op": "analyze", "job": str(folder)}, assembly=assembly)
+            self.pool.call({"op": "analyze", "job": str(folder)}, assembly=key)
             job = json.loads((folder / "job.json").read_text())
             job["seconds"] = round(time.time() - started, 2)
             (folder / "job.json").write_text(json.dumps(job))
@@ -506,9 +519,9 @@ class GreatService:
         self.sweep()
         return job
 
-    def _sizes(self, assembly):
+    def _sizes(self, key):
         sizes = OrderedDict()
-        with open(str(self.data_dir / assembly / "chrom.sizes")) as handle:
+        with open(str(self.data_dir / key / "chrom.sizes")) as handle:
             for line in handle:
                 f = line.split()
                 if len(f) >= 2:
@@ -524,12 +537,12 @@ class GreatService:
     def term(self, job_id, ontology, term_id):
         job = self.job(job_id)
         return self.pool.call({"op": "term", "job": str(self.job_dir(job_id)), "ontology": ontology,
-                               "term": term_id}, assembly=job["assembly"], timeout=300)
+                               "term": term_id}, assembly=great.job_key(job), timeout=300)
 
     def names(self, job_id, ontology, term_ids):
         job = self.job(job_id)
         return self.pool.call({"op": "names", "job": str(self.job_dir(job_id)), "ontology": ontology,
-                               "terms": list(term_ids)}, assembly=job["assembly"], timeout=600)
+                               "terms": list(term_ids)}, assembly=great.job_key(job), timeout=600)
 
     def jobs_of(self, owner, limit=50):
         out = []
@@ -629,7 +642,7 @@ def session_page(job, ui_url):
             "{warnings}<div class=\"gc_ontologies\">{cells}</div>"
             "<script>if (!/rgreat|curl|wget|python/i.test(navigator.userAgent)) location.replace({url_js});</script>"
             "</body></html>").format(
-        id=job["id"], version=great.GREAT_VERSION, url=html.escape(ui_url), regions=job["summary"]["regions"],
+        id=job["id"], version=html.escape(job.get("version") or great.GREAT_VERSION), url=html.escape(ui_url), regions=job["summary"]["regions"],
         assembly=html.escape(job["assembly"]), warnings=warnings, cells="".join(cells), url_js=json.dumps(ui_url))
 
 
@@ -653,7 +666,7 @@ def export_header(job, columns):
         job.get("backgroundName") or "Background regions", job["summary"].get("backgroundRegions", 0))
     return [
         "# GREAT version {} (Omics Canvas)\tSpecies assembly: {}\tAssociation rule: {}".format(
-            great.GREAT_VERSION, job["assembly"], job.get("rule") or great.rule_description(params)),
+            job.get("version") or great.GREAT_VERSION, job["assembly"], job.get("rule") or great.rule_description(params)),
         "# Test set: {}\tBackground: {}\tJob: {}".format(fg, bg, job["id"]),
         "# Output generated on {}".format(time.strftime("%Y-%m-%d %H:%M:%S %Z")),
         "# " + "\t".join(columns),
@@ -720,7 +733,7 @@ def association_table(service, job, kind="region", ontology=None, term=None):
     """downloadAssociations.php: region -> "GENE (+distance), ..." (or NONE), or gene -> regions."""
     params = job["params"]
     header = "# GREAT version {} (Omics Canvas)\tSpecies assembly: {}\tAssociation rule: {}".format(
-        great.GREAT_VERSION, job["assembly"], job.get("rule") or great.rule_description(params))
+        job.get("version") or great.GREAT_VERSION, job["assembly"], job.get("rule") or great.rule_description(params))
     folder = service.job_dir(job["id"])
     if ontology and term:
         details = service.term(job["id"], ontology, term)
@@ -732,7 +745,7 @@ def association_table(service, job, kind="region", ontology=None, term=None):
                      for r in details["byRegion"]]
         return "\n".join([header, "# Term: {} {} ({})".format(term, details["name"], details["ontologyName"])] +
                          lines) + "\n"
-    symbols = [g[0] for g in _symbols(service, job["assembly"])]
+    symbols = [g[0] for g in _symbols(service, great.job_key(job))]
     associations = great.read_associations(folder)
     if kind == "gene":
         by_gene = OrderedDict()
@@ -750,23 +763,23 @@ def association_table(service, job, kind="region", ontology=None, term=None):
 _SYMBOLS = {}
 
 
-def _symbols(service, assembly):
-    path = service.data_dir / assembly / "genes.tsv"
+def _symbols(service, key):
+    path = service.data_dir / key / "genes.tsv"
     stamp = path.stat().st_mtime_ns
-    if _SYMBOLS.get(assembly, (None,))[0] != stamp:
+    if _SYMBOLS.get(key, (None,))[0] != stamp:
         genes = []
         with open(str(path)) as handle:
             for line in handle:
                 if not line.startswith("#") and line.strip():
                     f = line.rstrip("\n").split("\t")
                     genes.append((f[4], f[0]))
-        _SYMBOLS[assembly] = (stamp, genes)
-    return _SYMBOLS[assembly][1]
+        _SYMBOLS[key] = (stamp, genes)
+    return _SYMBOLS[key][1]
 
 
-def symbols(service, assembly):
-    """[(symbol, Ensembl id)] in the assembly's gene order."""
-    return _symbols(service, assembly)
+def symbols(service, key):
+    """[(symbol, Ensembl id)] in the gene order of a data key (great.data_key)."""
+    return _symbols(service, key)
 
 
 def term_bed(service, job, ontology, term):
