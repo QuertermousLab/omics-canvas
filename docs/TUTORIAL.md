@@ -30,11 +30,6 @@ Open **http://171.65.68.140:8892** (THOR). From outside Stanford, connect to the
   visit); without it you are signed out when the browser closes. **Sign out** is in the top bar of every page.
 - Five wrong passwords in a row lock the account and the computer out for 15 minutes. JupyterLab (`/lab`) keeps its
   own sign-in, and GREAT's programming interfaces (rGREAT, `greatStart.php`) work without signing in.
-- **Admin** (administrators, `/admin/`): access passwords (add one with a name and an expiry date — it is shown once;
-  disable, extend or delete it later, which signs out everyone who used it), everyone signed in (sign a session out),
-  the sign-in settings and log, and GREAT's settings.
-
-![Admin page](images/admin-sign-in.png)
 
 The home page (`/`; every module has its own address below it: `/genome-canvas/`, `/great/`, `/spatial/`,
 `/single-cell/`, `/crispr/`) groups the modules — *Genome and regions* (Genome Canvas, GREAT) and *Single-cell, spatial
@@ -150,12 +145,6 @@ it and tests GO terms, mouse and human phenotypes and single genes.
   Scripts can use GREAT's batch interface, e.g. `curl -F outputType=batch -F requestSpecies=hg38 -F
   requestFile=@peaks.bed.gz http://171.65.68.140:8892/great/public/cgi-bin/greatStart.php`; the
   **API & rGREAT** section at the bottom of the page lists these with the server's current limits.
-- **Admin**: administrators open the admin page's **GREAT** tab (`/admin/#great`, or **Admin** in GREAT's top bar):
-  request limits — the minimum interval between analyses per client, analyses per hour and at once, how long requests
-  wait in the queue, region and file size limits, how long results are kept and how much space they may take — change
-  at once, without a restart. **Stored analyses** lists everyone's results with their size and age: delete the
-  selected ones, those older than a number of days, or all; **Apply retention and storage limit now** runs the
-  automatic cleanup, which otherwise runs every 10 minutes. It also shows running and waiting analyses.
 
 ## 3. Spatial viewer
 
