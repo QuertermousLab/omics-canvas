@@ -1512,9 +1512,17 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             "Path={}".format(self.cookie_path()),
             "HttpOnly",
             "SameSite=Lax",
-            "Max-Age={}".format(maximum_age),
         ]
+        if maximum_age <= 0 or not self.signed_in_with_access_password():
+            pieces.append("Max-Age={}".format(maximum_age))
+        # else: people signed in with an access password choose a workspace again in each browser session
         return "; ".join(pieces)
+
+    def signed_in_with_access_password(self):
+        if SIGN_IN is None:
+            return False
+        identity = SIGN_IN.identity(self.headers, self.client_address[0])
+        return bool(identity) and identity.get("method") == "password"
 
     @staticmethod
     def public_workspace(workspace):

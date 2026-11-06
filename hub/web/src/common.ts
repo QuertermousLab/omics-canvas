@@ -131,7 +131,9 @@ const PAGE_TITLE: Record<string, string> = { hub: '', spatial: 'Spatial viewer',
 /** Top bar: page title, theme toggle, workspace chip; the desktop app bridge. */
 export function initChrome(navId: string) {
   // signed in to Omics Canvas (auth/): who, sign out, the admin page for administrators
-  fetch('/auth/api/me').then((r) => (r.ok ? r.json() : null)).then((me: { user: string; admin: boolean } | null) => {
+  fetch('/auth/api/me').then((r) => (r.ok ? r.json() : null)).then((me: { user: string; admin: boolean; method: string } | null) => {
+    // signed in with an access password: choose a workspace at the start of each visit (THOR accounts open in Home)
+    if (me?.method === 'password') loadWorkspace().then((w) => { if (!w) chooseWorkspace(); });
     const box = document.querySelector<HTMLElement>('[data-signed-in]');
     if (!me || !box) return;
     box.hidden = false;

@@ -991,6 +991,20 @@ static NSDictionary<NSString *, NSString *> *TVViewerForPath(NSString *path) {
     if (components.URL) [[NSWorkspace sharedWorkspace] openURL:components.URL];
 }
 
+// the server's sign-in (auth/): end this session; the sign-in page opens in the window and leads back to this page
+- (void)signOut:(id)sender {
+    NSURL *root = [self serverRoot];
+    if (!root) { NSBeep(); return; }
+    NSURLComponents *page = self.webView.URL ? [NSURLComponents componentsWithURL:self.webView.URL resolvingAgainstBaseURL:NO] : nil;
+    NSString *next = [self viewerPagePath];
+    if (page && TVViewerForPath(page.path ?: @"")) next = page.percentEncodedQuery.length ? [NSString stringWithFormat:@"%@?%@", page.percentEncodedPath, page.percentEncodedQuery] : page.percentEncodedPath;
+    NSURLComponents *components = [NSURLComponents componentsWithURL:root resolvingAgainstBaseURL:NO];
+    components.path = @"/auth/logout";
+    components.queryItems = @[[NSURLQueryItem queryItemWithName:@"next" value:next]];
+    [self setStatus:@"Signing out" state:@"busy"];
+    [self.webView loadRequest:[NSURLRequest requestWithURL:components.URL]];
+}
+
 - (void)editServerAddress:(id)sender {
     [self.connection editInWindow:self.window title:@"Connect to an Omics Canvas Server"
                           message:@"The gateway's address and port (default 171.65.68.140:8892, the lab server THOR). From outside Stanford connect the VPN — or reach the server through SSH port forwarding with your account on it."
@@ -1570,6 +1584,7 @@ static NSArray *TVSamples(NSDictionary *dataset) {
     [applicationMenu addItemWithTitle:@"About Omics Canvas" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
     [applicationMenu addItem:[NSMenuItem separatorItem]];
     [applicationMenu addItem:[self menuItem:@"Connect to Server…" action:@selector(editServerAddress:) key:@"," modifiers:0]];
+    [applicationMenu addItem:[self menuItem:@"Sign Out" action:@selector(signOut:) key:@"" modifiers:0]];
     [applicationMenu addItem:[NSMenuItem separatorItem]];
     [applicationMenu addItemWithTitle:@"Hide Omics Canvas" action:@selector(hide:) keyEquivalent:@"h"];
     [applicationMenu addItemWithTitle:@"Quit Omics Canvas" action:@selector(terminate:) keyEquivalent:@"q"];

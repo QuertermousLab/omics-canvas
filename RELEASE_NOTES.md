@@ -3,6 +3,7 @@ and **Genome Canvas 1.10.0** (genome browser).
 
 ## Genome Canvas 1.10.0
 
+- **Sign Out** (**Genome Canvas → Sign Out**) when the server asks for sign-in; server mode only
 - **GREAT enrichment**: a button under **Liftover** / **LocusCompare** (or **File → GREAT Enrichment…**, ⌥⌘G, or a region track's right-click menu → **GREAT enrichment of these regions…**, which takes that track as the test regions) opens the server's GREAT page (`/great/`) in your browser: GO terms, phenotypes and genes enriched near a set of regions, computed as GREAT 4.0.4 did, with its tables, graphs and term pages; rGREAT and scripts can use the same server. Server mode only
 - **LocusCompare**: a button next to **Liftover** (or **File → LocusCompare…**, ⌥⌘C, or a GWAS track's right-click menu, or a SNP's popup) compares a GWAS track in view with GTEx eQTLs of one gene, as locuscompare.com does: each variant's GWAS and eQTL −log₁₀ P against each other and a LocusZoom panel for each, colored by LD with the lead SNP (1000 Genomes EUR, AFR, AMR, EAS, SAS or ALL, or the study's own LD). Pick the tissue, gene and region; click a point to make it the lead; download SVG, PNG or the table. Server mode only
 - **Export PNG** (and every exported figure) is set in Arial
@@ -13,6 +14,7 @@ and **Genome Canvas 1.10.0** (genome browser).
 
 ## Omics Canvas 1.4.0
 
+- **Sign Out** in the application menu (Genome Canvas.app too, in server mode)
 - **Sign-in**: when the server asks for sign-in (THOR account or access password), its sign-in page opens in the window; with **Keep me signed in** the app stays signed in for a year. Genome Canvas.app shows it the same way (This Mac mode needs none)
 - **Server and port**: **Server…** (⌘,) sets the server address and port (default THOR, 171.65.68.140 port 8892)
 - **SSH port forwarding** for servers you cannot reach directly — off campus without the VPN, or a server that only

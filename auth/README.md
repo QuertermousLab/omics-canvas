@@ -28,6 +28,11 @@ the server's files.
 - Sessions with "keep me signed in" end `rememberDays` (365) after their last use, others when the browser closes or
   after `idleHours` (12) without use. A session of an access password ends when the password expires, is disabled or
   deleted.
+- Workspaces (Genome Canvas's `genome_canvas_workspace` cookie, `Path=/genome-canvas/`, also used by the hub and
+  GREAT): signing in with a THOR account selects that account's Home workspace (`/home/<account>`, `--home-root`);
+  an access password, and signing out, clear it, and Genome Canvas keeps an access-password visitor's choice only for
+  the browser session, so they choose a workspace on each visit (the home page opens the chooser).
+- `/auth/logout?next=<page>` signs out and returns to that page after signing in again (the Mac apps' **Sign Out**).
 - Failed sign-ins: 5 within 15 minutes lock that address, and that account, for 15 minutes (settings).
 
 ## THOR account passwords

@@ -23,9 +23,10 @@ Open **http://171.65.68.140:8892** (THOR). From outside Stanford, connect to the
 
 ![Sign-in page](images/sign-in.png)
 
-- **THOR account**: your THOR account name and password (the same as for SSH).
+- **THOR account**: your THOR account name and password (the same as for SSH). You start in your **Home** workspace
+  (switch any time from the workspace button).
 - **Access password**: for people without a THOR account; the administrator gives it out, and it works until its
-  expiry date.
+  expiry date. You choose a workspace each time you visit.
 - **Keep me signed in on this computer** keeps you signed in for a year in this browser (counted from your last
   visit); without it you are signed out when the browser closes. **Sign out** is in the top bar of every page.
 - Five wrong passwords in a row lock the account and the computer out for 15 minutes. JupyterLab (`/lab`) keeps its
@@ -364,7 +365,8 @@ xattr -dr com.apple.quarantine "/Applications/Omics Canvas.app" "/Applications/G
 ```
 
 Both apps show the server's sign-in page in their window the first time; with **Keep me signed in** they stay signed
-in for a year. Genome Canvas.app's This Mac mode needs no sign-in.
+in for a year. **Sign Out** is in the application menu (**Omics Canvas → Sign Out**, **Genome Canvas → Sign Out**).
+Genome Canvas.app's This Mac mode needs no sign-in.
 
 **Genome Canvas.app** — the genome browser in a native window: the same canvas with a native track list, genome and
 locus fields, highlight tools and workspace menu. **Server** uses THOR's files; **This Mac** starts a built-in backend

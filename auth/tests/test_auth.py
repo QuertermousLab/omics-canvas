@@ -120,7 +120,8 @@ class ServerTests(unittest.TestCase):
         verify.check_password = lambda user, password, state_dir, how=None: (user, password) in (("alice", "a-secret"), ("bob", "b-secret"))
         verify.account_allowed = lambda user, settings: None if user in ("alice", "bob") else "no such account"
         rsa.KeyPair = lambda: KEY
-        self.httpd = server.AuthServer(("127.0.0.1", 0), store)
+        (Path(self.temporary.name) / "home" / "alice").mkdir(parents=True)  # bob has no Home folder
+        self.httpd = server.AuthServer(("127.0.0.1", 0), store, home_root=str(Path(self.temporary.name) / "home"))
         self.httpd.verifier = lambda: "pam"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
@@ -158,11 +159,31 @@ class ServerTests(unittest.TestCase):
         status, _, me, _ = self.request("GET", "/auth/api/me", headers=jar)
         self.assertEqual((status, me["user"], me["admin"]), (200, "alice", True))
         status, cookie, _, _ = self.sign_in("bob", "b-secret", remember=False, next_path="//evil.example/")
-        self.assertNotIn("Max-Age", cookie)
+        self.assertNotIn("Max-Age", cookie.split(", genome_canvas_workspace=")[0])
         status, _, _, _ = self.request("GET", "/admin/api/overview", headers={"Cookie": cookie.split(";")[0]})
         self.assertEqual(status, 403)  # bob is not an administrator
         status, _, _, _ = self.request("POST", "/auth/api/logout", headers=jar)
         self.assertEqual(self.request("GET", "/auth/api/me", headers=jar)[0], 401)
+
+    def test_workspace_at_sign_in(self):
+        # a THOR account opens in its Home workspace (Genome Canvas's id); access passwords and sign-outs choose again
+        cookies = lambda response: response.msg.get_all("Set-Cookie")
+        home = Path(self.temporary.name) / "home" / "alice"
+        _, _, _, response = self.sign_in("alice", "a-secret")
+        workspace = [c for c in cookies(response) if c.startswith("genome_canvas_workspace=")]
+        self.assertEqual(workspace, ["genome_canvas_workspace={}; Path=/genome-canvas/; HttpOnly; SameSite=Lax; Max-Age=31536000"
+                                     .format(server.home_workspace_id(home))])
+        self.assertEqual(server.home_workspace_id("/home/quanyiz"), "home-e65e0844ab1d421fe5")  # as genome-canvas/server.py
+        jar = {"Cookie": cookies(response)[0].split(";")[0]}
+        _, _, _, response = self.sign_in("bob", "b-secret")
+        self.assertIn("genome_canvas_workspace=; Path=/genome-canvas/; HttpOnly; SameSite=Lax; Max-Age=0", cookies(response))
+        _, _, created, _ = self.request("POST", "/admin/api/passwords", {"label": "visitor"}, jar)
+        _, _, _, response = self.sign_in("", created["password"], mode="password")
+        self.assertIn("genome_canvas_workspace=; Path=/genome-canvas/; HttpOnly; SameSite=Lax; Max-Age=0", cookies(response))
+        status, _, _, response = self.request("GET", "/auth/logout?next=%2Fspatial%2F%3Fdesktop%3D1", headers=jar)
+        self.assertEqual((status, response.getheader("Location")), (302, "/auth/login?next=%2Fspatial%2F%3Fdesktop%3D1"))
+        self.assertIn("genome_canvas_workspace=; Path=/genome-canvas/; HttpOnly; SameSite=Lax; Max-Age=0", cookies(response))
+        self.assertEqual(self.request("GET", "/auth/logout", headers=jar)[3].getheader("Location"), "/auth/login")
 
     def test_wrong_passwords_lock_out_and_old_forms_fail(self):
         for _ in range(5):

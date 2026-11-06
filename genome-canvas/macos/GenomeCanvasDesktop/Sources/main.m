@@ -418,6 +418,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 @property(nonatomic, strong) NSMenuItem *openFilesMenuItem;
 @property(nonatomic, strong) NSMenuItem *localBackendMenuItem;
 @property(nonatomic, strong) NSMenuItem *remoteServerMenuItem;
+@property(nonatomic, strong) NSMenuItem *signOutMenuItem;
 @property(nonatomic, strong) NSArray<NSMenuItem *> *appearanceMenuItems;
 @property(nonatomic, strong) NSPopUpButton *genomePopup;
 @property(nonatomic, strong) NSTextField *locusField;
@@ -1201,6 +1202,9 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.remoteServerMenuItem = [[NSMenuItem alloc] initWithTitle:@"Connect to Server…" action:@selector(editServerAddress:) keyEquivalent:@","];
     self.remoteServerMenuItem.target = self;
     [applicationMenu addItem:self.remoteServerMenuItem];
+    self.signOutMenuItem = [[NSMenuItem alloc] initWithTitle:@"Sign Out" action:@selector(signOut:) keyEquivalent:@""];
+    self.signOutMenuItem.target = self;
+    [applicationMenu addItem:self.signOutMenuItem];
     [applicationMenu addItem:[NSMenuItem separatorItem]];
     [applicationMenu addItemWithTitle:@"Hide Genome Canvas" action:@selector(hide:) keyEquivalent:@"h"];
     [applicationMenu addItemWithTitle:@"Quit Genome Canvas" action:@selector(terminate:) keyEquivalent:@"q"];
@@ -1308,6 +1312,7 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
     self.openFilesMenuItem.title = self.localMode ? @"Open Local Files…" : @"Open Server Files…";
     self.localBackendMenuItem.state = self.localMode ? NSControlStateValueOn : NSControlStateValueOff;
     self.remoteServerMenuItem.state = self.localMode ? NSControlStateValueOff : NSControlStateValueOn;
+    self.signOutMenuItem.hidden = self.localMode;  // signing in is the server's (Omics Canvas sign-in)
     self.window.subtitle = self.localMode ? @"Local genomics workbench" : @"Server-connected genomics workbench";
     self.serverModeButton.toolTip = [NSString stringWithFormat:@"Server: %@ — click to change (also SSH port forwarding)", self.connection.summary];
 }
@@ -1791,6 +1796,23 @@ typedef NS_ENUM(NSInteger, GCButtonStyle) {
 - (void)shareView:(id)sender { [self callDesktopMethod:@"share" arguments:@[]]; }
 - (void)exportPNG:(id)sender { [self callDesktopMethod:@"exportPNG" arguments:@[]]; }
 - (void)removeSelectedTrack:(id)sender { NSInteger row = self.trackTable.selectedRow; if (row >= 0) [self callDesktopMethod:@"removeTrack" arguments:@[@(row)]]; }
+
+// the server's sign-in (auth/): end this session; the sign-in page opens in the window and leads back to the canvas
+- (void)signOut:(id)sender {
+    NSURL *server = self.webView.URL.host.length ? self.webView.URL : [self normalizedURL:self.serverAddress];
+    if (self.localMode || !server) { NSBeep(); return; }
+    NSURLComponents *page = [NSURLComponents componentsWithURL:server resolvingAgainstBaseURL:NO];
+    NSString *next = @"/genome-canvas/";
+    if ([page.percentEncodedPath hasPrefix:@"/genome-canvas/"]) next = page.percentEncodedQuery.length ? [NSString stringWithFormat:@"%@?%@", page.percentEncodedPath, page.percentEncodedQuery] : page.percentEncodedPath;
+    NSURLComponents *components = [NSURLComponents new];
+    components.scheme = page.scheme;
+    components.host = page.host;
+    components.port = page.port;
+    components.path = @"/auth/logout";
+    components.queryItems = @[[NSURLQueryItem queryItemWithName:@"next" value:next]];
+    [self setStatus:@"Signing out" state:@"busy"];
+    [self.webView loadRequest:[NSURLRequest requestWithURL:components.URL]];
+}
 
 - (void)editServerAddress:(id)sender {
     [self.connection editInWindow:self.window title:@"Connect to Genome Canvas Server"

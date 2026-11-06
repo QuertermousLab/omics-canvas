@@ -1,5 +1,6 @@
 import http.client
 import importlib.util
+import json
 import tempfile
 import threading
 import unittest
@@ -57,6 +58,29 @@ class SignInTests(unittest.TestCase):
         server.SIGN_IN.store.delete_session(self.token)
         server.SIGN_IN.cache.clear()
         self.assertEqual(self.request("/api/workspaces", cookie)[0], 401)
+
+    def test_access_password_workspaces_last_one_browser_session(self):
+        # THOR accounts keep their workspace for a year; people with an access password choose it on each visit
+        password_id = server.SIGN_IN.store.add_password("visitor", "a long access password")
+        guest = server.SIGN_IN.store.create_session("guest: visitor", "password", True, password_id=password_id)
+
+        def create(token, name):
+            connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=10)
+            connection.request("POST", "/api/workspaces", body=json.dumps({"name": name}), headers={
+                "Content-Type": "application/json", "X-Forwarded-For": "10.0.0.8", "X-Forwarded-Prefix": "/genome-canvas",
+                "Cookie": "{}={}".format(self.module.COOKIE, token)})
+            response = connection.getresponse()
+            response.read()
+            connection.close()
+            return response.status, response.getheader("Set-Cookie")
+
+        status, cookie = create(self.token, "Alice lab")
+        self.assertEqual(status, 201)
+        self.assertIn("Max-Age=31536000", cookie)
+        status, cookie = create(guest, "Visitor")
+        self.assertEqual(status, 201)
+        self.assertTrue(cookie.startswith("genome_canvas_workspace="))
+        self.assertNotIn("Max-Age", cookie)
 
 
 if __name__ == "__main__":

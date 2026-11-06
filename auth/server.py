@@ -14,6 +14,7 @@ Routes: /auth/login (page), /auth/api/key, /auth/api/login, /auth/api/logout, /a
 
 import argparse
 import base64
+import hashlib
 import json
 import re
 import secrets
@@ -36,6 +37,12 @@ STATIC = {
     "auth.css": "text/css; charset=utf-8", "base.css": "text/css; charset=utf-8", "favicon.svg": "image/svg+xml",
 }
 NONCE_SECONDS = 300
+WORKSPACE_COOKIE = "genome_canvas_workspace"  # Genome Canvas's selected workspace (server.py), shared by hub and GREAT
+
+
+def home_workspace_id(home):
+    """Genome Canvas's id of a Home workspace (server.home_workspace_id)."""
+    return "home-{}".format(hashlib.sha256(str(home).encode("utf-8")).hexdigest()[:18])
 
 
 def safe_next(value):
@@ -91,10 +98,21 @@ class AuthHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         for name, value in (headers or {}).items():
-            self.send_header(name, value)
+            for item in value if isinstance(value, list) else [value]:  # several Set-Cookie headers
+                self.send_header(name, item)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def workspace_cookie(self, user=None):
+        """A THOR account opens in its Home workspace; access-password sign-ins and sign-outs clear the workspace,
+        so Genome Canvas asks which one to use."""
+        path = self.server.canvas_path
+        home = self.server.home_root / user if user else None
+        if home is not None and home.is_dir():
+            return "{}={}; Path={}; HttpOnly; SameSite=Lax; Max-Age=31536000".format(
+                WORKSPACE_COOKIE, home_workspace_id(home), path)
+        return "{}=; Path={}; HttpOnly; SameSite=Lax; Max-Age=0".format(WORKSPACE_COOKIE, path)
 
     def send_json(self, payload, status=200, headers=None):
         self.send_body(json.dumps(payload, separators=(",", ":")), "application/json; charset=utf-8", status, headers)
@@ -104,7 +122,8 @@ class AuthHandler(BaseHTTPRequestHandler):
         self.send_header("Location", location)
         self.send_header("Content-Length", "0")
         for name, value in (headers or {}).items():
-            self.send_header(name, value)
+            for item in value if isinstance(value, list) else [value]:
+                self.send_header(name, item)
         self.end_headers()
 
     def read_json(self, maximum=64 * 1024):
@@ -161,9 +180,10 @@ class AuthHandler(BaseHTTPRequestHandler):
                 _, token = self.session()
                 if token:
                     self.store.delete_session(token)
-                headers = {"Set-Cookie": sessions.clear_cookie_header()}
-                if path == "/auth/logout":
-                    self.send_redirect("/auth/login", headers)
+                headers = {"Set-Cookie": [sessions.clear_cookie_header(), self.workspace_cookie()]}
+                if path == "/auth/logout":  # ?next=: where to go after signing in again (the Mac apps' Sign Out)
+                    target = safe_next(query.get("next", [""])[0])
+                    self.send_redirect(sessions.login_location(target) if target != "/" else "/auth/login", headers)
                 else:
                     self.send_json({"ok": True}, headers=headers)
             elif path == "/auth/api/me" and method == "GET":
@@ -220,6 +240,7 @@ class AuthHandler(BaseHTTPRequestHandler):
                 return self.send_json({"error": "The account name or password is not right"}, 401)
             token = self.store.create_session(user, "account", remember, ip, agent)
             self.store.log(ip, user, "account", True)
+            workspace = self.workspace_cookie(user)
         else:
             wait = self.store.locked(ip)
             if wait:
@@ -232,8 +253,9 @@ class AuthHandler(BaseHTTPRequestHandler):
                 return self.send_json({"error": "This access password is not right, or no longer valid"}, 401)
             token = self.store.create_session("guest: " + match["label"], "password", remember, ip, agent, match["id"])
             self.store.log(ip, "guest: " + match["label"], "password", True)
+            workspace = self.workspace_cookie()
         self.send_json({"ok": True, "next": safe_next(payload.get("next"))},
-                       headers={"Set-Cookie": sessions.set_cookie_header(token, remember, settings["rememberDays"])})
+                       headers={"Set-Cookie": [sessions.set_cookie_header(token, remember, settings["rememberDays"]), workspace]})
 
     # ---------- the admin page
 
@@ -293,8 +315,10 @@ class AuthHandler(BaseHTTPRequestHandler):
 class AuthServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, store):
+    def __init__(self, address, store, canvas_path="/genome-canvas/", home_root="/home"):
         self.store = store
+        self.canvas_path = "/" + canvas_path.strip("/") + "/" if canvas_path.strip("/") else "/"
+        self.home_root = Path(home_root)
         self.key = rsa.KeyPair()
         self.nonces = {}
         self.nonce_lock = threading.Lock()
@@ -333,9 +357,11 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8895)
     ap.add_argument("--state", default=str(APP_DIR.parent / "state" / "auth"), help="sessions and settings (default ../state/auth)")
+    ap.add_argument("--canvas-path", default="/genome-canvas/", help="where Genome Canvas is published (its workspace cookie)")
+    ap.add_argument("--home-root", default="/home", help="Genome Canvas's homeRoot: THOR accounts open in their Home workspace")
     a = ap.parse_args()
     store = sessions.Store(a.state)
-    server = AuthServer((a.host, a.port), store)
+    server = AuthServer((a.host, a.port), store, a.canvas_path, a.home_root)
     print("Omics Canvas sign-in on http://{}:{}/auth/ (state {}, passwords checked with {})".format(
         a.host, a.port, a.state, server.verifier()), flush=True)
     try:
