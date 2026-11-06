@@ -31,6 +31,21 @@ CRISPR_COLUMNS = {
 }
 
 
+def writable(folder) -> bool:
+    """Whether this account can create files in `folder`. os.access alone is not enough: on the lab's Synology NFSv4
+    shares (/nfs/Zeus) it answers "no" for folders where creating a file works, so a "no" is checked by trying."""
+    if os.access(folder, os.W_OK):
+        return True
+    if not os.path.isdir(folder):
+        return False
+    import tempfile
+    try:
+        with tempfile.NamedTemporaryFile(dir=folder, prefix='.vizhub-write-test-'):
+            return True
+    except OSError:
+        return False
+
+
 def output_dir(src: Path) -> Path:
     return src.parent / (src.name + OUTPUT_SUFFIX)
 
@@ -332,5 +347,5 @@ def inspect(path):
                          # cell data converted before version 2 lost tissue coordinates when added as single-cell
                          and not (m.get('kind') in ('spatial', 'singlecell') and (m.get('version') or 1) < CELL_DATA_VERSION))
         info['output'] = dict(path=str(out), exists=out.exists(), converted=converted, manifest=m,
-                              writable=os.access(p.parent, os.W_OK))
+                              writable=writable(p.parent))
     return info

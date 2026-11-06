@@ -583,7 +583,7 @@ def run_job(jid):
 
 def start_job(src: Path, info, body, owner):
     out = detect.output_dir(src)
-    if not os.access(src.parent, os.W_OK):
+    if not detect.writable(src.parent):
         out = STATE / 'converted' / f'{slugify(src.name)}-{uuid.uuid4().hex[:6]}'
     title = (body.get('title') or '').strip() or info.get('title') or src.name
     o = body.get('options') or {}
@@ -801,7 +801,7 @@ def browse(path: str = '', hidden: bool = False):
         entries.append(dict(name=e.name, path=e.path, dir=is_dir, size=None if is_dir else st.st_size, mtime=int(st.st_mtime),
                             hint=hint, converted=(e.name + detect.OUTPUT_SUFFIX) in names))
     parent = str(p.parent) if under_root(str(p.parent)) and str(p) not in [r['path'] for r in ROOTS] else ''
-    return dict(path=str(p), parent=parent, entries=entries, writable=os.access(p, os.W_OK))
+    return dict(path=str(p), parent=parent, entries=entries, writable=detect.writable(p))
 
 
 @app.get('/hub/api/inspect')
