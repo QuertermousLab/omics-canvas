@@ -1,4 +1,4 @@
-Native Genome Canvas Desktop builds for Apple Silicon and Intel Macs.
+Native Genome Canvas Desktop builds for Apple Silicon Macs.
 
 ## What's new in 1.10.0
 
@@ -58,9 +58,6 @@ Native Genome Canvas Desktop builds for Apple Silicon and Intel Macs.
 | Mac | File |
 | --- | --- |
 | Apple Silicon (M1/M2/M3/M4) | `GenomeCanvasDesktop-macOS-arm64.zip` |
-| Intel | `GenomeCanvasDesktop-macOS-x86_64.zip` |
-
-Not sure which one? Choose  → **About This Mac**: "Chip: Apple …" means Apple Silicon; "Processor: Intel …" means Intel.
 
 ## Install
 

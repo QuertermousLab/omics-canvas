@@ -194,7 +194,7 @@ other track views' `renderSVGContext` with a no-op and call `toSVG` once per tra
   `Resources/Info.plist` and the version asserted in `tests/test_macos_desktop.py`,
   update `RELEASE_NOTES.md` (keep the `xattr -dr com.apple.quarantine`
   section; a test enforces it), merge to `main`, then push tag `vX.Y.Z`.
-  `release-macos.yml` builds arm64 + x86_64 archives and publishes them.
+  `release-macos.yml` builds the arm64 archive (Apple Silicon only; no Intel builds) and publishes it.
 
 ## Verifying web UI changes
 

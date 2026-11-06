@@ -356,8 +356,8 @@ that went into a combined one are listed there (with their own **Rename** / **Re
 
 ## 8. Mac apps
 
-Download from the [latest release](https://github.com/QuertermousLab/omics-canvas/releases/latest) — Apple Silicon
-(`…-macOS-arm64.zip`) or Intel (`…-macOS-x86_64.zip`), unzip, move to Applications and run once in Terminal
+Download from the [latest release](https://github.com/QuertermousLab/omics-canvas/releases/latest) (Apple Silicon Macs,
+`…-macOS-arm64.zip`), unzip, move to Applications and run once in Terminal
 (the apps are not notarized):
 
 ```bash

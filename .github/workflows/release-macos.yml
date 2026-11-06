@@ -1,6 +1,6 @@
 name: Release macOS apps
 
-# A v* tag builds and releases both Mac apps for Apple Silicon and Intel:
+# A v* tag builds and releases both Mac apps for Apple Silicon (arm64; no Intel builds):
 #   Genome Canvas (genome-canvas/macos/GenomeCanvasDesktop) and Omics Canvas (desktop/OmicsCanvasDesktop).
 # The asset names stay fixed so .../releases/latest/download/<asset> links keep working.
 on:
@@ -51,13 +51,6 @@ jobs:
             asset: GenomeCanvasDesktop
             runner: macos-15
             architecture: arm64
-          - app: genome-canvas
-            dir: genome-canvas/macos/GenomeCanvasDesktop
-            bundle: Genome Canvas.app
-            binary: GenomeCanvasDesktop
-            asset: GenomeCanvasDesktop
-            runner: macos-15-intel
-            architecture: x86_64
           - app: omics-canvas
             dir: desktop/OmicsCanvasDesktop
             bundle: Omics Canvas.app
@@ -65,13 +58,6 @@ jobs:
             asset: OmicsCanvasDesktop
             runner: macos-15
             architecture: arm64
-          - app: omics-canvas
-            dir: desktop/OmicsCanvasDesktop
-            bundle: Omics Canvas.app
-            binary: OmicsCanvasDesktop
-            asset: OmicsCanvasDesktop
-            runner: macos-15-intel
-            architecture: x86_64
     runs-on: ${{ matrix.runner }}
     env:
       GH_TOKEN: ${{ github.token }}

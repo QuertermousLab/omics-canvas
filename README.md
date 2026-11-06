@@ -15,10 +15,8 @@ Self-hosted viewers for a lab's genomics data, in one place:
 - **Omics Canvas for Mac** (`desktop/OmicsCanvasDesktop/`) — a native window for the three viewers,
   built like Genome Canvas Desktop.
 
-Downloads (Apple Silicon / Intel): [Genome Canvas](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/GenomeCanvasDesktop-macOS-arm64.zip)
-([Intel](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/GenomeCanvasDesktop-macOS-x86_64.zip)) ·
-[Omics Canvas](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/OmicsCanvasDesktop-macOS-arm64.zip)
-([Intel](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/OmicsCanvasDesktop-macOS-x86_64.zip)).
+Downloads (Apple Silicon): [Genome Canvas](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/GenomeCanvasDesktop-macOS-arm64.zip) ·
+[Omics Canvas](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/OmicsCanvasDesktop-macOS-arm64.zip).
 The apps are ad-hoc signed: after unzipping, run `xattr -dr com.apple.quarantine "/Applications/<App>.app"` once.
 
 **How to use it: [docs/TUTORIAL.md](docs/TUTORIAL.md)** — all four modules, shared data, data management and the Mac apps, with

@@ -16,7 +16,7 @@ Canvas server. Local mode browses files on the Mac directly and does not need
 ## Requirements
 
 - macOS 13 or later
-- Apple Silicon or Intel Mac
+- Apple Silicon Mac
 - Python 3 (provided by Xcode Command Line Tools: `xcode-select --install`)
 - Network access only when using **Server** mode
 
@@ -25,7 +25,6 @@ Canvas server. Local mode browses files on the Mac directly and does not need
 Prebuilt downloads:
 
 - [Apple Silicon (arm64)](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/GenomeCanvasDesktop-macOS-arm64.zip)
-- [Intel (x86_64)](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/GenomeCanvasDesktop-macOS-x86_64.zip)
 
 The release archives are ad-hoc signed rather than Apple-notarized. If
 Gatekeeper requests confirmation, Control-click the app and choose **Open**.
@@ -114,8 +113,8 @@ ignore it.
 
 ## Releases
 
-Pushing a `v*` tag builds signed-ad-hoc arm64 and x86_64 archives and publishes
-them with `RELEASE_NOTES.md` as the release description. Before tagging, bump
+Pushing a `v*` tag builds a signed-ad-hoc arm64 archive (Apple Silicon only) and publishes
+it with the repository's `RELEASE_NOTES.md` (the first-launch note) as the release description. Before tagging, bump
 `CFBundleShortVersionString`/`CFBundleVersion` in `Resources/Info.plist`, update
 `RELEASE_NOTES.md`, and add any new backend or frontend files to the
 `LocalBackend` list in `build.sh`.

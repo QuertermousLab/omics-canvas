@@ -98,7 +98,6 @@ The desktop app has two data-source modes:
 Download a prebuilt app for your Mac:
 
 - [Apple Silicon (arm64)](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/GenomeCanvasDesktop-macOS-arm64.zip)
-- [Intel (x86_64)](https://github.com/QuertermousLab/omics-canvas/releases/latest/download/GenomeCanvasDesktop-macOS-x86_64.zip)
 
 The release archives are ad-hoc signed rather than Apple-notarized. If
 Gatekeeper requests confirmation, Control-click the app and choose **Open**.

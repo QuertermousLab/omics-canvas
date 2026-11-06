@@ -73,12 +73,13 @@ with public 10x data (`gateway/dev_gateway.py` stands in for Apache) and uploads
 
 ## Releases
 
-A `v*` tag builds both Mac apps for arm64 and x86_64 (`.github/workflows/release-macos.yml`) and publishes
-`GenomeCanvasDesktop-macOS-<arch>.zip` and `OmicsCanvasDesktop-macOS-<arch>.zip` (fixed names: README
-download links use `releases/latest/download/`). Before tagging: bump `CFBundleShortVersionString` /
+A `v*` tag builds both Mac apps for Apple Silicon only (arm64; Intel builds were dropped at the user's request on
+2026-11-05) (`.github/workflows/release-macos.yml`) and publishes `GenomeCanvasDesktop-macOS-arm64.zip` and
+`OmicsCanvasDesktop-macOS-arm64.zip` (fixed names: README download links use `releases/latest/download/`). The release
+page shows `RELEASE_NOTES.md`, which holds only the first-launch `xattr` note (the user wants it short); what changed
+is in each app's own notes (`genome-canvas/macos/GenomeCanvasDesktop/RELEASE_NOTES.md`, `desktop/OmicsCanvasDesktop/RELEASE_NOTES.md`). Before tagging: bump `CFBundleShortVersionString` /
 `CFBundleVersion` in both `Resources/Info.plist` files (Genome Canvas's version is also asserted in
-`genome-canvas/tests/test_macos_desktop.py`), and update `RELEASE_NOTES.md` (root, the release text) and
-`genome-canvas/macos/GenomeCanvasDesktop/RELEASE_NOTES.md`. Push a `mac-ui-*` branch to get window
+`genome-canvas/tests/test_macos_desktop.py`), and update both apps' `RELEASE_NOTES.md`. Push a `mac-ui-*` branch to get window
 screenshots of both apps (`macos-preview.yml`) before releasing interface changes; it also starts Genome Canvas
 from a `genomecanvas://` link (`link/` screenshots). The apps only compile on macOS: push the branch before tagging
 any change to `main.m`. Note `NSURL.path` drops a trailing slash (match `NSURLComponents.path`), and a link that
