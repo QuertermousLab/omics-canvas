@@ -746,7 +746,42 @@ def align_rows(X, cells, order):
     return sp.csr_matrix(Y)
 
 
-def rds_multiome(d: Path, info, order, matrices=True):
+def locate_fragments(path, src):
+    """A fragment file, also when the object was made on another machine: a path that does not exist here (e.g.
+    /ZEUS/Projects/x/outs/atac_fragments.tsv.gz where THOR has /nfs/zeus/...) is looked for under the folders above
+    the source object, longest matching tail first (at least the file's folder and name). None if not found."""
+    p = Path(str(path))
+    if p.is_file():
+        return p
+    parts = [x for x in p.parts if x not in (p.anchor, '')]
+    src = Path(src)
+    bases = []
+    for b in [*Path(os.path.abspath(src)).parents, *src.resolve().parents]:
+        if b not in bases and b != Path(b.anchor):
+            bases.append(b)
+    for k in range(len(parts) - 1):  # tails of 2+ components: a bare file name could be another sample's
+        for b in bases:
+            c = b.joinpath(*parts[k:])
+            if c.is_file():
+                return c
+    return None
+
+
+def usable_fragments(fragments, src):
+    """[(path, cells)] with paths found on this machine; the others are reported and dropped."""
+    found = []
+    for path, cells in fragments:
+        p = locate_fragments(path, src) if src else (Path(path) if Path(path).is_file() else None)
+        if p is None:
+            notice(f'Fragment file not found: {path} (accessibility tracks need it; check that it exists on this server)')
+            continue
+        if str(p) != str(path):
+            log(f'  fragment file {path} found at {p}')
+        found.append((str(p), cells))
+    return found
+
+
+def rds_multiome(d: Path, info, order, matrices=True, src=None):
     """The other assays of an exported Seurat object, its motifs and accessibility inputs, for the cells in `order`.
     matrices=False (resuming after the viewer files were written) skips reading the assay matrices."""
     assays = info.get('assays') or []
@@ -774,6 +809,7 @@ def rds_multiome(d: Path, info, order, matrices=True):
             pos = index.get_indexer(g['cell'])
             ok = pos >= 0
             fragments.append((path, dict(zip(pos[ok].tolist(), g['barcode'].to_numpy()[ok]))))
+    fragments = usable_fragments(fragments, src)
     annotation = pd.read_csv(d / 'annotation.tsv', sep='\t', dtype={'seqnames': str}) if (d / 'annotation.tsv').exists() else None
     return primary, extras, motifs, fragments, annotation, chrom.get('genome')
 
@@ -807,10 +843,10 @@ def read_h5mu(src: Path, a):
         extras.append(dict(key=m, label=assay_label(m, kind_of(m)), type=kind_of(m), X=align_rows(sp.csr_matrix(X), mod.obs_names, order),
                            names=list(map(str, var.index))))
         frag = (mod.uns.get('files') or {}).get('fragments') if kind_of(m) == 'peaks' else None
-        if frag and Path(frag).exists():
+        if frag:
             pos = pd.Index(order).get_indexer(mod.obs_names)
             fragments.append((frag, {int(p): bc for p, bc in zip(pos, mod.obs_names) if p >= 0}))
-    return adata, primary, extras, fragments
+    return adata, primary, extras, usable_fragments(fragments, src)
 
 
 def run_r_export(src: Path, work: Path, a):
@@ -937,7 +973,7 @@ def main():
                     adata = None
                 elif slide_done:
                     order = (out / 'cell_ids.txt').read_text().splitlines()
-                    _, _, _, fragments, annotation, genome = rds_multiome(work, info, order, matrices=False)
+                    _, _, _, fragments, annotation, genome = rds_multiome(work, info, order, matrices=False, src=src)
                 else:
                     if a.kind == 'crispr':
                         raise SystemExit(f'this RDS holds a {info["type"]} object (cells), not CRISPR results')
@@ -946,7 +982,7 @@ def main():
                     if spatial_xy is not None and any(x.get('type') == 'peaks' for x in info.get('assays') or []):
                         tech = f'Spatial ATAC ({tech})' if tech else 'Spatial ATAC'
                     technology = technology or tech
-                    primary, extras, motifs, fragments, annotation, genome = rds_multiome(work, info, list(adata.obs_names))
+                    primary, extras, motifs, fragments, annotation, genome = rds_multiome(work, info, list(adata.obs_names), src=src)
                     mark_gene_activity(adata, primary, extras, a.gene_activity)
             elif slide_done:
                 if name.endswith('.h5mu'):  # only the fragment files are needed

@@ -184,8 +184,9 @@ export_chromatin <- function(obj, cells) {
     rows <- list()
     for (fr in frs) {
       path <- slot_or(fr, "path"); fc <- slot_or(fr, "cells")
-      if (is.null(path) || !file.exists(path)) { cat(sprintf("  fragment file not found: %s\n", path)); next }
-      if (is.null(fc)) next
+      if (is.null(path) || is.null(fc)) next
+      # a path from another machine (e.g. /ZEUS/... for /nfs/zeus/...) is kept: convert.py looks for it near the object
+      if (!file.exists(path)) cat(sprintf("  fragment file not at %s: looking near the object\n", path))
       keep <- names(fc) %in% cells
       rows[[length(rows) + 1]] <- data.frame(path = path, cell = names(fc)[keep], barcode = unname(fc)[keep])
     }

@@ -64,9 +64,9 @@ jobs:
           python-version: "3.12"
       - name: Compile the hub backend and converters
         run: python -m py_compile hub/*.py hub/converters/*.py
-      - name: Test the expression exports and plots
+      - name: Test the expression exports, plots and converters
         run: |
-          pip install numpy
+          pip install numpy pandas scipy pyarrow
           python -m unittest discover hub/tests
       - uses: actions/setup-node@v4
         with:
