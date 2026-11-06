@@ -19,7 +19,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="base.css?v=20261105.1">
   <link rel="stylesheet" href="great.css?v=20261106.2">
-  <script type="module" src="great.mjs?v=20261106.2"></script>
+  <script type="module" src="great.mjs?v=20261106.3"></script>
 </head>
 <body class="great-page">
   <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -77,6 +77,8 @@
           <h2><span>1</span>GREAT version and species assembly</h2>
           <div class="gr-segmented" id="gr-version" role="radiogroup" aria-label="GREAT version"></div>
           <div class="gr-segmented" id="gr-assembly" role="radiogroup" aria-label="Species assembly"></div>
+          <label class="gr-check" id="gr-extra" hidden><input type="checkbox" name="extraOntologies"> Also test the
+            ontologies GREAT 4.0.4 dropped <small id="gr-extra-list"></small></label>
         </div>
 
         <div class="gr-step">
@@ -215,7 +217,8 @@
           <h3>GREAT batch interface</h3>
           <p>GREAT's Programming Interface: a tab-separated table of every ontology (<code>outputType=batch</code>) or a
             results page (<code>web</code>). Besides <code>requestURL</code>, a file can be posted as <code>requestFile</code>.
-            Add <code>version=3</code> (or call <code>public-3.0.0/cgi-bin/</code>) for GREAT 3.0.0; the default is 4.0.4.</p>
+            Add <code>version=3</code> (or call <code>public-3.0.0/cgi-bin/</code>) for GREAT 3.0.0; the default is 4.0.4.
+            <code>extraOntologies=1</code> (or <code>public-extra/cgi-bin/</code>) adds the ontologies GREAT 4.0.4 dropped.</p>
           <pre><code id="gr-api-batch"></code></pre>
         </div>
         <div>

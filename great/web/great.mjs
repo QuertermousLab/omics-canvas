@@ -127,6 +127,7 @@ function renderVersions() {
   }));
   $("#gr-version").hidden = versions.length < 2;
   for (const radio of $$('input[name="version"]')) radio.addEventListener("change", renderAssemblies);
+  $("#gr-assembly").addEventListener("change", renderExtra);
   renderAssemblies();
 }
 
@@ -161,9 +162,19 @@ function renderAssemblies() {
     }
   }
   const missing = assemblies[0]?.notBuilt?.length ? ` Not available any more: ${assemblies[0].notBuilt.join(", ")}.` : "";
+  renderExtra();
   $("#gr-data-status").textContent = assemblies.length
     ? `Genes, TSSs and curated regulatory domains: GREAT ${version}. Ontologies (built ${built}): ${[...releases].map(([release, names]) => `${[...names].join(", ")} ${release}`).join("; ")}.${missing}`
     : "";
+}
+
+function renderExtra() {
+  // GREAT 3.0.0's other ontologies for GREAT 4.0.4's genes: tested only when asked (unchecked by default)
+  const version = $('input[name="version"]:checked')?.value || state.status.version;
+  const assembly = (versionOf(version)?.assemblies || []).find((a) => a.name === $('input[name="assembly"]:checked')?.value);
+  const extra = assembly?.extraOntologies || [];
+  $("#gr-extra").hidden = !extra.length;
+  $("#gr-extra-list").textContent = extra.length ? `(from GREAT 3.0.0, for GREAT 4.0.4's genes: ${extra.map((o) => o.name).join(", ")})` : "";
 }
 
 function sourcePicker(container) {
@@ -272,6 +283,7 @@ async function submitForm(event) {
     data.append(name, field instanceof RadioNodeList ? field.value : value(name));
   }
   data.append("includeCuratedRegDoms", formElement.elements.includeCuratedRegDoms.checked ? "1" : "0");
+  data.append("extraOntologies", !$("#gr-extra").hidden && formElement.elements.extraOntologies.checked ? "1" : "0");
   const bgChoice = formElement.elements.bgChoice.value;
   data.append("bgChoice", bgChoice);
   data.append("fgName", $("#gr-fg-name").value.trim() || (state.linkedTrack && $(".gr-source[data-prefix=fg]").dataset.selected === "track" ? state.linkedTrack.name : ""));
@@ -485,7 +497,7 @@ function renderJobHead() {
   const job = state.job;
   const s = job.summary;
   const [species, build] = ASSEMBLY_NAMES[job.assembly] || ["", job.assembly];
-  $("#gr-job-kicker").textContent = `GREAT ${job.version} · ${species} ${build} · ${new Date(job.created * 1000).toLocaleString()}`;
+  $("#gr-job-kicker").textContent = `GREAT ${job.version}${job.params?.extra && job.version === state.status.version ? " + extra ontologies" : ""} · ${species} ${build} · ${new Date(job.created * 1000).toLocaleString()}`;
   $("#gr-job-title").textContent = job.name;
   $("#gr-job-rule").textContent = `${job.rule}. Background: ${job.background === "regions" ? `${job.backgroundName} (${formatNumber(s.backgroundRegions)} regions)` : "whole genome"}.`;
   const stats = [
@@ -798,7 +810,9 @@ tables <- getEnrichmentTables(job, category = "GO")
 regions <- getRegionGeneAssociations(job)
 plotRegionGeneAssociations(job)
 # GREAT 3.0.0 (hg19, mm10, mm9; its ontologies such as MSigDB and InterPro)
-job3 <- submitGreatJob(gr, genome = "hg19", version = "3.0.0", request_interval = 0)`;
+job3 <- submitGreatJob(gr, genome = "hg19", version = "3.0.0", request_interval = 0)
+# GREAT 4.0.4 with the ontologies it dropped (MSigDB, PANTHER, InterPro ...)
+jobx <- submitGreatJob(gr, genome = "hg38", request_interval = 0, base_url = "${base}/public-extra/cgi-bin")`;
   $("#gr-api-batch").textContent = `# results of every ontology as a table (GREAT's batch mode)
 curl "${base}/public/cgi-bin/greatStart.php?outputType=batch&requestSpecies=hg38&requestURL=https%3A%2F%2Fexample.org%2Fpeaks.bed"
 # or post the file itself

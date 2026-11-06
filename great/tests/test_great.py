@@ -35,14 +35,16 @@ def write_assembly(folder, name="hg38", label=""):
                    [["T:1", label + "term one"], ["T:2", label + "term two"], ["T:3", label + "term three"]],
                    [[0, 1], [2], [3]]),
                   ("EnsemblGenes", "Ensembl Genes", "Genes", [[g[0], g[1]] for g in GENES], [[0], [1], [2], [3]])]
-    for key, title, category, terms, genes in ontologies:
+    extra = [("MSigPathway", "MSigDB Pathway", "Pathway Data", [["PATHWAY_A", "pathway a"]], [[0, 3]])]
+    for key, title, category, terms, genes in ontologies + extra:
         with gzip.open(str(folder / (key + ".json.gz")), "wt") as handle:
             json.dump({"key": key, "name": title, "category": category, "version": "test", "terms": terms,
                        "genes": genes}, handle)
+    info = lambda items: [{"key": o[0], "name": o[1], "category": o[2], "terms": len(o[3]), "version": "test"}
+                          for o in items]
     (folder / "manifest.json").write_text(json.dumps({
-        "assembly": name, "built": "2026-11-05", "genes": len(GENES),
-        "ontologies": [{"key": o[0], "name": o[1], "category": o[2], "terms": len(o[3]), "version": "test"}
-                       for o in ontologies]}))
+        "assembly": name, "built": "2026-11-05", "genes": len(GENES), "ontologies": info(ontologies),
+        "extraOntologies": info(extra)}))
     return folder.parent
 
 
@@ -272,6 +274,14 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual([(v["version"], [a["name"] for a in v["assemblies"]]) for v in self.service.versions()],
                          [("4.0.4", ["hg38"]), ("3.0.0", ["hg19"])])
 
+    def test_extra_ontologies_only_when_asked(self):
+        fg = b"chrA\t5000\t5010\tr1\n"
+        keys = lambda job: [o["key"] for o in job["summary"]["ontologies"]]
+        self.assertEqual(keys(self.service.submit("hg38", fg, client="10.0.0.8")), ["GOBiologicalProcess", "EnsemblGenes"])
+        job = self.service.submit("hg38", fg, raw_params={"extraOntologies": "1"}, client="10.0.0.8")
+        self.assertEqual(keys(job), ["GOBiologicalProcess", "MSigPathway", "EnsemblGenes"])  # before the Genes category
+        self.assertEqual(self.service.rows(job["id"], "MSigPathway")[0][:2], ["PATHWAY_A", "pathway a"])
+
     def test_background_set_must_hold_the_test_set(self):
         job = self.service.submit("hg38", b"chrA\t5000\t5010\n", b"chrA\t70000\t70010\nchrB\t10\t20\n", client="10.0.0.2")
         self.assertEqual(job["background"], "regions")
@@ -465,6 +475,12 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(json.loads(text)["job"]["version"], "3.0.0")
         versions = json.loads(self.request("GET", "/great/api/status")[2])["versions"]
         self.assertEqual([v["version"] for v in versions], ["4.0.4", "3.0.0"])
+        self.assertEqual([o["key"] for o in versions[0]["assemblies"][0]["extraOntologies"]], ["MSigPathway"])
+        body, content_type = multipart(dict(fields, species="hg38"))
+        status, _, page = self.request("POST", "/great/public-extra/cgi-bin/greatWeb.php", body,
+                                       {"Content-Type": content_type})  # rGREAT's base_url
+        self.assertIn('value="MSigPathway"', page)
+        self.assertIn("GREAT 4.0.4 (Omics Canvas)", page)
 
     def test_user_errors_and_the_batch_interface(self):
         body, content_type = multipart({"species": "hg38", "fgFile": ("x.bed", b"chrZ\t1\t5\n")})

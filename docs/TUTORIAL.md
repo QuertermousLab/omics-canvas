@@ -151,6 +151,10 @@ it and tests GO terms, mouse and human phenotypes and single genes.
   TreeFam, HGNC gene families), rebuilt from current releases, for consistency with analyses made with it. From R:
   `submitGreatJob(gr, genome = "hg19", version = "3.0.0", request_interval = 0)`; in scripts add `version=3`
   (or call `…/great/public-3.0.0/cgi-bin/`). `?version=3` in the page's address selects it.
+- **Extra ontologies with GREAT 4.0.4**: *Also test the ontologies GREAT 4.0.4 dropped* (unchecked by default) adds
+  GREAT 3.0.0's MSigDB, PANTHER, MGI Expression, Disease Ontology, InterPro, TreeFam and HGNC gene families, built for
+  GREAT 4.0.4's genes (hg38 too); the seven GREAT 4.0.4 ontologies give the same results either way. In the API:
+  `extraOntologies=1`; from rGREAT: `base_url = "http://171.65.68.140:8892/great/public-extra/cgi-bin"`.
 
 ## 3. Spatial viewer
 

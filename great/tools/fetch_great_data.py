@@ -17,6 +17,8 @@ Ontologies, current releases (GREAT 4.0.4 itself used 2019 releases, which are n
   Ensembl Genes                                one term per gene
 Mouse annotations reach human genes (and human phenotypes mouse genes) through MGI's mouse-human homology classes;
 human gene symbols are matched through HGNC (current, previous and alias symbols, Ensembl and Entrez ids).
+GREAT 3.0.0's other ontologies (below) are built for GREAT 4.0.4's genes too, as its extra ontologies (manifest
+"extraOntologies"): a job tests them only when it asks (extraOntologies=1); GREAT 4.0.4 itself had dropped them.
 
 GREAT 3.0.0 (data/v3/<assembly>/; hg19, mm10, mm9; GREAT 3.0.0's danRer7 is not built): its own gene sets,
 <assembly>.great3.0.genes.txt (UCSC Known Genes' canonical TSSs, Ensembl 73 ids), the same curated domains (GREAT
@@ -140,6 +142,11 @@ V3_ONTOLOGIES = [
     ('EnsemblGenes', 'Ensembl Genes', 'Gene Families', 'Gene Families'),
 ]
 V3_UNAVAILABLE = ['Placenta Disorders', 'BioCyc Pathway']
+# GREAT 3.0.0's ontologies that GREAT 4.0.4 dropped, built for GREAT 4.0.4's genes too: a job tests them only when it
+# asks (extraOntologies), so GREAT 4.0.4's own results and outputs stay as they were. In GREAT 4.0.4's categories.
+EXTRA_ONTOLOGIES = [(key, name, 'Phenotype' if human.startswith('Phenotype') else human,
+                     mouse and ('Phenotype' if mouse.startswith('Phenotype') else mouse))
+                    for key, name, human, mouse in V3_ONTOLOGIES if key not in {o[0] for o in ONTOLOGIES}]
 # MSigDB collections (CATEGORY_CODE[:SUB_CATEGORY_CODE] prefixes) of GREAT 3.0.0's MSigDB ontologies
 MSIGDB_COLLECTIONS = {
     'MSigDBOncogenicSignatures': ('C6',), 'MSigDBImmunologicSignatures': ('C7:IMMUNESIGDB',),
@@ -782,8 +789,8 @@ def ensembl_genes(out, key, name, category, genes, version):
             'associations': len(genes), 'version': version}
 
 
-def build_assembly(assembly, data, downloads, sources):
-    """GREAT 4.0.4: data/<assembly>/."""
+def build_assembly(assembly, data, downloads, sources, v3):
+    """GREAT 4.0.4: data/<assembly>/, with GREAT 3.0.0's other ontologies for its genes (EXTRA_ONTOLOGIES)."""
     out = data / assembly
     raw = downloads / assembly
     genes_file = download(GREAT_GENES.format(assembly=assembly), raw / 'GREATv4.genes.{}.tsv'.format(assembly))
@@ -801,14 +808,23 @@ def build_assembly(assembly, data, downloads, sources):
     built.append(mouse_phenotype(out, *ONTOLOGIES[4], genemap, sources, mp, len(genes), single=True))
     built.append(human_phenotype(out, *ONTOLOGIES[5], genemap, sources, len(genes)))
     built.append(ensembl_genes(out, *ONTOLOGIES[6], genes, 'GREATv4.genes.' + assembly))
+    extra = []
+    for key, name, human_category, mouse_category in EXTRA_ONTOLOGIES:
+        category = human_category if genemap.human else mouse_category
+        if category:
+            terms, direct, version = annotation_ontology(key, genemap, sources, v3)
+            extra.append(save_ontology(out, key, name, category, terms, direct, version, len(genes)))
 
     manifest = {'assembly': assembly, 'built': time.strftime('%Y-%m-%d'), 'genes': len(genes),
                 'chromosomes': len(sizes), 'nonGapBases': sum(sizes.values()) - sum(e - s for _, s, e in gaps),
-                'ontologies': built, 'sources': dict(SOURCES, genes=GREAT_GENES.format(assembly=assembly),
-                                                    curated=GREAT_CURATED.format(assembly=assembly))}
+                'ontologies': built, 'extraOntologies': extra,
+                'sources': dict(SOURCES, genes=GREAT_GENES.format(assembly=assembly),
+                                curated=GREAT_CURATED.format(assembly=assembly))}
+    manifest['sources'].update(V3_SOURCES)
+    manifest['sources'].update(msigdb=v3.v3['msigdbURL'], panther=v3.v3['pantherURL'])
     write_json(out / 'manifest.json', manifest)
-    log('{}: {:,} genes, {}'.format(assembly, len(genes), ', '.join(
-        '{} {:,} terms'.format(o['name'], o['terms']) for o in built)))
+    log('{}: {:,} genes, {}; extra: {}'.format(assembly, len(genes), ', '.join(
+        '{} {:,} terms'.format(o['name'], o['terms']) for o in built), ', '.join(o['name'] for o in extra)))
 
 
 class V3Sources:
@@ -838,17 +854,10 @@ class V3Sources:
         return self.get(name, lambda: uniprot_entries(self.v3[name]))
 
 
-def build_v3(assembly, data, downloads, sources, v3):
-    """GREAT 3.0.0: data/v3/<assembly>/."""
-    out = data / 'v3' / assembly
-    raw = downloads / assembly
-    genes_file = download(GREAT3_GENES.format(assembly=assembly), raw / '{}.great3.0.genes.txt'.format(assembly))
-    curated_file = download(GREAT_CURATED.format(assembly=assembly),
-                            raw / 'GREATv4.curatedRegDoms.{}.txt'.format(assembly))
-    genes = read_great_genes(genes_file)
-    sizes, gaps = write_genome(assembly, out, raw, genes, curated_file)
-    genemap = GeneMap(assembly, genes, sources)
-    human, ids, count = genemap.human, genemap.ids, len(genes)
+def annotation_ontology(key, genemap, sources, v3):
+    """(terms, {term: set(gene index)}, version) of one of GREAT 3.0.0's ontologies beyond GO and the phenotypes, for
+    the genes of genemap (GREAT 3.0.0's, or GREAT 4.0.4's for its extra ontologies)."""
+    human, ids = genemap.human, genemap.ids
 
     def protein_genes(entry):
         """GREAT genes of one UniProt entry of the assembly's species."""
@@ -911,6 +920,23 @@ def build_v3(assembly, data, downloads, sources, v3):
         terms, direct, version = v3.msigdb(key)
         return terms, genemap.resolve(direct, genemap.entrez), version
 
+    build = {'DiseaseOntology': disease, 'PantherPathway': panther, 'MGIExpressionDetected': expression,
+             'InterPro': interpro, 'TreeFam': treefam, 'HGNCGeneFamilies': gene_groups}.get(key)
+    return build() if build else msigdb(key)
+
+
+def build_v3(assembly, data, downloads, sources, v3):
+    """GREAT 3.0.0: data/v3/<assembly>/."""
+    out = data / 'v3' / assembly
+    raw = downloads / assembly
+    genes_file = download(GREAT3_GENES.format(assembly=assembly), raw / '{}.great3.0.genes.txt'.format(assembly))
+    curated_file = download(GREAT_CURATED.format(assembly=assembly),
+                            raw / 'GREATv4.curatedRegDoms.{}.txt'.format(assembly))
+    genes = read_great_genes(genes_file)
+    sizes, gaps = write_genome(assembly, out, raw, genes, curated_file)
+    genemap = GeneMap(assembly, genes, sources)
+    human, count = genemap.human, len(genes)
+
     built = []
     for key, name, human_category, mouse_category in V3_ONTOLOGIES:
         category = human_category if human else mouse_category
@@ -927,9 +953,7 @@ def build_v3(assembly, data, downloads, sources, v3):
         elif key == 'EnsemblGenes':
             built.append(ensembl_genes(out, key, name, category, genes, '{}.great3.0.genes'.format(assembly)))
         else:
-            build = {'DiseaseOntology': disease, 'PantherPathway': panther, 'MGIExpressionDetected': expression,
-                     'InterPro': interpro, 'TreeFam': treefam, 'HGNCGeneFamilies': gene_groups}.get(key)
-            terms, direct, version = build() if build else msigdb(key)
+            terms, direct, version = annotation_ontology(key, genemap, sources, v3)
             built.append(save_ontology(out, key, name, category, terms, direct, version, count))
 
     manifest = {'assembly': assembly, 'great': '3.0.0', 'built': time.strftime('%Y-%m-%d'), 'genes': len(genes),
@@ -974,21 +998,20 @@ def main():
             ', '.join(unknown), ', '.join(ASSEMBLIES), ', '.join(V3_ASSEMBLIES)))
     downloads = a.data / 'downloads'
     sources = {name: download(url, downloads / name, fresh=a.update) for name, url in SOURCES.items()}
+    files = {name: download(url, downloads / name, fresh=a.update) for name, url in V3_SOURCES.items()}
+    release = latest_name(MSIGDB, r'href="([0-9]{4}\.[0-9]+)\.Hs/"')
+    files['msigdbRelease'] = release + '.Hs'
+    files['msigdbURL'] = '{0}{1}.Hs/msigdb_v{1}.Hs.xml.zip'.format(MSIGDB, release)
+    files['msigdb'] = download(files['msigdbURL'], downloads / 'msigdb_v{}.Hs.xml.zip'.format(release))
+    panther = latest_name(PANTHER, r'href="(SequenceAssociationPathway[0-9.]+\.txt)"')
+    files['pantherRelease'] = re.sub(r'^SequenceAssociationPathway|\.txt$', '', panther)
+    files['pantherURL'] = PANTHER + panther
+    files['panther'] = download(files['pantherURL'], downloads / panther)
+    shared = V3Sources(sources, files)
     for assembly in v4:
-        build_assembly(assembly, a.data, downloads, sources)
-    if v3:
-        files = {name: download(url, downloads / name, fresh=a.update) for name, url in V3_SOURCES.items()}
-        release = latest_name(MSIGDB, r'href="([0-9]{4}\.[0-9]+)\.Hs/"')
-        files['msigdbRelease'] = release + '.Hs'
-        files['msigdbURL'] = '{0}{1}.Hs/msigdb_v{1}.Hs.xml.zip'.format(MSIGDB, release)
-        files['msigdb'] = download(files['msigdbURL'], downloads / 'msigdb_v{}.Hs.xml.zip'.format(release))
-        panther = latest_name(PANTHER, r'href="(SequenceAssociationPathway[0-9.]+\.txt)"')
-        files['pantherRelease'] = re.sub(r'^SequenceAssociationPathway|\.txt$', '', panther)
-        files['pantherURL'] = PANTHER + panther
-        files['panther'] = download(files['pantherURL'], downloads / panther)
-        shared = V3Sources(sources, files)
-        for assembly in v3:
-            build_v3(assembly, a.data, downloads, sources, shared)
+        build_assembly(assembly, a.data, downloads, sources, shared)
+    for assembly in v3:
+        build_v3(assembly, a.data, downloads, sources, shared)
     if not a.keep_downloads:
         shutil.rmtree(str(downloads), ignore_errors=True)  # only the built files are read by the server
         log('removed ' + str(downloads))

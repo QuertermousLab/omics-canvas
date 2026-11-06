@@ -41,6 +41,9 @@ User documentation: [README.md](README.md). The repository rules in [../AGENTS.m
   `<assembly>.great3.0.genes.txt`; its ontologies follow GREAT 3.0.0's list, rebuilt from current sources (Placenta
   Disorders and BioCyc cannot be). Check it against rGREAT's 2018 vignette run (README): 18,041 genes, PNP's genome
   fraction 1.435477e-05, ATAD3C −2738 with `gr_is_zero_based = TRUE`.
+  GREAT 3.0.0's other ontologies are also built for GREAT 4.0.4's genes (`extraOntologies` in the manifest; the user
+  chose an opt-in, unchecked on the page): only `params.extra` jobs test them (`great.ontologies_of`), so default
+  GREAT 4.0.4 jobs, rGREAT's ontology list and the batch TSV stay as GREAT 4.0.4's.
   Limits are live settings, defaults: 5 s per client, 3 analyses at once, 300 s queue wait, 30-day retention, a 20 GB
   storage limit (a cleanup thread applies both every 10 minutes; the admin panel deletes by hand), exports
   without GREAT's 500-term cap (the user asked for adjustable limits instead of GREAT's strict interval).

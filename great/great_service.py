@@ -276,7 +276,7 @@ class GreatService:
             manifest = cached[1]
             out.append({"name": name, "species": great.SPECIES[name], "genes": manifest.get("genes"),
                         "built": manifest.get("built"), "ontologies": manifest.get("ontologies", []),
-                        "notBuilt": manifest.get("notBuilt", [])})
+                        "extraOntologies": manifest.get("extraOntologies", []), "notBuilt": manifest.get("notBuilt", [])})
         return out
 
     def versions(self):

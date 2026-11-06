@@ -6,7 +6,8 @@ great.stanford.edu is no longer served; this is a reimplementation that follows 
 
 - Genes: GREAT 4.0.4's gene sets (one canonical TSS per gene) and curated regulatory domains, per assembly
   (tools/fetch_great_data.py builds data/<assembly>/); GREAT 3.0.0's gene sets and ontologies in data/v3/<assembly>/.
-  A job names its version ("version") and assembly; data_key() gives its data folder.
+  A job names its version ("version") and assembly; data_key() gives its data folder. GREAT 4.0.4's data also hold
+  GREAT 3.0.0's other ontologies for its genes ("extraOntologies"), tested only when a job asks (params "extra").
 - Regulatory domains: basal plus extension (5 kb up, 1 kb down, extended up to 1 Mb to the nearest basal domains),
   two nearest genes, or single nearest gene; curated domains replace the computed ones of their genes.
 - A region is associated with every gene whose regulatory domain holds its midpoint (or its summit, an option).
@@ -46,7 +47,7 @@ RULES = ("basalPlusExt", "twoClosest", "oneClosest")
 RULE_NAMES = {"basalPlusExt": "Basal plus extension", "twoClosest": "Two nearest genes", "oneClosest": "Single nearest gene"}
 DEFAULT_PARAMS = {"rule": "basalPlusExt", "upstream": 5000, "downstream": 1000, "extension": 1000000,
                   "twoDistance": 1000000, "oneDistance": 1000000, "curated": True, "anchor": "midpoint",
-                  "coordinates": "auto"}
+                  "coordinates": "auto", "extra": False}
 # Region-gene distance bins of GREAT's association graphs (kb): [0, 5], (5, 50], (50, 500], > 500
 DISTANCE_BINS = (5000, 50000, 500000)
 
@@ -671,6 +672,8 @@ class Assembly:
                         self.curated[gene] = (f[0], min(start, old[1]) if old else start, max(end, old[2]) if old else end)
         self.ontology_info = [o for o in self.manifest.get("ontologies", [])
                               if (self.folder / (o["key"] + ".json.gz")).is_file()]
+        self.extra_info = [o for o in self.manifest.get("extraOntologies", [])
+                           if (self.folder / (o["key"] + ".json.gz")).is_file()]
         self._ontologies = {}
 
     def gap_bases(self, chrom, start, end):
@@ -910,6 +913,8 @@ def normalized_params(raw):
     curated = raw.get("includeCuratedRegDoms", raw.get("curated", True))
     params["curated"] = str(curated).strip().lower() not in ("0", "false", "no", "off", "")
     params["anchor"] = "summit" if str(raw.get("anchor", "")).lower() == "summit" else "midpoint"
+    extra = raw.get("extraOntologies", raw.get("extra", False))
+    params["extra"] = str(extra).strip().lower() in ("1", "true", "yes", "on")
     coordinates = str(raw.get("coordinates", "auto")).lower()
     params["coordinates"] = coordinates if coordinates in ("auto", "bed", "one") else "auto"
     return params
@@ -1135,7 +1140,7 @@ def analyze(engine, job_dir):
         bg_genes = {g for _, pairs in bg_assoc for g, _ in pairs}
         summary["backgroundRegions"] = len(bg)
         summary["backgroundGenesHit"] = len(bg_genes)
-    for info in assembly.ontology_info:
+    for info in ontologies_of(assembly, params):
         ontology = assembly.ontology(info["key"])
         if bg is None:
             rows = enrichment_whole_genome(model, ontology, fg_segments, fg_genes, len(fg))
@@ -1151,6 +1156,15 @@ def analyze(engine, job_dir):
     part.write_text(json.dumps(job))
     part.replace(job_dir / "job.json")
     return summary
+
+
+def ontologies_of(assembly, params):
+    """The ontologies a job tests: the assembly's, with its extra ones before the Genes category when asked."""
+    infos = assembly.ontology_info
+    if params.get("extra") and assembly.extra_info:
+        at = next((i for i, o in enumerate(infos) if o["category"] == "Genes"), len(infos))
+        infos = infos[:at] + assembly.extra_info + infos[at:]
+    return infos
 
 
 def read_associations(job_dir):

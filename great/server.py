@@ -9,7 +9,8 @@ The gateway routes http://<server>:8892/great/ here (paths unchanged). Routes:
   /great/api/...               the page's API (jobs, results, term details, exports, settings, admin)
   /great/public*/cgi-bin/*.php GREAT's interfaces: greatWeb.php, readJsFromFile.php, downloadAllTSV.php,
                                downloadAssociations.php, showTermDetails.php (rGREAT), greatStart.php (batch API);
-                               /great/public-3.0.0/… (rGREAT's version = "3") or a version=3 field runs GREAT 3.0.0
+                               /great/public-3.0.0/… (rGREAT's version = "3") or a version=3 field runs GREAT 3.0.0;
+                               /great/public-extra/… (or -4.0.4-extra) or extraOntologies=1 adds the extra ontologies
   /great/rgreat.R              points rGREAT at this server for an R session
 
 Sign-in: with OMICS_CANVAS_AUTH set (the lab server's unit), the page and its API need an Omics Canvas session
@@ -48,7 +49,7 @@ STATIC = {
     "base.css": "text/css; charset=utf-8",
     "favicon.svg": "image/svg+xml",
 }
-COMPAT = re.compile(r"/great/public(?:-([0-9.]+))?/cgi-bin/([A-Za-z]+)\.php")
+COMPAT = re.compile(r"/great/public(?:-([0-9.]+))?(-extra)?/cgi-bin/([A-Za-z]+)\.php")
 WORKSPACE_ID = re.compile(r"(?:home|manual)-[a-f0-9]{18}|local")
 GZIP_MIN_BYTES = 1400
 RGREAT_HELPER = r"""# Use rGREAT's online functions with the GREAT server of Omics Canvas (great.stanford.edu is offline).
@@ -57,6 +58,8 @@ RGREAT_HELPER = r"""# Use rGREAT's online functions with the GREAT server of Omi
 #   job <- submitGreatJob(gr, genome = "hg38", request_interval = 0)   # the server applies its own limits
 #   tables <- getEnrichmentTables(job)                                    # also getRegionGeneAssociations(job)
 #   job3 <- submitGreatJob(gr, genome = "hg19", version = "3.0.0", request_interval = 0)   # GREAT 3.0.0
+#   GREAT 4.0.4 with the ontologies it dropped (MSigDB, PANTHER ...):
+#   jobx <- submitGreatJob(gr, genome = "hg38", request_interval = 0, base_url = "@SERVER@/public-extra/cgi-bin")
 # It points rGREAT's server addresses (BASE_URL_LIST, every GREAT version) at this server for this R session.
 local({
   server <- "@SERVER@"
@@ -399,7 +402,7 @@ class GreatHandler(BaseHTTPRequestHandler):
             match = COMPAT.fullmatch(path)
             if match:
                 self.server_files = False
-                self.handle_compat(method, match.group(2), query, match.group(1))
+                self.handle_compat(method, match.group(3), query, match.group(1), bool(match.group(2)))
             elif not self.signed_in(path):
                 return
             elif path in ("/", "/great"):
@@ -551,9 +554,10 @@ class GreatHandler(BaseHTTPRequestHandler):
         else:
             raise FileNotFoundError("Not found")
 
-    def handle_compat(self, method, name, query, path_version=None):
+    def handle_compat(self, method, name, query, path_version=None, extra=False):
         """GREAT's .php interfaces (rGREAT and the GREAT Programming Interface). The version is the path's
-        (/great/public-3.0.0/cgi-bin/, as rGREAT's version argument chooses), else a version field, else 4.0.4."""
+        (/great/public-3.0.0/cgi-bin/, as rGREAT's version argument chooses), else a version field, else 4.0.4;
+        /great/public-extra/cgi-bin/ (rGREAT's base_url) adds the extra ontologies, as an extraOntologies=1 field does."""
         great = self.great
         fields = {k: v[0] for k, v in query.items()}
         html_type = "text/html; charset=utf-8"
@@ -575,6 +579,8 @@ class GreatHandler(BaseHTTPRequestHandler):
         client, owner = self.client(), workspace["id"] if workspace else None
         agent = self.headers.get("User-Agent", "").lower()
         version = path_version or fields.get("version")
+        if extra:
+            fields["extraOntologies"] = "1"
         if name == "greatWeb":
             if method == "GET" and not fields:
                 self.send_redirect(self.public_base() + "/")

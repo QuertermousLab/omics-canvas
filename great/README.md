@@ -58,6 +58,12 @@ On the lab server: **http://171.65.68.140:8892/great/** (the gateway routes `/gr
   regions; submit them with `gr_is_zero_based = TRUE`, as rGREAT then did) the total gene count (18,041), a regulatory
   domain's genome fraction (PNP: 1.435477e-05) and the distances are the same; 1,586 genes are hit instead of 1,585
   (one of the HOXD curated domains, which could not be pinned down). Data: `data/v3/<assembly>/`.
+- **Extra ontologies for GREAT 4.0.4** (optional, off by default): the ontologies GREAT 4.0.4 dropped (all of GREAT
+  3.0.0's above except GO and the phenotypes) are also built for GREAT 4.0.4's genes on all four assemblies (manifest
+  `extraOntologies`). A job tests them only when asked: the page's *Also test the ontologies GREAT 4.0.4 dropped*,
+  `extraOntologies=1` in the API, or `/great/public-extra/cgi-bin/` (rGREAT:
+  `submitGreatJob(gr, genome = "hg38", base_url = "http://<server>/great/public-extra/cgi-bin")`). Each ontology's
+  statistics and corrections are its own, so GREAT 4.0.4's seven ontologies give the same results either way.
 - **rGREAT and scripts**: GREAT's interfaces under `/great/public/cgi-bin/` (and `/great/public-4.0.4/…`,
   `/great/public-3.0.0/…`; other versions answer with an error; a `version` field also chooses one):
   `greatWeb.php` (rGREAT's `submitGreatJob`), `readJsFromFile.php`, `downloadAllTSV.php`, `downloadAssociations.php`
