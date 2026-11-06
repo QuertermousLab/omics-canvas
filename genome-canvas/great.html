@@ -18,8 +18,8 @@
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=20261103.2">
-  <link rel="stylesheet" href="great.css?v=20261105.3">
-  <script type="module" src="great.mjs?v=20261105.3"></script>
+  <link rel="stylesheet" href="great.css?v=20261105.5">
+  <script type="module" src="great.mjs?v=20261105.4"></script>
 </head>
 <body class="great-page">
   <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -38,7 +38,7 @@
 
   <header class="gr-top">
     <div class="gr-top-left">
-    <a class="hub-home-button" id="gr-hub-home" href="/hub/" title="Back to the Omics Canvas home page" hidden><img src="/hub/static/favicon.svg" alt="" width="16" height="16">Omics Canvas</a>
+    <a class="hub-home-button" id="gr-hub-home" href="/" title="Back to the Omics Canvas home page" hidden><img src="/hub/static/favicon.svg" alt="" width="16" height="16">Omics Canvas</a>
     <script>
       // Served through the lab server's gateway: back to the Omics Canvas home page, as on the other pages
       if (document.querySelector('meta[name="genome-canvas-base"]').content !== "/") document.getElementById("gr-hub-home").hidden = false;
@@ -260,13 +260,22 @@
       <div class="dialog-content gr-admin-body">
         <p class="gr-muted">Changes apply immediately, also to requests waiting in the queue; no restart.</p>
         <div class="gr-admin-grid" id="gr-admin-fields"></div>
+        <h3>Stored analyses</h3>
+        <p class="gr-muted" id="gr-store-summary"></p>
+        <div class="gr-store-actions">
+          <button class="secondary-button small" type="button" data-cleanup="expired" title="Older than the retention, then the oldest above the storage limit (also runs every 10 minutes)">Apply retention and storage limit now</button>
+          <span class="gr-store-older"><button class="secondary-button small" type="button" data-cleanup="olderThan">Delete analyses older than</button>
+            <input type="number" id="gr-store-days" value="7" min="0" step="1"> days</span>
+          <button class="secondary-button small" type="button" data-cleanup="jobs" id="gr-store-selected" disabled>Delete selected</button>
+          <button class="quiet-button small gr-danger" type="button" data-cleanup="all"><svg class="icon"><use href="#i-trash"/></svg>Delete all</button>
+        </div>
+        <div class="gr-table-wrap gr-store-table"><table class="gr-table" id="gr-store-jobs"></table></div>
         <h3>Now</h3>
         <div id="gr-admin-status"></div>
       </div>
       <footer class="dialog-footer">
         <span id="gr-admin-message"></span>
         <div>
-          <button class="quiet-button" type="button" id="gr-admin-sweep"><svg class="icon"><use href="#i-trash"/></svg>Delete expired jobs</button>
           <button class="secondary-button" type="button" id="gr-admin-defaults">Defaults</button>
           <button class="primary-button" type="submit">Save</button>
         </div>

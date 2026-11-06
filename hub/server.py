@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Omics Canvas: the landing page at :8892/hub/, the ATHENA-style spatial and single-cell
+"""Omics Canvas: the landing page at :8892/ (the gateway's root; /hub/ redirects there), the ATHENA-style spatial and single-cell
 viewers (/spatial/, /single-cell/) and CRISPR screen explorer (/crispr/), and the API behind them.
 
 Datasets are found on /nfs with the file browser. Files already in the ATHENA viewer format are
@@ -647,14 +647,15 @@ def page(name, **subst):
 
 
 @app.get('/')
-def root():
-    return RedirectResponse('/hub/')
-
-
-@app.get('/hub')
-@app.get('/hub/')
 def hub_page():
     return page('hub.html')
+
+
+# the home page used to be /hub/: old links and bookmarks land on / (the API and assets stay under /hub/)
+@app.get('/hub')
+@app.get('/hub/')
+def old_hub_page():
+    return RedirectResponse('/')
 
 
 def viewer_routes(kind, path):

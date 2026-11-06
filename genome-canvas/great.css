@@ -159,6 +159,13 @@ body.great-page { min-height: 100vh; background: var(--bg); }
 .gr-setting input[type="number"] { width: 96px; height: 30px; font-family: var(--mono); }
 .gr-setting textarea { width: 170px; font: 11.5px var(--mono); }
 .gr-admin-body h3 { margin: 16px 0 4px; font-size: 14px; }
+.gr-store-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 10px; }
+.gr-store-older { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 12px; }
+.gr-store-older input { width: 64px; height: 28px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); padding: 0 6px; font: 12px var(--mono); }
+.gr-danger { color: var(--danger) !important; }
+.gr-store-table { max-height: 300px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.gr-store-table td:nth-child(2), .gr-store-table td:nth-child(3) { white-space: normal; text-align: left; }
+.gr-store-table th:nth-child(2), .gr-store-table th:nth-child(3) { text-align: left; }
 .gr-admin-body h4 { margin: 12px 0 4px; color: var(--text-2); font-size: 12px; }
 
 /* ---------- API */

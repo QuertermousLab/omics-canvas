@@ -43,6 +43,7 @@ DEFAULT_SETTINGS = OrderedDict([
     ("maxBackgroundRegions", 2000000),  # background regions (GREAT: 1,000,000)
     ("maxUploadMB", 200),             # per file, after decompression (GREAT: 50 MB)
     ("jobRetentionDays", 30),         # results are kept this long (GREAT: 24 hours)
+    ("maxStorageMB", 20480),          # stored results above this: the oldest are deleted; 0 = no limit
     ("exportTermLimit", 0),           # terms per ontology in batch / TSV exports; 0 = all (GREAT: 500)
     ("allowRemoteURLs", True),        # greatStart.php may fetch requestURL / bgURL
     ("apiEnabled", True),             # GREAT's .php interfaces (rGREAT, scripts)
@@ -52,9 +53,11 @@ DEFAULT_SETTINGS = OrderedDict([
 SETTING_LIMITS = {
     "minIntervalSeconds": (0, 86400), "maxJobsPerHour": (0, 100000), "maxConcurrentJobs": (1, 64),
     "maxWaitSeconds": (0, 3600), "maxRegions": (1, 50000000), "maxBackgroundRegions": (1, 100000000),
-    "maxUploadMB": (1, 4096), "jobRetentionDays": (0.01, 3650), "exportTermLimit": (0, 1000000),
+    "maxUploadMB": (1, 4096), "jobRetentionDays": (0.01, 3650), "maxStorageMB": (0, 100000000),
+    "exportTermLimit": (0, 1000000),
 }
 WORKER_TIMEOUT_SECONDS = 1800
+CLEANUP_INTERVAL_SECONDS = 600  # the automatic cleanup: retention, then the storage limit
 
 
 class LimitError(Exception):
@@ -185,6 +188,8 @@ class GreatService:
         self.history = {}              # client -> deque of start times (last hour)
         self.recent = deque(maxlen=200)  # finished jobs, for the admin panel
         self.last_sweep = 0
+        self.last_cleanup = None  # {"time", "removed", "freedBytes", "reason"} of the last cleanup that removed jobs
+        self.maintenance = None
         self._settings = None
         self._settings_mtime = None
         self.pool = WorkerPool(self.data_dir, lambda: int(self.settings()["maxConcurrentJobs"]))
@@ -233,7 +238,7 @@ class GreatService:
                 low, high = SETTING_LIMITS[key]
                 if not math.isfinite(value) or not low <= value <= high:
                     raise ValueError("{} must be between {:g} and {:g}".format(key, low, high))
-                if isinstance(default, int) and key != "jobRetentionDays":
+                if isinstance(default, int) and key not in ("jobRetentionDays", "maxStorageMB"):
                     value = int(value)
             current[key] = value
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -338,25 +343,108 @@ class GreatService:
     def job(self, job_id):
         return json.loads((self.job_dir(job_id) / "job.json").read_text())
 
-    def sweep(self, force=False):
+    def job_records(self):
+        """Every stored job, newest first: id, name, owner, assembly, regions, size, age (for the admin panel)."""
+        records = []
+        if not self.jobs_dir.is_dir():
+            return records
         now = time.time()
-        if not force and now - self.last_sweep < 600:
-            return 0
+        for folder in self.jobs_dir.iterdir():
+            if not JOB_ID.fullmatch(folder.name):
+                continue
+            size, newest = 0, 0
+            try:
+                for item in folder.iterdir():
+                    stat = item.stat()
+                    size += stat.st_size
+                    newest = max(newest, stat.st_mtime)
+                job = json.loads((folder / "job.json").read_text())
+            except (OSError, ValueError):
+                job = {}
+            created = job.get("created") or newest or now
+            records.append({
+                "id": folder.name, "name": job.get("name", ""), "owner": job.get("owner"), "client": job.get("client", ""),
+                "assembly": job.get("assembly", ""), "source": job.get("source", ""), "status": job.get("status", "?"),
+                "regions": (job.get("summary") or {}).get("regions"), "background": job.get("background", ""),
+                "created": created, "ageDays": round((now - created) / 86400, 2), "bytes": size,
+                "running": folder.name in self.running,
+            })
+        records.sort(key=lambda r: -r["created"])
+        return records
+
+    def delete_jobs(self, job_ids, reason="admin"):
+        """Delete stored jobs (never running ones); returns {"removed", "freedBytes"}."""
+        wanted = set(job_ids)
+        removed, freed = 0, 0
+        for record in self.job_records():
+            if record["id"] in wanted and not record["running"]:
+                shutil.rmtree(str(self.jobs_dir / record["id"]), ignore_errors=True)
+                removed += 1
+                freed += record["bytes"]
+        result = {"removed": removed, "freedBytes": freed}
+        if removed:
+            self.last_cleanup = dict(result, time=time.time(), reason=reason)
+        return result
+
+    def cleanup(self, action, days=None, job_ids=None, owner=None):
+        """The admin panel's cleanup: "expired" (older than the retention, then the storage limit), "olderThan"
+        days, "all", "owner" (one workspace's jobs) or "jobs" (the given ids)."""
+        records = self.job_records()
+        if action == "expired":
+            return self.sweep(force=True)
+        if action == "olderThan":
+            if days is None or float(days) < 0:
+                raise ValueError("Give the age in days")
+            ids = [r["id"] for r in records if r["ageDays"] > float(days)]
+        elif action == "all":
+            ids = [r["id"] for r in records]
+        elif action == "owner":
+            ids = [r["id"] for r in records if r["owner"] == owner]
+        elif action == "jobs":
+            ids = [i for i in (job_ids or []) if JOB_ID.fullmatch(str(i))]
+        else:
+            raise ValueError("Unknown cleanup {!r}".format(action))
+        return self.delete_jobs(ids, reason="admin: " + action)
+
+    def sweep(self, force=False):
+        """Delete jobs older than the retention, then the oldest until the storage limit holds. Runs every
+        CLEANUP_INTERVAL_SECONDS (start_maintenance) and after analyses."""
+        now = time.time()
+        if not force and now - self.last_sweep < CLEANUP_INTERVAL_SECONDS:
+            return {"removed": 0, "freedBytes": 0}
         self.last_sweep = now
-        limit = float(self.settings()["jobRetentionDays"]) * 86400
-        removed = 0
-        if self.jobs_dir.is_dir():
-            for folder in self.jobs_dir.iterdir():
-                if not JOB_ID.fullmatch(folder.name) or folder.name in self.running:
-                    continue
+        settings = self.settings()
+        limit = float(settings["jobRetentionDays"]) * 86400
+        records = [r for r in self.job_records() if not r["running"]]
+        expired = [r["id"] for r in records if now - r["created"] > limit]
+        quota = float(settings["maxStorageMB"]) * 1048576
+        over = []
+        if quota > 0:
+            kept = [r for r in records if r["id"] not in set(expired)]
+            total = sum(r["bytes"] for r in kept)
+            for record in sorted(kept, key=lambda r: r["created"]):  # oldest first
+                if total <= quota:
+                    break
+                over.append(record["id"])
+                total -= record["bytes"]
+        reason = "automatic: " + ", ".join(x for x, ids in (("retention", expired), ("storage limit", over)) if ids)
+        return self.delete_jobs(expired + over, reason=reason)
+
+    def start_maintenance(self):
+        """The automatic cleanup, in a background thread (the server calls this once)."""
+        if self.maintenance:
+            return
+
+        def loop():
+            while True:
                 try:
-                    age = now - (folder / "job.json").stat().st_mtime
-                except OSError:
-                    age = now - folder.stat().st_mtime
-                if age > limit:
-                    shutil.rmtree(str(folder), ignore_errors=True)
-                    removed += 1
-        return removed
+                    self.sweep(force=True)
+                except Exception as exc:  # never stop the loop
+                    print("GREAT: cleanup failed: {}".format(exc), file=sys.stderr)
+                time.sleep(CLEANUP_INTERVAL_SECONDS)
+
+        self.maintenance = threading.Thread(target=loop, name="great-cleanup", daemon=True)
+        self.maintenance.start()
 
     def submit(self, assembly, fg_bytes, bg_bytes=None, raw_params=None, client="", owner=None, source="web",
                name="", bg_name=""):
@@ -473,14 +561,12 @@ class GreatService:
             waiting = [dict(v, seconds=round(now - v["since"], 1)) for v in self.waiting.values()]
             recent = list(self.recent)[:50]
             clients = sorted(((c, len(d)) for c, d in self.history.items() if d), key=lambda x: -x[1])[:50]
-        count = sum(1 for f in self.jobs_dir.iterdir() if JOB_ID.fullmatch(f.name)) if self.jobs_dir.is_dir() else 0
-        size = 0
-        if self.jobs_dir.is_dir():
-            for root, _, files in os.walk(str(self.jobs_dir)):
-                size += sum(os.path.getsize(os.path.join(root, f)) for f in files)
+        records = self.job_records()
         return {"running": running, "waiting": waiting, "recent": recent,
-                "clientsLastHour": [{"client": c, "jobs": n} for c, n in clients], "storedJobs": count,
-                "storedBytes": size, "workers": self.pool.status(), "dataDir": str(self.data_dir)}
+                "clientsLastHour": [{"client": c, "jobs": n} for c, n in clients], "storedJobs": len(records),
+                "storedBytes": sum(r["bytes"] for r in records), "workers": self.pool.status(),
+                "dataDir": str(self.data_dir), "jobsDir": str(self.jobs_dir), "lastCleanup": self.last_cleanup,
+                "nextCleanup": self.last_sweep + CLEANUP_INTERVAL_SECONDS if self.maintenance else None}
 
 
 def public_job(job):

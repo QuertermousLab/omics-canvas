@@ -25,7 +25,8 @@ the port over SSH and open **http://localhost:8892** instead (the Mac apps can d
 ssh -N -L 8892:127.0.0.1:8892 yourname@171.65.68.140
 ```
 
-The home page links the four modules and GREAT and shows how many datasets your workspace has in each (*yours*) and how many
+The home page (`/`; every module has its own address below it: `/genome-canvas/`, `/great/`, `/spatial/`,
+`/single-cell/`, `/crispr/`) links the modules and shows how many datasets your workspace has in each (*yours*) and how many
 the lab shares ([section 6](#6-shared-data)).
 
 ![Home page, light and dark](images/hub.png)
@@ -139,7 +140,10 @@ it and tests GO terms, mouse and human phenotypes and single genes.
   **API & rGREAT** section at the bottom of the page lists these with the server's current limits.
 - **Admin** (shown to the server's administrator): request limits — the minimum interval between analyses per
   client, analyses per hour and at once, how long requests wait in the queue, region and file size limits, how long
-  results are kept — change at once, without a restart; the panel also lists running and waiting analyses.
+  results are kept and how much space they may take — change at once, without a restart; the panel also lists running
+  and waiting analyses. **Stored analyses** lists everyone's results with their size and age: delete the selected ones,
+  those older than a number of days, or all; **Apply retention and storage limit now** runs the automatic cleanup,
+  which otherwise runs every 10 minutes (results older than the retention, then the oldest above the storage limit).
 
 ![GREAT admin panel](images/great-admin.png)
 

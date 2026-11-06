@@ -26,12 +26,12 @@ screenshots.
 
 ## Lab server deployment (THOR)
 
-One address for everything: **http://171.65.68.140:8892/** (redirects to `/hub/`). The checkout
+One address for everything: **http://171.65.68.140:8892/**, the home page, with every module directly below it. The checkout
 `/nfs/baldar/quanyiz/vizhub` is the live deployment.
 
 | URL | What | Served by |
 | --- | --- | --- |
-| `/hub/` | Home page: the tools | `hub/server.py` (127.0.0.1:8893) |
+| `/` | Home page: a card per module (`/hub/`, its old address, redirects here; `/hub/api/`, `/hub/static/` are the hub's API and assets) | `hub/server.py` (127.0.0.1:8893) |
 | `/spatial/` · `/spatial/<dataset>/` | Your spatial datasets (manage, add, convert) · the spatial viewer | hub |
 | `/single-cell/` · `/single-cell/<dataset>/` | Your single-cell datasets · the single-cell viewer | hub |
 | `/crispr/` · `/crispr/<screen>/` | Your CRISPR screens · the CRISPR screen explorer | hub |
@@ -233,4 +233,4 @@ otherwise the default browser.
   so share links made before the move keep working (`server.py` reads the optional `id`).
 - After editing `hub/web/src`: `./vizhubctl build` (no restart). After editing `hub/server.py` or `converters/`:
   `./vizhubctl restart hub` — running conversions are interrupted and then resume from their checkpoints.
-- Every page has a small **Omics Canvas** button back to `/hub/` (Genome Canvas too, when served through the gateway).
+- Every page has a small **Omics Canvas** button back to the home page `/` (Genome Canvas and GREAT too, when served through the gateway).

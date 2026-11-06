@@ -263,6 +263,30 @@ class ServiceTests(unittest.TestCase):
             self.service.update_settings({"maxRegions": 2})
             self.service.submit("hg38", b"chrA\t1\t2\nchrA\t3\t4\nchrA\t5\t6\n", client="10.0.0.4")
 
+    def test_cleanup_by_retention_storage_limit_and_admin(self):
+        jobs = [self.service.submit("hg38", b"chrA\t5000\t5010\n", client="127.0.0.1", owner="w1" if i else "w2")
+                for i in range(4)]
+        records = {r["id"]: r for r in self.service.job_records()}
+        self.assertEqual(set(records), {j["id"] for j in jobs})
+        self.assertTrue(all(r["bytes"] > 0 for r in records.values()))
+        old = self.service.jobs_dir / jobs[0]["id"] / "job.json"  # 40 days old
+        job = json.loads(old.read_text())
+        job["created"] -= 40 * 86400
+        old.write_text(json.dumps(job))
+        self.assertEqual(self.service.sweep(force=True)["removed"], 1)  # retention 30 days
+        size = records[jobs[1]["id"]]["bytes"]
+        self.service.update_settings({"maxStorageMB": 2.5 * size / 1048576})
+        self.assertEqual(self.service.sweep(force=True)["removed"], 1)  # the oldest above the limit
+        self.assertEqual(len(self.service.job_records()), 2)
+        result = self.service.cleanup("jobs", job_ids=[jobs[3]["id"], "../etc"])
+        self.assertEqual(result["removed"], 1)
+        self.assertGreater(result["freedBytes"], 0)
+        self.assertEqual(self.service.cleanup("owner", owner="w1")["removed"], 1)
+        self.assertEqual(self.service.job_records(), [])
+        self.assertEqual(self.service.status()["lastCleanup"]["reason"], "admin: owner")
+        with self.assertRaises(ValueError):
+            self.service.cleanup("everything")
+
     def test_session_page_reads_like_rgreat(self):
         job = self.service.submit("hg38", b"chrA\t5000\t5010\n", client="10.0.0.5")
         page = great_service.session_page(job, "http://server/great/#job=" + job["id"])

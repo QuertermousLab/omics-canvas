@@ -59,11 +59,11 @@ status() {
   check "hub backend" "http://127.0.0.1:${VIZHUB_HUB_PORT:-8893}/hub/api/health"
   check "Genome Canvas backend" "http://127.0.0.1:${VIZHUB_CANVAS_PORT:-8000}/api/health"
   [[ -n "${VIZHUB_JUPYTER_PORT:-}" ]] && check "JupyterLab backend" "http://127.0.0.1:${VIZHUB_JUPYTER_PORT}/api"
-  check "gateway: hub" "$gateway/hub/"
+  check "gateway: home" "$gateway/"
   check "gateway: Genome Canvas" "$gateway/genome-canvas/api/health"
   [[ -n "${VIZHUB_JUPYTER_PORT:-}" ]] && check "gateway: JupyterLab" "$gateway/lab"
   echo "Open"
-  echo "  $public/hub/   (also $public/)"
+  echo "  $public/   (the home page; /hub/ redirects there)"
   echo "  $public/genome-canvas/   $public/spatial/   $public/single-cell/   $public/crispr/${VIZHUB_JUPYTER_PORT:+   $public/lab}"
   if [[ -n "${VIZHUB_SSH_HOST:-}" ]]; then
     local ssh_port="" target="127.0.0.1"

@@ -2258,7 +2258,7 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
                 "greatBase": self.great_public_base(),
                 "workspace": self.public_workspace(workspace), "localMode": LOCAL_MODE,
                 "limits": {k: settings[k] for k in ("minIntervalSeconds", "maxJobsPerHour", "maxRegions",
-                                                    "maxBackgroundRegions", "maxUploadMB", "jobRetentionDays",
+                                                    "maxBackgroundRegions", "maxUploadMB", "jobRetentionDays", "maxStorageMB",
                                                     "allowRemoteURLs", "apiEnabled")},
             })
         elif route == "settings":
@@ -2269,11 +2269,23 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
                 self.send_json({"settings": GREAT.update_settings(payload), "defaults": great_service.DEFAULT_SETTINGS})
             else:
                 self.send_json({"settings": GREAT.settings(), "defaults": great_service.DEFAULT_SETTINGS})
-        elif route == "admin":
+        elif route in ("admin", "admin/jobs", "admin/cleanup"):
             if not admin:
-                raise PermissionError("Only an administrator workspace can see GREAT's status")
-            if method == "POST" and q("action") == "sweep":
-                self.send_json({"removed": GREAT.sweep(force=True)})
+                raise PermissionError("Only an administrator workspace can see or clean GREAT's analyses")
+            if route == "admin/jobs":
+                names = {item["id"]: item["name"] for item in workspace_catalog(self.workspace_store, self.server.home_root)}
+                records = GREAT.job_records()
+                for record in records:
+                    record["ownerName"] = names.get(record["owner"], "") if record["owner"] else ""
+                settings = GREAT.settings()
+                self.send_json({"jobs": records, "totalBytes": sum(r["bytes"] for r in records),
+                                "retentionDays": settings["jobRetentionDays"], "maxStorageMB": settings["maxStorageMB"]})
+            elif route == "admin/cleanup" and method == "POST":
+                payload = self.read_json_body(1024 * 1024, "Cleanup")
+                self.send_json(GREAT.cleanup(str(payload.get("action", "")), payload.get("days"),
+                                             payload.get("jobs"), payload.get("owner")))
+            elif method == "POST" and q("action") == "sweep":
+                self.send_json(GREAT.cleanup("expired"))
             else:
                 self.send_json(GREAT.status())
         elif route == "jobs" and method == "GET":
@@ -2841,6 +2853,7 @@ def main():
         temporary_ready_file.replace(ready_file)
     if not LOCAL_MODE:
         GREAT.warm()  # load the default assembly into a GREAT worker in the background
+        GREAT.start_maintenance()  # delete expired results and keep the storage limit, every 10 minutes
     print("Genome Canvas is running on http://{}:{}".format(bound_host, bound_port))
     print("Serving {} configured data root(s):".format(len(DATA_ROOTS)))
     for item in DATA_ROOTS.values():

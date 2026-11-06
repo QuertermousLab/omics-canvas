@@ -13,7 +13,9 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
   `gateway/apache.conf.in` and `deploy/systemd/*.in`, never the generated `gateway/apache.conf` or
   `deploy/generated/`; `./vizhubctl configure --yes` regenerates, `./vizhubctl install` relinks the units. `state/`, `hub/venv/`, `hub/static/`, `hub/config.json` and Genome Canvas's
   `genomecanvas.config.json` / `.genomecanvas/` are local and never committed.
-- `hub/server.py` (FastAPI, 127.0.0.1:8893): home page, viewer pages, API, conversion queue.
+- `hub/server.py` (FastAPI, 127.0.0.1:8893): the home page (served at the gateway's `/`; `/hub/` redirects there, the API
+  and assets stay under `/hub/api/`, `/hub/static/`), viewer pages, API, conversion queue. Every module has a top-level
+  address beside the others (`/genome-canvas/`, `/great/`, `/spatial/`, `/single-cell/`, `/crispr/`); add new ones the same way.
   `hub/converters/` turn source files into the ATHENA viewer format (`convert.py` dispatches;
   `rds_export.R` reads R objects; `atac_to_viewer.py` builds accessibility tracks).
   `hub/web/` is the page source (TypeScript, esbuild): `./vizhubctl build` → `hub/static/`.

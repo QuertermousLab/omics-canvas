@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A small stand-in for gateway/apache.conf (standard library only), for CI and local tests:
 /genome-canvas/... -> Genome Canvas (prefix stripped, X-Forwarded-Prefix set), /great/... -> Genome Canvas's GREAT,
-/ -> /hub/, the rest -> the hub.
+the rest (the home page at /) -> the hub.
 
   python3 gateway/dev_gateway.py --port 8892 --hub http://127.0.0.1:8893 --canvas http://127.0.0.1:8000
 """
@@ -18,12 +18,6 @@ def make_handler(hub, canvas):
         protocol_version = 'HTTP/1.1'
 
         def forward(self):
-            if self.path in ('/', ''):
-                self.send_response(302)
-                self.send_header('Location', '/hub/')
-                self.send_header('Content-Length', '0')
-                self.end_headers()
-                return
             target, path, extra = hub, self.path, {}
             if self.path == '/genome-canvas' or self.path.startswith('/genome-canvas/'):
                 target, path = canvas, self.path[len('/genome-canvas'):] or '/'

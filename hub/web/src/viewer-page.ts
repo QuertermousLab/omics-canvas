@@ -695,7 +695,7 @@
           ${p.citation ? `<p class="cite">${esc(p.citation)}${p.sourceUrl ? ` · <a href="${esc(p.sourceUrl)}" target="_blank" rel="noopener">source data</a>` : ''}</p>` : ''}
           <div>${p.slides.map((s) => `<a href="${slideHref(p.id, s.id)}"><strong>${esc(s.title ?? s.id)}</strong>${s.description ? `<span>${esc(s.description)}</span>` : ''}</a>`).join('')}</div>
         </section>`).join('')}
-      </div>` : `<p>No ${kind === 'spatial' ? 'spatial' : 'single-cell'} datasets in the hub yet.<br><a class="btn btn--primary btn--sm" href="/hub/#add">Add data in the hub</a></p>`;
+      </div>` : `<p>No ${kind === 'spatial' ? 'spatial' : 'single-cell'} datasets in the hub yet.<br><a class="btn btn--primary btn--sm" href="/#add">Add data in the hub</a></p>`;
   }
 
   function renderStatus() {

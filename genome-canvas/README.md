@@ -323,9 +323,11 @@ original server no longer answers, so it follows GREAT's published core code (gr
 - **Limits** (`<state>/great/settings.json`, edited in the page's **Admin** panel by an administrator workspace and
   applied at once, also to waiting requests): minimum interval between analyses per client (default 5 s; GREAT asked
   for 60), analyses per client per hour, analyses at once (worker processes), queue wait before HTTP 429, region and
-  file size limits, result retention (default 30 days), terms per ontology in batch exports (default all; GREAT: 500),
+  file size limits, result retention (default 30 days) and storage limit (default 20 GB: above it the oldest results
+  go), terms per ontology in batch exports (default all; GREAT: 500),
   remote URLs on/off, the API on/off, exempt and blocked clients. The panel also shows running and waiting analyses,
-  workers and the clients of the last hour. Administrators: `great.admins` in `genomecanvas.config.json` (workspace
+  workers and the clients of the last hour, and lists every stored analysis (workspace, size, age) to delete selected
+  ones, those older than N days or all. A cleanup thread applies the retention and the storage limit every 10 minutes. Administrators: `great.admins` in `genomecanvas.config.json` (workspace
   ids or names), by default the Home workspace of the account that runs the server.
 
 Data: `python3 tools/fetch_great_data.py` (or the `great` step below) downloads GREAT's gene and curated-domain
