@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / 'deploy' / 'site.env'
 EXAMPLE = ROOT / 'deploy' / 'site.env.example'
-UNITS = ['vizhub-hub.service', 'genome-canvas.service', 'vizhub-great.service', 'vizhub-gateway.service']
+UNITS = ['vizhub-hub.service', 'genome-canvas.service', 'vizhub-great.service', 'vizhub-auth.service', 'vizhub-gateway.service']
 GENERATED = ROOT / 'deploy' / 'generated' / 'systemd'
 
 # (key, option, question) in the order they are asked
@@ -34,6 +34,8 @@ SETTINGS = [
     ('VIZHUB_HUB_PORT', 'hub-port', 'Hub backend port (127.0.0.1)'),
     ('VIZHUB_CANVAS_PORT', 'canvas-port', 'Genome Canvas port (127.0.0.1)'),
     ('VIZHUB_GREAT_PORT', 'great-port', 'GREAT port (127.0.0.1)'),
+    ('VIZHUB_AUTH_PORT', 'auth-port', 'Sign-in server port (127.0.0.1)'),
+    ('VIZHUB_SIGN_IN', 'sign-in', 'Ask everyone to sign in (THOR account or access password): on / off'),
     ('VIZHUB_JUPYTER_PORT', 'jupyter-port', 'JupyterLab port behind the gateway (empty: none)'),
     ('VIZHUB_JUPYTER_BIN', 'jupyter-bin', 'JupyterLab executable'),
     ('VIZHUB_SSH_HOST', 'ssh-host', 'SSH host for port forwarding from outside (empty: none)'),
@@ -42,7 +44,7 @@ SETTINGS = [
     ('VIZHUB_APACHE_BIN', 'apache-bin', 'Apache executable'),
     ('VIZHUB_APACHE_MODULES', 'apache-modules', 'Apache modules folder'),
 ]
-PORTS = {'VIZHUB_PORT', 'VIZHUB_HUB_PORT', 'VIZHUB_CANVAS_PORT', 'VIZHUB_GREAT_PORT', 'VIZHUB_SSH_PORT'}
+PORTS = {'VIZHUB_PORT', 'VIZHUB_HUB_PORT', 'VIZHUB_CANVAS_PORT', 'VIZHUB_GREAT_PORT', 'VIZHUB_AUTH_PORT', 'VIZHUB_SSH_PORT'}
 
 
 def read_env(path):
@@ -68,6 +70,8 @@ def valid(key, value):
         return value.isdigit() and 0 < int(value) < 65536
     if key == 'VIZHUB_JUPYTER_PORT':
         return value == '' or (value.isdigit() and 0 < int(value) < 65536)
+    if key == 'VIZHUB_SIGN_IN':
+        return value in ('on', 'off')
     if key == 'VIZHUB_LISTEN':
         return bool(re.fullmatch(r'[0-9.]+|\[?[0-9a-fA-F:]+\]?|\*', value))
     if key == 'VIZHUB_PUBLIC_URL':
@@ -144,12 +148,14 @@ def main():
         elif not valid(key, values.get(key, '')):
             raise SystemExit(f'{key}={values.get(key, "")!r} is not valid (--{option})')
     values['VIZHUB_PUBLIC_URL'] = values['VIZHUB_PUBLIC_URL'].rstrip('/')
-    used = [values[k] for k in ('VIZHUB_PORT', 'VIZHUB_HUB_PORT', 'VIZHUB_CANVAS_PORT', 'VIZHUB_GREAT_PORT', 'VIZHUB_JUPYTER_PORT') if values[k]]
+    used = [values[k] for k in ('VIZHUB_PORT', 'VIZHUB_HUB_PORT', 'VIZHUB_CANVAS_PORT', 'VIZHUB_GREAT_PORT', 'VIZHUB_AUTH_PORT',
+                                'VIZHUB_JUPYTER_PORT') if values[k]]
     if len(set(used)) != len(used):
-        raise SystemExit(f'the gateway, hub, Genome Canvas, GREAT and JupyterLab need different ports: {", ".join(used)}')
+        raise SystemExit(f'the gateway, hub, Genome Canvas, GREAT, sign-in and JupyterLab need different ports: {", ".join(used)}')
 
     write_env(values)
-    context = dict(values, VIZHUB_DIR=str(ROOT), VIZHUB_USER=getpass.getuser())
+    context = dict(values, VIZHUB_DIR=str(ROOT), VIZHUB_USER=getpass.getuser(),
+                   VIZHUB_AUTH_STATE=str(ROOT / 'state' / 'auth') if values['VIZHUB_SIGN_IN'] == 'on' else '')
     render(ROOT / 'gateway' / 'apache.conf.in', context, ROOT / 'gateway' / 'apache.conf')
     for unit in UNITS:
         render(ROOT / 'deploy' / 'systemd' / f'{unit}.in', context, GENERATED / unit)

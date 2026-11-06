@@ -53,15 +53,15 @@ On the lab server: **http://171.65.68.140:8892/great/** (the gateway routes `/gr
   `source("http://<server>/great/rgreat.R")` points rGREAT at this server for the R session (it rewrites
   rGREAT's `BASE_URL_LIST`); then `submitGreatJob(gr, genome = "hg38", request_interval = 0)`,
   `getEnrichmentTables`, `getRegionGeneAssociations` and `plotRegionGeneAssociations` work as with the original.
-- **Limits** (`state/great/settings.json`, edited in the page's **Admin** panel by an administrator workspace and
+- **Limits** (`state/great/settings.json`, edited on the admin page `/admin/` → **GREAT** by an administrator and
   applied at once, also to waiting requests): minimum interval between analyses per client (default 5 s; GREAT asked
   for 60), analyses per client per hour, analyses at once (worker processes), queue wait before HTTP 429, region and
   file size limits, result retention (default 30 days) and storage limit (default 20 GB: above it the oldest results
   go), terms per ontology in batch exports (default all; GREAT: 500),
   remote URLs on/off, the API on/off, exempt and blocked clients. The panel also shows running and waiting analyses,
   workers and the clients of the last hour, and lists every stored analysis (workspace, size, age) to delete selected
-  ones, those older than N days or all. A cleanup thread applies the retention and the storage limit every 10 minutes. Administrators: `admins` in `great/great.config.json` (Genome Canvas
-  workspace ids or names), by default the Home workspace of the account that runs the server.
+  ones, those older than N days or all. A cleanup thread applies the retention and the storage limit every 10 minutes. Administrators: the sign-in's (`auth/`); a GREAT running without sign-in uses `admins`
+  in `great/great.config.json` (Genome Canvas workspace ids or names), by default the server account's Home workspace.
 
 
 ## Running it
@@ -83,8 +83,9 @@ address: its workspace list and `/data/` files), `--canvas-path` (where the gate
 `/genome-canvas/`), `--data` (default `data/`), `--state` (default `../state/great/`: `jobs/`, `settings.json`).
 `great.config.json` (local, not in git; see `great.config.example.json`) can set the same keys and `admins`.
 
-Workspaces are Genome Canvas's: the page reads the selected one from Genome Canvas's API (where its cookie applies)
+With sign-in on (`auth/`), the page and its API need a session; GREAT's `.php` interfaces and `rgreat.R` stay open and
+read only uploaded regions and public URLs, never the server's files. Workspaces are Genome Canvas's: the page reads the selected one from Genome Canvas's API (where its cookie applies)
 and sends it as `X-Vizhub-Workspace`, as the hub's pages do; GREAT checks it against Genome Canvas's workspace list.
 Regions from Genome Canvas files are read through Genome Canvas's workspace-scoped `/data/` URLs, so they follow its
-access rules. Results are open to anyone with a job's link (as GREAT's sessions were), GREAT fetches only public URLs,
-and the admin panel is protected only by the password-free workspace selection.
+access rules. Results are open to anyone with a job's link through the `.php` interfaces (as GREAT's sessions were), and GREAT
+fetches only public URLs.

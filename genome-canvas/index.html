@@ -18,7 +18,7 @@
     })();
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20261103.2">
+  <link rel="stylesheet" href="styles.css?v=20261106.2">
   <!-- Start the large engine download and the module graph in parallel with
        the stylesheet. Keep these hrefs identical to the import specifiers in
        app.js (including ?v=) so the preloaded responses are reused. -->
@@ -39,6 +39,7 @@
 </head>
 <body class="workspace-pending">
   <svg class="icon-sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-sign-out" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M9 16l-4-4 4-4M5 12h10"/></symbol>
     <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -114,9 +115,19 @@
         <img class="brand-mark" src="favicon.svg" alt="" width="26" height="26">
         <strong class="brand-name" id="app-name">Genome Canvas</strong>
         <a class="hub-home-button" id="hub-home" href="/" title="Back to the Omics Canvas home page" hidden><img src="/hub/static/favicon.svg" alt="" width="16" height="16">Omics Canvas</a>
+        <a class="icon-button ghost small" id="signed-in" href="/auth/logout" title="Sign out" aria-label="Sign out" hidden><svg class="icon" aria-hidden="true"><use href="#i-sign-out"/></svg></a>
         <script>
           // Served through THOR's port-8892 gateway (not in the Mac app or This Mac mode): link back to the hub.
-          if (location.pathname.indexOf("/genome-canvas/") === 0 && !document.documentElement.classList.contains("desktop-embedded")) document.getElementById("hub-home").hidden = false;
+          if (location.pathname.indexOf("/genome-canvas/") === 0 && !document.documentElement.classList.contains("desktop-embedded")) {
+            document.getElementById("hub-home").hidden = false;
+            // signed in to Omics Canvas (auth/): who, and a way out
+            fetch("/auth/api/me").then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
+              if (!me) return;
+              var link = document.getElementById("signed-in");
+              link.title = "Signed in to Omics Canvas as " + me.user + " · Sign out";
+              link.hidden = false;
+            }).catch(function () {});
+          }
         </script>
       </div>
 

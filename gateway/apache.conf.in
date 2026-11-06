@@ -4,6 +4,7 @@
 #   /hub/ /spatial/ /single-cell/ /crispr/   -> hub backend (/hub/: its API and assets)   127.0.0.1:@VIZHUB_HUB_PORT@ (hub/server.py)
 #   /genome-canvas/   -> Genome Canvas                        127.0.0.1:@VIZHUB_CANVAS_PORT@ (genome-canvas/server.py)
 #   /great/           -> GREAT                                127.0.0.1:@VIZHUB_GREAT_PORT@ (great/server.py)
+#   /auth/ /admin/    -> sign-in and admin pages              127.0.0.1:@VIZHUB_AUTH_PORT@ (auth/server.py)
 @jupyter@#   everything else   -> JupyterLab (/lab, /api, kernels...)  127.0.0.1:@VIZHUB_JUPYTER_PORT@
 # Run by vizhub-gateway.service (systemd user unit); manage with ../vizhubctl.
 ServerRoot "@VIZHUB_DIR@/gateway"
@@ -38,7 +39,8 @@ ProxyTimeout 600
 
 RewriteEngine On
 # Landing page and slashless entry points (mod_rewrite runs before ProxyPass)
-RewriteRule ^/(hub|spatial|single-cell|crispr|genome-canvas|great)$ /$1/ [R=302,L]
+RewriteRule ^/(hub|spatial|single-cell|crispr|genome-canvas|great|admin)$ /$1/ [R=302,L]
+RewriteRule ^/auth/?$ /auth/login [R=302,L]
 
 # Visualization hub: the home page at /, spatial / single-cell viewers, CRISPR explorer and their API (/hub/)
 ProxyPassMatch   ^(/)$         http://127.0.0.1:@VIZHUB_HUB_PORT@$1
@@ -61,6 +63,15 @@ ProxyPassReverse /genome-canvas/ http://127.0.0.1:@VIZHUB_CANVAS_PORT@/
     RequestHeader unset X-Remote-User
     RequestHeader set X-Forwarded-Prefix "/genome-canvas"
 </Location>
+
+# Sign-in (auth/server.py): the sign-in page and its API, and the admin page; the backends check the session themselves
+ProxyPass        /auth/  http://127.0.0.1:@VIZHUB_AUTH_PORT@/auth/
+ProxyPassReverse /auth/  http://127.0.0.1:@VIZHUB_AUTH_PORT@/auth/
+ProxyPass        /admin/ http://127.0.0.1:@VIZHUB_AUTH_PORT@/admin/
+ProxyPassReverse /admin/ http://127.0.0.1:@VIZHUB_AUTH_PORT@/admin/
+<LocationMatch "^/(auth|admin)/">
+    RequestHeader unset X-Remote-User
+</LocationMatch>
 
 # GREAT (great/server.py): its page, API and GREAT's .php interfaces, all under /great/ (the page reads workspaces from
 # Genome Canvas's API under /genome-canvas/api/, where the workspace cookie applies)

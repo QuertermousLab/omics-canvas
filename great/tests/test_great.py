@@ -473,5 +473,72 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual({r["ownerName"] for r in json.loads(text)["jobs"]}, {"alice"})
 
 
+
+AUTH = Path(__file__).resolve().parents[2] / "auth" / "sessions.py"
+
+
+@unittest.skipUnless(AUTH.is_file(), "needs ../auth (the Omics Canvas repository)")
+class SignInTests(InterfaceTests):
+    """With Omics Canvas sign-in on: the page and its API need a session; GREAT's interfaces stay open, without files."""
+
+    def setUp(self):
+        super().setUp()
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("omics_canvas_sessions", str(AUTH))
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+        gate = self.module.Gate(Path(self.temporary.name) / "auth")
+        gate.store.update_settings({"admins": ["alice"]})
+        self.httpd.sign_in = (gate, self.module)
+        self.alice = {"Cookie": "{}={}".format(self.module.COOKIE, gate.store.create_session("alice", "account", True)),
+                      "X-Forwarded-For": "10.0.0.8"}
+        password_id = gate.store.add_password("visitor", "a long access password")
+        self.guest = {"Cookie": "{}={}".format(self.module.COOKIE, gate.store.create_session(
+            "guest: visitor", "password", True, password_id=password_id)), "X-Forwarded-For": "10.0.0.8"}
+
+    def request(self, method, path, body=None, headers=None):
+        headers = dict(headers or {})
+        headers.setdefault("X-Forwarded-For", "10.0.0.8")  # through the gateway
+        if "Cookie" not in headers and not COMPAT_OR_OPEN.search(path):
+            headers.update(self.alice)
+        return super().request(method, path, body, headers)
+
+    # rGREAT's calls and the batch interface run again here, without a session; the page tests are the ones above
+    test_page_api = test_page_and_its_address = test_workspaces_and_files_come_from_genome_canvas = None
+
+    def test_page_and_api_need_a_session(self):
+        no_session = {"X-Forwarded-For": "10.0.0.8", "Cookie": "x=1"}
+        status, _, _ = super().request("GET", "/great/api/status", headers=no_session)
+        self.assertEqual(status, 401)
+        connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=10)
+        connection.request("GET", "/great/?genome=hg38", headers=dict(no_session, Accept="text/html"))
+        response = connection.getresponse()
+        self.assertEqual((response.status, response.getheader("Location")), (302, "/auth/login?next=%2Fgreat%2F%3Fgenome%3Dhg38"))
+        connection.close()
+        self.assertEqual(super().request("GET", "/great/rgreat.R", headers=no_session)[0], 200)
+        self.assertEqual(super().request("GET", "/great/api/health", headers=no_session)[0], 200)
+        status, _, text = super().request("GET", "/great/api/status", headers=self.alice)
+        self.assertEqual((json.loads(text)["admin"], json.loads(text)["user"]["user"]), (True, "alice"))
+        self.assertFalse(json.loads(super().request("GET", "/great/api/status", headers=self.guest)[2])["admin"])
+        self.assertEqual(super().request("GET", "/great/api/settings", headers=self.guest)[0], 403)
+
+    def test_open_interfaces_never_read_server_files(self):
+        no_session = {"X-Forwarded-For": "10.0.0.8"}
+        body, content_type = multipart({"outputType": "batch", "requestSpecies": "hg38",
+                                        "requestTrack": "http://lab:8892/genome-canvas/data/{}/root1/peaks/a.bed".format(ALICE)})
+        status, _, text = super().request("POST", "/great/public/cgi-bin/greatStart.php", body,
+                                          dict(no_session, **{"Content-Type": content_type, "X-Vizhub-Workspace": ALICE, "Host": "lab:8892"}))
+        self.assertEqual(status, 400)
+        self.assertIn("not this server's files", text)
+        status, _, text = super().request("GET", "/great/public/cgi-bin/greatStart.php?outputType=batch&requestSpecies=hg38"
+                                                 "&requestURL=http%3A%2F%2Flab%3A8892%2Fgenome-canvas%2Fdata%2Fx.bed",
+                                          headers=dict(no_session, Host="lab:8892"))
+        self.assertEqual(status, 400)
+        self.assertIn("not this server's files", text)
+
+
+COMPAT_OR_OPEN = re.compile(r"^/great/(public[^/]*/cgi-bin/|rgreat\.R|api/health)")
+
+
 if __name__ == "__main__":
     unittest.main()

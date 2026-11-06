@@ -11,6 +11,8 @@ ExecStart=/usr/bin/env python3 @VIZHUB_DIR@/great/server.py --host 127.0.0.1 --p
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
+# Omics Canvas sign-in (VIZHUB_SIGN_IN in deploy/site.env): the sessions it checks; empty = no sign-in
+Environment=OMICS_CANVAS_AUTH=@VIZHUB_AUTH_STATE@
 
 [Install]
 WantedBy=default.target

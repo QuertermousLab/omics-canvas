@@ -629,6 +629,38 @@ def start_job(src: Path, info, body, owner):
 app = FastAPI(title='Omics Canvas', docs_url='/hub/api/docs', openapi_url='/hub/api/openapi.json')
 
 
+def _sign_in():
+    """Omics Canvas sign-in (../auth/sessions.py) when OMICS_CANVAS_AUTH names its state folder (the lab server's unit)."""
+    folder = os.environ.get('OMICS_CANVAS_AUTH', '').strip()
+    module_path = HERE.parent / 'auth' / 'sessions.py'
+    if not folder or not module_path.is_file():
+        return None, None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('omics_canvas_sessions', str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Gate(folder), module
+
+
+SIGN_IN, SIGN_IN_MODULE = _sign_in()
+OPEN_PATHS = ('/hub/api/health',)
+
+
+@app.middleware('http')
+async def require_sign_in(request: Request, call_next):
+    """Pages send people to the sign-in page, the API answers 401, until they are signed in."""
+    if SIGN_IN is None or request.url.path in OPEN_PATHS:
+        return await call_next(request)
+    from starlette.concurrency import run_in_threadpool
+    client = request.client.host if request.client else ''
+    if await run_in_threadpool(SIGN_IN.identity, request.headers, client):
+        return await call_next(request)
+    if SIGN_IN_MODULE.wants_html(request.method, request.headers):
+        target = request.url.path + (f'?{request.url.query}' if request.url.query else '')
+        return RedirectResponse(SIGN_IN_MODULE.login_location(target), status_code=302)
+    return JSONResponse({'error': 'Sign in to Omics Canvas first', 'signIn': '/auth/login'}, status_code=401)
+
+
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException):
     return JSONResponse({'error': exc.detail}, status_code=exc.status_code)

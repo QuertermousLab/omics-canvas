@@ -25,6 +25,23 @@ the port over SSH and open **http://localhost:8892** instead (the Mac apps can d
 ssh -N -L 8892:127.0.0.1:8892 yourname@171.65.68.140
 ```
 
+**Sign in** first — any page sends you to the sign-in page and back to that page afterwards:
+
+![Sign-in page](images/sign-in.png)
+
+- **THOR account**: your THOR account name and password (the same as for SSH).
+- **Access password**: for people without a THOR account; the administrator gives it out, and it works until its
+  expiry date.
+- **Keep me signed in on this computer** keeps you signed in for a year in this browser (counted from your last
+  visit); without it you are signed out when the browser closes. **Sign out** is in the top bar of every page.
+- Five wrong passwords in a row lock the account and the computer out for 15 minutes. JupyterLab (`/lab`) keeps its
+  own sign-in, and GREAT's programming interfaces (rGREAT, `greatStart.php`) work without signing in.
+- **Admin** (administrators, `/admin/`): access passwords (add one with a name and an expiry date — it is shown once;
+  disable, extend or delete it later, which signs out everyone who used it), everyone signed in (sign a session out),
+  the sign-in settings and log, and GREAT's settings.
+
+![Admin page](images/admin-sign-in.png)
+
 The home page (`/`; every module has its own address below it: `/genome-canvas/`, `/great/`, `/spatial/`,
 `/single-cell/`, `/crispr/`) groups the modules — *Genome and regions* (Genome Canvas, GREAT) and *Single-cell, spatial
 and CRISPR screens* — and shows whether each service is online and how many datasets your workspace has in each (*yours*) and how many
@@ -139,14 +156,12 @@ it and tests GO terms, mouse and human phenotypes and single genes.
   Scripts can use GREAT's batch interface, e.g. `curl -F outputType=batch -F requestSpecies=hg38 -F
   requestFile=@peaks.bed.gz http://171.65.68.140:8892/great/public/cgi-bin/greatStart.php`; the
   **API & rGREAT** section at the bottom of the page lists these with the server's current limits.
-- **Admin** (shown to the server's administrator): request limits — the minimum interval between analyses per
-  client, analyses per hour and at once, how long requests wait in the queue, region and file size limits, how long
-  results are kept and how much space they may take — change at once, without a restart; the panel also lists running
-  and waiting analyses. **Stored analyses** lists everyone's results with their size and age: delete the selected ones,
-  those older than a number of days, or all; **Apply retention and storage limit now** runs the automatic cleanup,
-  which otherwise runs every 10 minutes (results older than the retention, then the oldest above the storage limit).
-
-![GREAT admin panel](images/great-admin.png)
+- **Admin**: administrators open the admin page's **GREAT** tab (`/admin/#great`, or **Admin** in GREAT's top bar):
+  request limits — the minimum interval between analyses per client, analyses per hour and at once, how long requests
+  wait in the queue, region and file size limits, how long results are kept and how much space they may take — change
+  at once, without a restart. **Stored analyses** lists everyone's results with their size and age: delete the
+  selected ones, those older than a number of days, or all; **Apply retention and storage limit now** runs the
+  automatic cleanup, which otherwise runs every 10 minutes. It also shows running and waiting analyses.
 
 ## 3. Spatial viewer
 
@@ -364,6 +379,9 @@ Download from the [latest release](https://github.com/QuertermousLab/omics-canva
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Omics Canvas.app" "/Applications/Genome Canvas.app"
 ```
+
+Both apps show the server's sign-in page in their window the first time; with **Keep me signed in** they stay signed
+in for a year. Genome Canvas.app's This Mac mode needs no sign-in.
 
 **Genome Canvas.app** — the genome browser in a native window: the same canvas with a native track list, genome and
 locus fields, highlight tools and workspace menu. **Server** uses THOR's files; **This Mac** starts a built-in backend

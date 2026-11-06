@@ -11,6 +11,9 @@ User documentation: [README.md](README.md). The repository rules in [../AGENTS.m
 - Data: `data/<assembly>/` (not in git; `tools/fetch_great_data.py`, ~10 MB each, `--update` for new ontology
   releases). State: `../state/great/` (`jobs/<id>/`, `settings.json`; not in git) — the jobs are users' results, kept
   by the retention and storage limit; never delete them by hand except test jobs you made yourself.
+- Sign-in (`../auth/`): with `OMICS_CANVAS_AUTH` set the page and `/great/api/` need a session and administrators come
+  from it; `COMPAT` routes, `rgreat.R` and `/great/api/health` stay open and must never read server files
+  (`server_files = False`).
 - Workspaces and files are Genome Canvas's (`--canvas http://127.0.0.1:8000`): the page sends `X-Vizhub-Workspace`,
   `server.py` checks it against Genome Canvas's `/api/workspaces` and reads tracks through its `/data/<workspace>/…`
   URLs. Genome Canvas links here (GREAT button, track menu) when `/great/api/health` answers, and redirects its old

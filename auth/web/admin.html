@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin · Omics Canvas</title>
+  <script>
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem("genome-canvas:theme"); } catch (error) { /* storage disabled */ }
+      var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <link rel="icon" href="/auth/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/auth/base.css">
+  <link rel="stylesheet" href="/auth/auth.css">
+  <script type="module" src="/auth/admin.mjs"></script>
+</head>
+<body class="admin-page">
+  <header class="ad-top">
+    <a class="hub-home-button" href="/" title="Back to the Omics Canvas home page"><img src="/auth/favicon.svg" alt="" width="16" height="16">Omics Canvas</a>
+    <h1>Admin</h1>
+    <div class="ad-me"><span id="ad-me"></span><a class="quiet-button" href="/auth/logout">Sign out</a></div>
+  </header>
+  <main class="ad-main">
+    <nav class="ad-tabs" role="tablist">
+      <button type="button" data-tab="signin" aria-selected="true">Sign-in</button>
+      <button type="button" data-tab="great" aria-selected="false">GREAT</button>
+    </nav>
+
+    <section data-panel="signin">
+      <div class="ad-card">
+        <h2>Access passwords</h2>
+        <p>For people without a THOR account: anyone with one of these passwords can sign in until it expires or you disable it (their sessions end with it).</p>
+        <form class="ad-row" id="ad-new-password">
+          <label>Name <input type="text" name="label" placeholder="e.g. Visiting student, Nov 2026" required></label>
+          <label>Password <input type="text" name="password" placeholder="leave empty to generate one" autocomplete="off"></label>
+          <label>Valid until <input type="date" name="expires"></label>
+          <label>Note <input type="text" name="note" placeholder="optional"></label>
+          <button class="primary-button" type="submit">Add</button>
+        </form>
+        <div id="ad-created" class="ad-new-password" hidden></div>
+        <div class="ad-table-wrap"><table class="ad-table" id="ad-passwords"></table></div>
+      </div>
+      <div class="ad-card">
+        <h2>Signed-in sessions</h2>
+        <p>Everyone signed in now, by THOR account or access password. Signing a session out takes effect within 15 seconds.</p>
+        <div class="ad-table-wrap"><table class="ad-table" id="ad-sessions"></table></div>
+      </div>
+      <div class="ad-card">
+        <h2>Settings</h2>
+        <p class="ad-check-method" id="ad-method"></p>
+        <form id="ad-settings"><div class="ad-grid" id="ad-settings-fields"></div>
+          <div class="ad-actions"><button class="primary-button small" type="submit">Save</button><span class="ad-message" id="ad-settings-message"></span></div></form>
+      </div>
+      <div class="ad-card">
+        <h2>Sign-in log</h2>
+        <p>The last 300 attempts (kept 180 days).</p>
+        <div class="ad-table-wrap"><table class="ad-table" id="ad-log"></table></div>
+      </div>
+    </section>
+
+    <section data-panel="great" hidden>
+      <div class="ad-card">
+        <h2>GREAT settings</h2>
+        <p>Request limits of GREAT (<a href="/great/">/great/</a>) and its API: changes apply immediately, also to requests waiting in the queue.</p>
+        <form id="gr-settings"><div class="ad-grid" id="gr-fields"></div>
+          <div class="ad-actions"><button class="primary-button small" type="submit">Save</button>
+            <button class="secondary-button small" type="button" id="gr-defaults">Defaults</button><span class="ad-message" id="gr-message"></span></div></form>
+      </div>
+      <div class="ad-card">
+        <h2>Stored analyses</h2>
+        <p id="gr-store-summary"></p>
+        <div class="ad-actions">
+          <button class="secondary-button small" type="button" data-cleanup="expired" title="Older than the retention, then the oldest above the storage limit (also runs every 10 minutes)">Apply retention and storage limit now</button>
+          <button class="secondary-button small" type="button" data-cleanup="olderThan">Delete analyses older than</button>
+          <input type="number" id="gr-store-days" value="7" min="0" step="1" style="width:70px"> days
+          <button class="secondary-button small" type="button" data-cleanup="jobs" id="gr-store-selected" disabled>Delete selected</button>
+          <button class="quiet-button small ad-danger" type="button" data-cleanup="all">Delete all</button>
+          <span class="ad-message" id="gr-store-message"></span>
+        </div>
+        <div class="ad-table-wrap"><table class="ad-table" id="gr-store-jobs"></table></div>
+      </div>
+      <div class="ad-card">
+        <h2>Now</h2>
+        <div id="gr-status"></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

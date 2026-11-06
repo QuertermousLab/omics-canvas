@@ -207,6 +207,23 @@ def private_liftover(path):
 LOCUSCOMPARE = locuscompare_tools.LocusCompare(SETTINGS, APP_DIR, STATE_DIR)
 
 
+def load_sign_in():
+    """Omics Canvas sign-in (../auth/sessions.py) when OMICS_CANVAS_AUTH names its state folder, as the lab server's
+    unit does; (None, None) otherwise: on its own, in the Mac app and in tests Genome Canvas needs no sign-in."""
+    folder = os.environ.get("OMICS_CANVAS_AUTH", "").strip()
+    module_path = APP_DIR.parent / "auth" / "sessions.py"
+    if not folder or LOCAL_MODE or not module_path.is_file():
+        return None, None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("omics_canvas_sessions", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Gate(folder), module
+
+
+SIGN_IN, SIGN_IN_MODULE = load_sign_in()
+
+
 def within_root(candidate, root):
     try:
         candidate.relative_to(root)
@@ -1543,7 +1560,28 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.do_GET()
 
+    def signed_in(self):
+        """True to answer the request; otherwise the sign-in page (pages) or HTTP 401 (API, data) was sent."""
+        if SIGN_IN is None or urlparse(self.path).path == "/api/health":
+            return True
+        if SIGN_IN.identity(self.headers, self.client_address[0]):
+            return True
+        if SIGN_IN_MODULE.wants_html(self.command, self.headers):
+            self.send_response(302)
+            self.send_header("Location", SIGN_IN_MODULE.login_location(self.cookie_path().rstrip("/") + self.path))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        else:
+            headers = None
+            if self.command in ("POST", "PUT", "PATCH") and not self.discard_request_body():
+                self.close_connection = True
+                headers = {"Connection": "close"}
+            self.send_json({"error": "Sign in to Omics Canvas first", "signIn": "/auth/login"}, 401, headers)
+        return False
+
     def do_GET(self):
+        if not self.signed_in():
+            return
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         query = parse_qs(parsed.query)
@@ -1660,6 +1698,8 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             self.send_api_error(400, str(exc))
 
     def do_POST(self):
+        if not self.signed_in():
+            return
         path = urlparse(self.path).path
         if path.startswith(("/great/", "/api/great/")):
             self.redirect_to_great(unquote(path))
@@ -1964,6 +2004,8 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
         self.send_json(record)
 
     def do_DELETE(self):
+        if not self.signed_in():
+            return
         path = unquote(urlparse(self.path).path)
         if path.startswith("/api/workspaces/"):
             if self.reject_local_workspace_mutation("Workspaces are disabled in local mode"):

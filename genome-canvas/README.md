@@ -394,7 +394,10 @@ Remote descriptors and track files must allow cross-origin browser access with C
 
 ## Security Boundary
 
-This is a LAN tool, not a multi-user account system. The backend only serves files within `dataRoots` and blocks path traversal. Any authenticated web user can read supported tracks visible in those roots, and every file a workspace loads from a shared root (not from a Home folder) is listed for all workspaces under Shared tracks. Do not expose the service directly to the public internet; use a VPN, reverse-proxy authentication, or firewall controls in sensitive environments.
+This is a LAN tool, not a multi-user account system. In Omics Canvas (the lab server) every request needs a sign-in
+first, with a THOR account or an access password ([../auth/README.md](../auth/README.md)): with `OMICS_CANVAS_AUTH`
+set, `server.py` sends pages to the sign-in page and answers the API and data with 401 (only `/api/health` stays open).
+On its own, Genome Canvas has no sign-in. The backend only serves files within `dataRoots` and blocks path traversal. Any authenticated web user can read supported tracks visible in those roots, and every file a workspace loads from a shared root (not from a Home folder) is listed for all workspaces under Shared tracks. Do not expose the service directly to the public internet; use a VPN, reverse-proxy authentication, or firewall controls in sensitive environments.
 
 ## Verification
 

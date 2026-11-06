@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in · Omics Canvas</title>
+  <script>
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem("genome-canvas:theme"); } catch (error) { /* storage disabled */ }
+      var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <link rel="icon" href="/auth/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/auth/base.css">
+  <link rel="stylesheet" href="/auth/auth.css">
+  <script type="module" src="/auth/login.mjs"></script>
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <header class="auth-brand">
+      <img src="/auth/favicon.svg" alt="" width="40" height="40">
+      <div><h1>Omics Canvas</h1><p>THOR · Quertermous lab</p></div>
+    </header>
+    <div class="auth-tabs" role="tablist">
+      <button type="button" role="tab" data-mode="account" aria-selected="true">THOR account</button>
+      <button type="button" role="tab" data-mode="password" aria-selected="false">Access password</button>
+    </div>
+    <form id="auth-form" autocomplete="on">
+      <label class="auth-field" data-for="account">Account name
+        <input name="username" id="auth-user" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </label>
+      <label class="auth-field">Password
+        <input name="password" id="auth-password" type="password" autocomplete="current-password" required>
+      </label>
+      <p class="auth-hint" data-for="password" hidden>An access password from the server's administrator, for people without a THOR account.</p>
+      <label class="auth-check"><input type="checkbox" id="auth-remember" checked> Keep me signed in on this computer (one year)</label>
+      <p class="auth-error" id="auth-error" role="alert" hidden></p>
+      <button class="primary-button auth-submit" type="submit" id="auth-submit">Sign in</button>
+    </form>
+    <footer class="auth-foot">The password is encrypted in this browser before it is sent. JupyterLab (<a href="/lab">/lab</a>) keeps its own sign-in.</footer>
+  </main>
+</body>
+</html>

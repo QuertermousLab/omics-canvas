@@ -19,6 +19,9 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) (GREAT: [
   `hub/converters/` turn source files into the ATHENA viewer format (`convert.py` dispatches;
   `rds_export.R` reads R objects; `atac_to_viewer.py` builds accessibility tracks).
   `hub/web/` is the page source (TypeScript, esbuild): `./vizhubctl build` → `hub/static/`.
+- `auth/` (standard library, `auth/server.py` on 127.0.0.1:8895, `vizhub-auth.service`): sign-in (`/auth/`) and the admin
+  page (`/admin/`); every backend checks the session cookie with `auth/sessions.py` while `VIZHUB_SIGN_IN=on`. See
+  [auth/AGENTS.md](auth/AGENTS.md): never turn it off or open a route without the user's word.
 - `great/` (standard library, `great/server.py` on 127.0.0.1:8894, `vizhub-great.service`): GREAT region set enrichment at
   `/great/`; see [great/AGENTS.md](great/AGENTS.md). Its workspaces and server files are Genome Canvas's.
 - The home page groups the tools (`hub/web/pages/hub.html`, `.tool-group`): *Genome and regions* (Genome Canvas,

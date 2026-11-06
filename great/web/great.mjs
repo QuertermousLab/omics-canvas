@@ -777,135 +777,6 @@ table = pd.read_csv(io.StringIO("\\n".join([lines[3].lstrip("# ")] + [l for l in
   $("#gr-footer").innerHTML = `GREAT ${state.status.version} reimplemented in Genome Canvas from GREAT's published code and documentation (McLean CY et al., <i>Nat Biotechnol</i> 28:495, 2010; Tanigawa Y et al., <i>Hum Genet</i> 2022). Please cite GREAT when you use these results.`;
 }
 
-// ---------------------------------------------------------------- admin
-
-const SETTING_HELP = {
-  minIntervalSeconds: ["Minimum interval between analyses from one client (s)", "GREAT asked for 60 s. rGREAT also waits request_interval (60 s) itself unless told 0."],
-  maxJobsPerHour: ["Analyses per client per hour", "0 = no limit"],
-  maxConcurrentJobs: ["Analyses running at once", "each runs in its own worker process"],
-  maxWaitSeconds: ["Queue wait before refusing (s)", "requests over a limit wait this long, then get HTTP 429 with Retry-After"],
-  maxRegions: ["Test regions per analysis", "GREAT: 500,000"],
-  maxBackgroundRegions: ["Background regions", "GREAT: 1,000,000"],
-  maxUploadMB: ["File size limit (MB, decompressed)", "GREAT: 50 MB"],
-  jobRetentionDays: ["Keep results (days)", "GREAT: 1 day; older ones are deleted every 10 minutes"],
-  maxStorageMB: ["Storage limit for results (MB)", "above it the oldest analyses are deleted; 0 = no limit"],
-  exportTermLimit: ["Terms per ontology in batch exports", "0 = all; GREAT returned the top 500"],
-  allowRemoteURLs: ["Fetch requestURL / URL inputs", "public addresses only"],
-  apiEnabled: ["GREAT's programming interfaces (rGREAT, greatStart.php)", ""],
-  exemptClients: ["Clients never rate limited", "IP addresses, one per line"],
-  blockedClients: ["Blocked clients", "IP addresses, one per line"],
-};
-
-async function openAdmin() {
-  const dialog = $("#gr-admin-dialog");
-  let data;
-  try { data = await fetchJSON(api("settings")); } catch (error) { toast(error.message, "error"); return; }
-  renderAdminFields(data.settings, data.defaults);
-  dialog.showModal();
-  await Promise.all([refreshAdminStatus(), refreshStoredJobs()]);
-  const timer = setInterval(() => (dialog.open ? refreshAdminStatus() : clearInterval(timer)), 3000);
-}
-
-function renderAdminFields(settings, defaults) {
-  $("#gr-admin-fields").innerHTML = Object.entries(settings).map(([key, value]) => {
-    const [label, help] = SETTING_HELP[key] || [key, ""];
-    const def = defaults?.[key];
-    let control;
-    if (typeof value === "boolean") control = `<input type="checkbox" name="${key}" ${value ? "checked" : ""}>`;
-    else if (Array.isArray(value)) control = `<textarea name="${key}" rows="3" spellcheck="false">${escapeHTML(value.join("\n"))}</textarea>`;
-    else control = `<input type="number" name="${key}" value="${value}" min="0" step="any">`;
-    return `<label class="gr-setting"><span>${escapeHTML(label)}<small>${escapeHTML(help)}${def !== undefined && !Array.isArray(def) ? ` · default ${def}` : ""}</small></span>${control}</label>`;
-  }).join("");
-  $("#gr-admin-fields").dataset.defaults = JSON.stringify(defaults || {});
-}
-
-function formatBytes(bytes) {
-  if (bytes >= 1073741824) return `${formatNumber(bytes / 1073741824, 3)} GB`;
-  if (bytes >= 1048576) return `${formatNumber(bytes / 1048576, 3)} MB`;
-  return `${formatNumber(Math.round(bytes / 1024))} kB`;
-}
-
-async function refreshStoredJobs() {
-  let data;
-  try { data = await fetchJSON(api("admin/jobs")); } catch (error) { $("#gr-store-summary").textContent = error.message; return; }
-  const limit = data.maxStorageMB ? ` of the ${formatNumber(data.maxStorageMB)} MB limit` : " (no storage limit)";
-  $("#gr-store-summary").textContent = `${formatNumber(data.jobs.length)} analyses, ${formatBytes(data.totalBytes)}${limit}; results are kept ${data.retentionDays} days. Everyone's analyses are listed; only the running ones are never deleted.`;
-  const shown = data.jobs.slice(0, 500);
-  $("#gr-store-jobs").innerHTML = `<thead><tr><th><input type="checkbox" id="gr-store-all" aria-label="Select all"></th><th>Analysis</th><th>Workspace</th><th>Assembly</th><th>Regions</th><th>Size</th><th>Age (days)</th><th>From</th></tr></thead><tbody>
-    ${shown.map((job) => `<tr><td><input type="checkbox" data-job="${job.id}" ${job.running ? "disabled" : ""}></td>
-      <td><a href="#job=${job.id}" data-open-job>${escapeHTML(job.name || job.id)}</a> <small>${job.id}</small></td>
-      <td>${escapeHTML(job.ownerName || (job.owner ? job.owner : `API · ${job.client}`))}</td><td>${escapeHTML(job.assembly)}</td>
-      <td>${formatNumber(job.regions)}</td><td>${formatBytes(job.bytes)}</td><td>${formatNumber(job.ageDays, 3)}</td>
-      <td>${escapeHTML(job.running ? "running" : job.source)}</td></tr>`).join("") || '<tr><td colspan="8" class="gr-muted gr-empty">No stored analyses.</td></tr>'}</tbody>`
-    + (data.jobs.length > shown.length ? `<caption class="gr-muted">The newest 500 of ${formatNumber(data.jobs.length)}</caption>` : "");
-  const update = () => { $("#gr-store-selected").disabled = !$$("[data-job]:checked", $("#gr-store-jobs")).length; };
-  for (const box of $$("[data-job]", $("#gr-store-jobs"))) box.addEventListener("change", update);
-  $("#gr-store-all")?.addEventListener("change", (event) => {
-    for (const box of $$("[data-job]:not(:disabled)", $("#gr-store-jobs"))) box.checked = event.target.checked;
-    update();
-  });
-  for (const link of $$("[data-open-job]", $("#gr-store-jobs"))) link.addEventListener("click", () => $("#gr-admin-dialog").close());
-  update();
-}
-
-async function runCleanup(action) {
-  const body = { action };
-  let question;
-  if (action === "olderThan") {
-    body.days = Number($("#gr-store-days").value);
-    question = `Delete every analysis older than ${body.days} days?`;
-  } else if (action === "jobs") {
-    body.jobs = $$("[data-job]:checked", $("#gr-store-jobs")).map((box) => box.dataset.job);
-    question = `Delete the ${body.jobs.length} selected analyses?`;
-  } else if (action === "all") {
-    question = "Delete ALL stored GREAT analyses (except running ones)? Their links stop working.";
-  }
-  if (question && !window.confirm(question)) return;
-  try {
-    const result = await fetchJSON(api("admin/cleanup"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    $("#gr-admin-message").textContent = `${formatNumber(result.removed)} analyses deleted, ${formatBytes(result.freedBytes)} freed`;
-    await Promise.all([refreshStoredJobs(), refreshAdminStatus()]);
-    void renderRecent();
-  } catch (error) {
-    $("#gr-admin-message").textContent = error.message;
-  }
-}
-
-async function refreshAdminStatus() {
-  try {
-    const s = await fetchJSON(api("admin"));
-    const rows = (items, columns) => items.length ? `<table class="gr-table"><thead><tr>${columns.map(([label]) => `<th>${label}</th>`).join("")}</tr></thead><tbody>${items.map((item) => `<tr>${columns.map(([, get]) => `<td>${escapeHTML(get(item))}</td>`).join("")}</tr>`).join("")}</tbody></table>` : '<p class="gr-muted">none</p>';
-    $("#gr-admin-status").innerHTML = `
-      <p>${formatNumber(s.storedJobs)} stored analyses (${formatBytes(s.storedBytes)}) in <code>${escapeHTML(s.jobsDir)}</code>${s.lastCleanup ? ` · last cleanup ${new Date(s.lastCleanup.time * 1000).toLocaleString()} (${escapeHTML(s.lastCleanup.reason)}): ${formatNumber(s.lastCleanup.removed)} deleted, ${formatBytes(s.lastCleanup.freedBytes)}` : ""}${s.nextCleanup ? ` · next automatic cleanup ${new Date(s.nextCleanup * 1000).toLocaleTimeString()}` : ""}</p>
-      <p>${s.workers.length} worker process${s.workers.length === 1 ? "" : "es"} (${s.workers.map((w) => `${w.busy ? "busy" : "idle"}${w.assemblies.length ? ` ${w.assemblies.join("/")}` : ""}`).join(", ") || "none yet"}) · data <code>${escapeHTML(s.dataDir)}</code></p>
-      <h4>Running</h4>${rows(s.running, [["Job", (r) => r.id], ["Client", (r) => r.client], ["Assembly", (r) => r.assembly], ["Regions", (r) => formatNumber(r.regions)], ["From", (r) => r.source], ["Seconds", (r) => r.seconds]])}
-      <h4>Waiting</h4>${rows(s.waiting, [["Client", (r) => r.client], ["Waiting (s)", (r) => r.seconds]])}
-      <h4>Clients in the last hour</h4>${rows(s.clientsLastHour, [["Client", (r) => r.client], ["Analyses", (r) => r.jobs]])}
-      <h4>Recent</h4>${rows(s.recent.slice(0, 15), [["Job", (r) => r.id], ["Client", (r) => r.client], ["Assembly", (r) => r.assembly], ["Regions", (r) => formatNumber(r.regions)], ["From", (r) => r.source], ["Seconds", (r) => r.seconds]])}`;
-  } catch (error) {
-    $("#gr-admin-status").innerHTML = `<p class="gr-error">${escapeHTML(error.message)}</p>`;
-  }
-}
-
-async function saveAdmin(event) {
-  event.preventDefault();
-  const changes = {};
-  for (const field of $$("#gr-admin-fields [name]")) {
-    if (field.type === "checkbox") changes[field.name] = field.checked;
-    else if (field.tagName === "TEXTAREA") changes[field.name] = field.value.split(/[\s,]+/).filter(Boolean);
-    else changes[field.name] = Number(field.value);
-  }
-  try {
-    const data = await fetchJSON(api("settings"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) });
-    renderAdminFields(data.settings, data.defaults);
-    $("#gr-admin-message").textContent = `Saved ${new Date().toLocaleTimeString()}`;
-    state.status = await fetchJSON(api("status"));
-    renderAPI();
-  } catch (error) {
-    $("#gr-admin-message").textContent = error.message;
-  }
-}
-
 // ---------------------------------------------------------------- start
 
 function route() {
@@ -940,14 +811,12 @@ async function start() {
   for (const container of $$(".gr-source")) sourcePicker(container);
   if (state.linkedTrack) $("#gr-fg-name").value = state.linkedTrack.name;
   renderAPI();
-  $("#gr-admin-button").hidden = !state.status.admin;
-  $("#gr-admin-button").addEventListener("click", openAdmin);
-  $("#gr-admin-form").addEventListener("submit", saveAdmin);
-  $("#gr-admin-defaults").addEventListener("click", () => {
-    const defaults = JSON.parse($("#gr-admin-fields").dataset.defaults || "{}");
-    renderAdminFields(defaults, defaults);
-  });
-  for (const button of $$("[data-cleanup]")) button.addEventListener("click", () => runCleanup(button.dataset.cleanup));
+  // administrators: GREAT's settings and stored results are on the admin page
+  $("#gr-admin-link").hidden = !state.status.admin;
+  if (state.status.user) {
+    $("#gr-user").hidden = false;
+    $("#gr-user-name").textContent = state.status.user.user;
+  }
   $("#gr-form").addEventListener("submit", submitForm);
   for (const radio of $$('input[name="bgChoice"]')) radio.addEventListener("change", () => {
     $('.gr-source[data-prefix="bg"]').hidden = $('input[name="bgChoice"]:checked').value === "wholeGenome";

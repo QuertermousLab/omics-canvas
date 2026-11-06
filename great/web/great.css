@@ -13,6 +13,7 @@ body.great-page { min-height: 100vh; background: var(--bg); }
 .gr-brand small { color: var(--text-3); font-size: 11.5px; }
 .gr-nav { display: flex; align-items: center; gap: 4px; }
 .gr-nav a { text-decoration: none; }
+.gr-user { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; color: var(--text-3); font-size: 12.5px; }
 .great-page .quiet-button { text-decoration: none; }
 
 .gr-main { width: min(1320px, calc(100vw - 32px)); margin: 22px auto 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
@@ -48,7 +49,7 @@ body.great-page { min-height: 100vh; background: var(--bg); }
 .gr-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .gr-drop small { color: var(--text-3); }
 .gr-source textarea, .gr-source input[type="url"], .gr-inline-field input, .gr-browser-bar input, .gr-browser-bar select,
-.gr-advanced select, .gr-filters input, .gr-filters select, .gr-table-tools select, .gr-setting input, .gr-setting textarea {
+.gr-advanced select, .gr-filters input, .gr-filters select, .gr-table-tools select {
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); padding: 6px 9px; font: inherit; }
 .gr-source textarea { width: 100%; font: 12px/1.5 var(--mono); resize: vertical; }
 .gr-source input[type="url"] { width: 100%; height: 34px; }
@@ -136,7 +137,7 @@ body.great-page { min-height: 100vh; background: var(--bg); }
 .gr-sig { font-weight: 700; }
 .gr-empty { text-align: center !important; padding: 18px !important; }
 
-/* ---------- term details and admin dialogs */
+/* ---------- term details dialog */
 .gr-term-modal { width: min(1120px, calc(100vw - 28px)); max-height: calc(100vh - 28px); }
 .gr-term-body { overflow: auto; padding: 14px 22px; display: grid; gap: 12px; }
 .gr-term-meta { margin: 0; color: var(--text-3); }
@@ -150,23 +151,6 @@ body.great-page { min-height: 100vh; background: var(--bg); }
 .gr-term-table td small { color: var(--text-3); }
 .gr-term-modal .dialog-footer > div { flex-wrap: wrap; }
 .gr-term-modal .dialog-footer a { text-decoration: none; }
-.gr-admin-modal { width: min(880px, calc(100vw - 28px)); }
-.gr-admin-body { overflow: auto; padding: 14px 22px; }
-.gr-admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 10px 20px; }
-.gr-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); padding: 6px 0; }
-.gr-setting span { display: grid; gap: 1px; font-weight: 550; font-size: 12.5px; }
-.gr-setting small { color: var(--text-3); font-weight: 400; font-size: 11px; }
-.gr-setting input[type="number"] { width: 96px; height: 30px; font-family: var(--mono); }
-.gr-setting textarea { width: 170px; font: 11.5px var(--mono); }
-.gr-admin-body h3 { margin: 16px 0 4px; font-size: 14px; }
-.gr-store-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 10px; }
-.gr-store-older { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 12px; }
-.gr-store-older input { width: 64px; height: 28px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); padding: 0 6px; font: 12px var(--mono); }
-.gr-danger { color: var(--danger) !important; }
-.gr-store-table { max-height: 300px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
-.gr-store-table td:nth-child(2), .gr-store-table td:nth-child(3) { white-space: normal; text-align: left; }
-.gr-store-table th:nth-child(2), .gr-store-table th:nth-child(3) { text-align: left; }
-.gr-admin-body h4 { margin: 12px 0 4px; color: var(--text-2); font-size: 12px; }
 
 /* ---------- API */
 .gr-api-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 6px 26px; }
@@ -180,5 +164,5 @@ body.great-page { min-height: 100vh; background: var(--bg); }
   .gr-top { height: auto; flex-wrap: wrap; padding: 8px 14px; }
   .gr-nav { flex-wrap: wrap; }
   .gr-filters { position: static; }
-  .gr-api-grid, .gr-admin-grid { grid-template-columns: 1fr; }
+  .gr-api-grid { grid-template-columns: 1fr; }
 }

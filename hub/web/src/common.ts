@@ -130,6 +130,14 @@ const PAGE_TITLE: Record<string, string> = { hub: '', spatial: 'Spatial viewer',
 
 /** Top bar: page title, theme toggle, workspace chip; the desktop app bridge. */
 export function initChrome(navId: string) {
+  // signed in to Omics Canvas (auth/): who, sign out, the admin page for administrators
+  fetch('/auth/api/me').then((r) => (r.ok ? r.json() : null)).then((me: { user: string; admin: boolean } | null) => {
+    const box = document.querySelector<HTMLElement>('[data-signed-in]');
+    if (!me || !box) return;
+    box.hidden = false;
+    box.querySelector('[data-signed-in-name]')!.textContent = me.user;
+    (box.querySelector('[data-admin-link]') as HTMLElement).hidden = !me.admin;
+  }).catch(() => {});
   const title = document.querySelector<HTMLElement>('[data-page-title]');
   if (title) {
     title.textContent = PAGE_TITLE[navId] ?? '';

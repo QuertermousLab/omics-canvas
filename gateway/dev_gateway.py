@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A small stand-in for gateway/apache.conf (standard library only), for CI and local tests:
-/genome-canvas/... -> Genome Canvas (prefix stripped, X-Forwarded-Prefix set), /great/... -> GREAT,
+/genome-canvas/... -> Genome Canvas (prefix stripped, X-Forwarded-Prefix set), /great/... -> GREAT, /auth/ /admin/ -> sign-in,
 the rest (the home page at /) -> the hub.
 
   python3 gateway/dev_gateway.py --port 8892 --hub http://127.0.0.1:8893 --canvas http://127.0.0.1:8000 --great http://127.0.0.1:8894
@@ -13,7 +13,7 @@ import urllib.parse
 HOP = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers', 'transfer-encoding', 'upgrade'}
 
 
-def make_handler(hub, canvas, great):
+def make_handler(hub, canvas, great, auth):
     class Gateway(http.server.BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
 
@@ -24,6 +24,8 @@ def make_handler(hub, canvas, great):
                 extra = {'X-Forwarded-Prefix': '/genome-canvas'}
             elif self.path == '/great' or self.path.startswith('/great/'):  # GREAT (great/server.py), path unchanged
                 target, path = great, self.path
+            elif self.path.startswith(('/auth/', '/admin/')):  # sign-in and admin pages (auth/server.py)
+                target, path = auth, self.path
             length = int(self.headers.get('Content-Length') or 0)
             body = self.rfile.read(length) if length else None
             # the original Host, as apache.conf's ProxyPreserveHost On (Genome Canvas checks Origin against it)
@@ -63,8 +65,10 @@ def main():
     ap.add_argument('--hub', default='http://127.0.0.1:8893')
     ap.add_argument('--canvas', default='http://127.0.0.1:8000')
     ap.add_argument('--great', default='http://127.0.0.1:8894')
+    ap.add_argument('--auth', default='http://127.0.0.1:8895')
     a = ap.parse_args()
-    handler = make_handler(urllib.parse.urlsplit(a.hub), urllib.parse.urlsplit(a.canvas), urllib.parse.urlsplit(a.great))
+    handler = make_handler(urllib.parse.urlsplit(a.hub), urllib.parse.urlsplit(a.canvas), urllib.parse.urlsplit(a.great),
+                           urllib.parse.urlsplit(a.auth))
     http.server.ThreadingHTTPServer((a.host, a.port), handler).serve_forever()
 
 

@@ -1,0 +1,2 @@
+# Sign-in: local state never in git
+/state/

@@ -27,7 +27,8 @@ screenshots.
 ## Lab server deployment (THOR)
 
 One address for everything: **http://171.65.68.140:8892/**, the home page, with every module directly below it. The checkout
-`/nfs/baldar/quanyiz/vizhub` is the live deployment.
+`/nfs/baldar/quanyiz/vizhub` is the live deployment. Everyone signs in first, with a THOR account or an access password
+from the admin page ([auth/README.md](auth/README.md)); "keep me signed in" lasts a year.
 
 | URL | What | Served by |
 | --- | --- | --- |
@@ -37,7 +38,8 @@ One address for everything: **http://171.65.68.140:8892/**, the home page, with 
 | `/crispr/` · `/crispr/<screen>/` | Your CRISPR screens · the CRISPR screen explorer | hub |
 | `/genome-canvas/` | Genome Canvas | `genome-canvas/server.py` (127.0.0.1:8000) |
 | `/great/` | GREAT: page, API, rGREAT's `public/cgi-bin/*.php`, `rgreat.R` | `great/server.py` (127.0.0.1:8894, worker processes) |
-| `/lab` and everything else | JupyterLab | `jupyter-lab.service` (127.0.0.1:8891) |
+| `/auth/` · `/admin/` | Sign-in page · admin page (access passwords, sessions, sign-in and GREAT settings) | `auth/server.py` (127.0.0.1:8895) |
+| `/lab` and everything else | JupyterLab (its own sign-in) | `jupyter-lab.service` (127.0.0.1:8891) |
 
 Viewer links take `?s=<slide>&assay=<assay>&gene=<gene>`; the explorer takes `?t=<target>&g=<gene>`.
 
@@ -54,6 +56,7 @@ uv venv --python python3.12 hub/venv && VIRTUAL_ENV=hub/venv uv pip install -r h
 loginctl enable-linger $USER && ./vizhubctl restart && ./vizhubctl status
 hub/venv/bin/python genome-canvas/tools/fetch_external_data.py --configure && ./vizhubctl restart canvas
 python3 great/tools/fetch_great_data.py && ./vizhubctl restart great
+sudo auth/install-pam-helper.sh     # THOR account passwords checked with PAM (else by a local SSH login)
 ```
 
 The last two lines download the public data of Genome Canvas's LocusCompare, LD and liftover (GTEx arteries,
@@ -78,12 +81,14 @@ Genome Canvas keeps its own `genome-canvas/genomecanvas.config.json` (data roots
 
 ```
 omics-canvas/            (on THOR: /nfs/baldar/quanyiz/vizhub)
-  vizhubctl              status | start | stop | restart [hub|canvas|great|gateway] | logs | access | install | build
+  vizhubctl              status | start | stop | restart [hub|canvas|great|auth|gateway] | logs | access | install | build
   gateway/apache.conf.in the Apache gateway template (apache.conf is generated; logs in gateway/logs/)
   deploy/                site.env.example (server settings), configure.py, systemd/*.in unit templates
-                         (vizhub-hub, genome-canvas, vizhub-great, vizhub-gateway alias genome-canvas-gateway, JupyterLab drop-in)
+                         (vizhub-hub, genome-canvas, vizhub-great, vizhub-auth, vizhub-gateway alias genome-canvas-gateway,
+                         JupyterLab drop-in)
   genome-canvas/         Genome Canvas (web app, server, macOS app)
   great/                 GREAT (server.py, engine great.py, web/, tools/fetch_great_data.py, data/ not in git)
+  auth/                  sign-in and admin pages (server.py, sessions.py used by every backend, PAM helper)
   hub/
     server.py config.json  backend (FastAPI) and its settings (config.example.json in git; roots, Rscript, jobs)
     converters/           convert.py (dispatch), detect.py, rds_export.R, crispr_to_viewer.py,
@@ -91,7 +96,7 @@ omics-canvas/            (on THOR: /nfs/baldar/quanyiz/vizhub)
     web/                  page sources (TypeScript; viewer code from QuertermousLab/athena) -> static/ via `./vizhubctl build`
     venv/                 Python 3.12 environment from requirements.txt (not in git)
   state/                 registry.json (datasets), jobs.json + jobs/<id>.log, converted/, great/ (GREAT's jobs and
-                         settings) (not in git)
+                         settings), auth/ (sessions, access passwords) (not in git)
   desktop/               Omics Canvas macOS app (spatial, single-cell, CRISPR; see desktop/OmicsCanvasDesktop/README.md)
 ```
 

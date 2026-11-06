@@ -16,6 +16,8 @@ html.desktop-embedded .hubnav { display: none !important; }
   color: var(--text); text-decoration: none; border-radius: var(--radius-sm); }
 a.hubnav__title[href]:hover { color: var(--accent-text); }
 .hubnav__actions { margin-left: auto; display: flex; align-items: center; gap: 4px; flex: none; }
+.signed-in { display: inline-flex; align-items: center; gap: 2px; margin-right: 6px; color: var(--text-3); font-size: 12.5px; }
+.signed-in [data-signed-in-name] { margin-right: 4px; }
 .ws-button { height: 34px; display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; border: 1px solid var(--topbar-chip-border); border-radius: 99px;
   background: var(--topbar-chip); padding: 0 10px 0 4px; color: var(--text); font-size: 13px; }
 .ws-button:hover { background: var(--surface-hover); }

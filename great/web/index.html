@@ -18,8 +18,8 @@
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="base.css?v=20261105.1">
-  <link rel="stylesheet" href="great.css?v=20261105.6">
-  <script type="module" src="great.mjs?v=20261105.6"></script>
+  <link rel="stylesheet" href="great.css?v=20261106.1">
+  <script type="module" src="great.mjs?v=20261106.1"></script>
 </head>
 <body class="great-page">
   <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -51,7 +51,8 @@
     <nav class="gr-nav">
       <a class="quiet-button" href="./#new"><svg class="icon"><use href="#i-plus"/></svg>New analysis</a>
       <a class="quiet-button" href="./#api"><svg class="icon"><use href="#i-code"/></svg>API &amp; rGREAT</a>
-      <button class="quiet-button" id="gr-admin-button" type="button" hidden><svg class="icon"><use href="#i-settings"/></svg>Admin</button>
+      <a class="quiet-button" id="gr-admin-link" href="/admin/#great" hidden><svg class="icon"><use href="#i-settings"/></svg>Admin</a>
+      <span class="gr-user" id="gr-user" hidden><span id="gr-user-name"></span><a class="quiet-button" href="/auth/logout">Sign out</a></span>
       <button class="icon-button ghost theme-toggle" id="gr-theme" type="button" title="Light or dark theme" aria-label="Toggle theme">
         <svg class="icon icon-moon"><use href="#i-moon"/></svg><svg class="icon icon-sun"><use href="#i-sun"/></svg>
       </button>
@@ -251,37 +252,6 @@
     </div>
   </dialog>
 
-  <dialog class="modal gr-admin-modal" id="gr-admin-dialog">
-    <form class="dialog-shell" id="gr-admin-form">
-      <header class="dialog-header">
-        <div><span>Server administration</span><h2>GREAT settings</h2></div>
-        <button class="dialog-close icon-button ghost" type="button" data-close="gr-admin-dialog" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
-      </header>
-      <div class="dialog-content gr-admin-body">
-        <p class="gr-muted">Changes apply immediately, also to requests waiting in the queue; no restart.</p>
-        <div class="gr-admin-grid" id="gr-admin-fields"></div>
-        <h3>Stored analyses</h3>
-        <p class="gr-muted" id="gr-store-summary"></p>
-        <div class="gr-store-actions">
-          <button class="secondary-button small" type="button" data-cleanup="expired" title="Older than the retention, then the oldest above the storage limit (also runs every 10 minutes)">Apply retention and storage limit now</button>
-          <span class="gr-store-older"><button class="secondary-button small" type="button" data-cleanup="olderThan">Delete analyses older than</button>
-            <input type="number" id="gr-store-days" value="7" min="0" step="1"> days</span>
-          <button class="secondary-button small" type="button" data-cleanup="jobs" id="gr-store-selected" disabled>Delete selected</button>
-          <button class="quiet-button small gr-danger" type="button" data-cleanup="all"><svg class="icon"><use href="#i-trash"/></svg>Delete all</button>
-        </div>
-        <div class="gr-table-wrap gr-store-table"><table class="gr-table" id="gr-store-jobs"></table></div>
-        <h3>Now</h3>
-        <div id="gr-admin-status"></div>
-      </div>
-      <footer class="dialog-footer">
-        <span id="gr-admin-message"></span>
-        <div>
-          <button class="secondary-button" type="button" id="gr-admin-defaults">Defaults</button>
-          <button class="primary-button" type="submit">Save</button>
-        </div>
-      </footer>
-    </form>
-  </dialog>
 
   <div class="toast-region" id="gr-toasts" aria-live="polite"></div>
 </body>

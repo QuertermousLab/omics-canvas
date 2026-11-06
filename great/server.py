@@ -11,8 +11,10 @@ The gateway routes http://<server>:8892/great/ here (paths unchanged). Routes:
                                downloadAssociations.php, showTermDetails.php (rGREAT), greatStart.php (batch API)
   /great/rgreat.R              points rGREAT at this server for an R session
 
-Workspaces are Genome Canvas's: the page sends the selected one in X-Vizhub-Workspace (as the hub's pages do) and the
-server checks it against Genome Canvas's workspace list. Regions from Genome Canvas files are read through its
+Sign-in: with OMICS_CANVAS_AUTH set (the lab server's unit), the page and its API need an Omics Canvas session
+(../auth/sessions.py); GREAT's .php interfaces, rgreat.R and /great/api/health stay open, and never read server files.
+Administrators are the sign-in's. Workspaces are Genome Canvas's: the page sends the selected one in
+X-Vizhub-Workspace (as the hub's pages do) and the server checks it against Genome Canvas's workspace list. Regions from Genome Canvas files are read through its
 workspace-scoped /data/ URLs. great.py computes, great_service.py runs jobs and holds the live limits.
 Standard library only (Python 3.8+).
 """
@@ -67,6 +69,19 @@ local({
   message("rGREAT now uses ", server, " (GREAT 4.0.4 compatible, Omics Canvas)")
 })
 """
+
+
+def load_sign_in():
+    """(Gate, module) of Omics Canvas sign-in when OMICS_CANVAS_AUTH names its state folder, else (None, None)."""
+    folder = os.environ.get("OMICS_CANVAS_AUTH", "").strip()
+    module_path = APP_DIR.parent / "auth" / "sessions.py"
+    if not folder or not module_path.is_file():
+        return None, None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("omics_canvas_sessions", str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Gate(folder), module
 
 
 def read_config():
@@ -289,6 +304,9 @@ class GreatHandler(BaseHTTPRequestHandler):
         """A regions file from a URL: this server's Genome Canvas files through Genome Canvas, others fetched
         (public addresses only)."""
         if self.own_url(url):
+            if not self.server_files:
+                raise great_tools.InputError("GREAT's programming interface reads uploaded regions and public URLs, "
+                                             "not this server's files")
             return self.track_bytes(url)
         if not self.great.settings()["allowRemoteURLs"]:
             raise great_tools.InputError("This server does not fetch regions from URLs; upload the file instead")
@@ -332,6 +350,8 @@ class GreatHandler(BaseHTTPRequestHandler):
                                             "/".join(quote(p, safe="") for p in path.strip("/").split("/")))
         return self.canvas.fetch(data_path, self.maximum_bytes())
 
+    server_files = True  # False for GREAT's open interfaces: they never read this server's files
+
     def input(self, fields, prefix):
         """(bytes, label) from the form fields <prefix>File, Text, Track, Root+Path or URL; (None, "") if none."""
         upload = fields.get(prefix + "File")
@@ -342,6 +362,9 @@ class GreatHandler(BaseHTTPRequestHandler):
             text = text.decode("utf-8", errors="replace")
         if text and text.strip():
             return text.encode("utf-8"), "pasted regions"
+        if not self.server_files and (fields.get(prefix + "Track") or fields.get(prefix + "Root") or fields.get(prefix + "Path")):
+            raise great_tools.InputError("GREAT's programming interface reads uploaded regions and public URLs, not this "
+                                         "server's files")
         if fields.get(prefix + "Track"):
             track = fields[prefix + "Track"]
             return self.track_bytes(track), unquote(Path(urlparse(track).path).name)
@@ -366,13 +389,17 @@ class GreatHandler(BaseHTTPRequestHandler):
         self.route("DELETE")
 
     def route(self, method):
+        self.server_files, self.identity = True, None  # a handler serves every request of its connection
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         query = parse_qs(parsed.query)
         try:
             match = COMPAT.fullmatch(path)
             if match:
+                self.server_files = False
                 self.handle_compat(method, match.group(1), query)
+            elif not self.signed_in(path):
+                return
             elif path in ("/", "/great"):
                 self.send_redirect("/great/", 301)
             elif path in ("/great/", "/great/index.html") and method == "GET":
@@ -408,12 +435,35 @@ class GreatHandler(BaseHTTPRequestHandler):
             print("GREAT error: {}".format(exc), file=sys.stderr)
             self.send_api_error(500, "GREAT could not finish: {}".format(exc))
 
+    def signed_in(self, path):
+        """True to answer; otherwise the sign-in page (pages) or HTTP 401 (API) was sent. Open: rgreat.R, health."""
+        gate, module = self.server.sign_in
+        if gate is None or path in ("/great/rgreat.R", "/great/api/health"):
+            return True
+        self.identity = gate.identity(self.headers, self.client_address[0])
+        if self.identity:
+            return True
+        if module.wants_html(self.command, self.headers):
+            self.send_redirect(module.login_location(self.path))
+        else:
+            if self.command == "POST":
+                self.close_connection = True
+            self.send_json({"error": "Sign in to Omics Canvas first", "signIn": "/auth/login"}, 401)
+        return False
+
+    identity = None
+
+    def is_admin(self, workspace):
+        if self.server.sign_in[0] is not None:
+            return bool(self.identity and self.identity.get("admin"))
+        return self.great.is_admin(workspace)  # no sign-in (a stand-alone GREAT): Genome Canvas workspaces decide
+
     def handle_api(self, method, route, query):
         q = lambda name, default="": query.get(name, [default])[0]
         great = self.great
         workspace = self.workspace()
         owner = workspace["id"] if workspace else None
-        admin = great.is_admin(workspace)
+        admin = self.is_admin(workspace)
         if method in ("POST", "DELETE") and not self.same_origin():
             raise PermissionError("Cross-site GREAT requests are not allowed; use the GREAT interfaces under great/public/cgi-bin/")
         if route == "status" and method == "GET":
@@ -422,6 +472,7 @@ class GreatHandler(BaseHTTPRequestHandler):
                 "version": great_tools.GREAT_VERSION, "assemblies": great.assemblies(),
                 "defaults": great_tools.DEFAULT_PARAMS, "admin": admin, "greatBase": self.public_base(),
                 "canvasBase": self.canvas.path, "workspace": workspace and {k: workspace.get(k) for k in ("id", "name", "kind")},
+                "user": self.identity and {k: self.identity.get(k) for k in ("user", "method", "admin")},
                 "limits": {k: settings[k] for k in ("minIntervalSeconds", "maxJobsPerHour", "maxRegions", "maxBackgroundRegions",
                                                     "maxUploadMB", "jobRetentionDays", "maxStorageMB", "allowRemoteURLs",
                                                     "apiEnabled")},
@@ -610,9 +661,10 @@ class GreatServer(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 128
 
-    def __init__(self, address, great, canvas):
+    def __init__(self, address, great, canvas, sign_in=(None, None)):
         self.great = great
         self.canvas = canvas
+        self.sign_in = sign_in
         super().__init__(address, GreatHandler)
 
     def handle_error(self, request, client_address):
@@ -638,7 +690,7 @@ def main():
     folder = lambda value: Path(os.path.expanduser(value)) if Path(os.path.expanduser(value)).is_absolute() \
         else APP_DIR / os.path.expanduser(value)  # relative to great/
     great = great_service.GreatService(folder(a.data), folder(a.state), admins=config.get("admins", []))
-    server = GreatServer((a.host, a.port), great, Canvas(a.canvas, a.canvas_path))
+    server = GreatServer((a.host, a.port), great, Canvas(a.canvas, a.canvas_path), load_sign_in())
     great.warm()  # the default assembly, in a worker, in the background
     great.start_maintenance()  # retention and storage limit, every 10 minutes
     print("GREAT is running on http://{}:{}/great/ (data {}, state {})".format(a.host, a.port, a.data, a.state), flush=True)

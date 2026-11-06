@@ -1721,7 +1721,9 @@ static NSArray *TVSamples(NSDictionary *dataset) {
     NSURL *root = [self serverRoot];
     if (!root || ![url.host isEqualToString:root.host] || !((url.port == nil && root.port == nil) || [url.port isEqual:root.port])) return NO;
     NSString *path = url.path ?: @"";
-    return TVViewerForPath(path) != nil || [path hasPrefix:@"/hub/api/"] || [path hasPrefix:@"/hub/static/"] || [path hasPrefix:@"/genome-canvas/api/"];
+    // the sign-in page (auth/) stays in the window: a server that asks for sign-in shows it first, then the viewer
+    return TVViewerForPath(path) != nil || [path hasPrefix:@"/hub/api/"] || [path hasPrefix:@"/hub/static/"] || [path hasPrefix:@"/genome-canvas/api/"]
+        || [path hasPrefix:@"/auth/"];
 }
 
 // Links leaving the viewers. Genome Canvas pages on this server go to Genome Canvas.app when it is installed

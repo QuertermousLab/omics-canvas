@@ -11,6 +11,8 @@ ExecStart=@VIZHUB_DIR@/genome-canvas/start.sh --host 127.0.0.1 --port @VIZHUB_CA
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
+# Omics Canvas sign-in (VIZHUB_SIGN_IN in deploy/site.env): the sessions it checks; empty = no sign-in
+Environment=OMICS_CANVAS_AUTH=@VIZHUB_AUTH_STATE@
 Environment=GENOME_CANVAS_REFERENCE_DIR=%h/.cache/genome-canvas/references
 
 [Install]
