@@ -127,6 +127,8 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .workspace-pending .app-shell { visibility: hidden; }
 .workspace-selecting .app-shell { filter: blur(3px); pointer-events: none; }
 .workspace-active .workspace-gate { display: none; }
+/* before a workspace is chosen only the chooser (workspace-chooser.mjs) shows; the manager opens from it */
+.workspace-pending .workspace-gate-card { visibility: hidden; }
 .workspace-gate { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; overflow: auto; padding: 24px; background: radial-gradient(1100px 620px at 8% -12%, var(--gate-glow-1) 0, transparent 62%), radial-gradient(900px 560px at 108% 112%, var(--gate-glow-2) 0, transparent 60%), var(--bg); }
 .workspace-selecting .workspace-gate { background: var(--gate-veil); backdrop-filter: blur(6px); }
 .workspace-gate-card { width: min(900px, 100%); max-height: min(820px, calc(100vh - 48px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-lg); }

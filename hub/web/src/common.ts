@@ -6,11 +6,11 @@ export const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ES
 
 // ------------------------------------------------------------------ workspaces (Genome Canvas's)
 // Genome Canvas keeps the selected workspace in a cookie scoped to /genome-canvas/, so the pages ask its API
-// (same origin) and pass the id to the hub API as X-Vizhub-Workspace. Choosing here also chooses it there.
+// (same origin) and pass the id to the hub API as X-Vizhub-Workspace. Choosing here also chooses it there, and in
+// the other open pages (workspace-chooser.mjs announces it).
 
 export interface Workspace { id: string; name: string; kind: string }
 let current: Workspace | null = null;
-let catalog: Workspace[] = [];
 let loaded: Promise<Workspace | null> | null = null;
 const listeners: ((w: Workspace | null) => void)[] = [];
 
@@ -42,53 +42,35 @@ function setWorkspace(w: Workspace | null) {
 
 export function loadWorkspace() {
   return (loaded ??= gc<{ selected: Workspace | null; workspaces: Workspace[] }>('workspaces').then((d) => {
-    catalog = d.workspaces ?? [];
     setWorkspace(d.selected);
     return d.selected;
   }).catch(() => { setWorkspace(null); return null; }));
 }
 
-let dialogWaiters: ((w: Workspace | null) => void)[] = [];
+// The chooser and manager are Omics Canvas's own, from Genome Canvas (the same window in every module); a choice
+// made in another page or module reaches this one through watchWorkspace.
+interface ChooserModule {
+  chooseWorkspace(o?: { required?: boolean }): Promise<Workspace | null>;
+  manageWorkspaces(): Promise<Workspace | null>;
+  selectWorkspace(id: string): Promise<Workspace>;
+  watchWorkspace(currentId: () => string | null | undefined, onChange: (w: Workspace | null) => void): void;
+}
+const CHOOSER_URL = '/genome-canvas/workspace-chooser.mjs?v=20261106.1';
+let chooserModule: Promise<ChooserModule> | null = null;
+const chooser = () => (chooserModule ??= import(/* not bundled: served by Genome Canvas */ CHOOSER_URL as string) as Promise<ChooserModule>);
+
 /** Open the workspace chooser; resolves with the chosen workspace (or the current one when closed). */
-export function chooseWorkspace(): Promise<Workspace | null> {
-  const dlg = document.querySelector<HTMLDialogElement>('[data-ws-dialog]')!;
-  const list = dlg.querySelector<HTMLElement>('[data-ws-list]')!, q = dlg.querySelector<HTMLInputElement>('[data-ws-q]')!;
-  const err = dlg.querySelector<HTMLElement>('[data-ws-err]')!;
-  const render = () => {
-    const f = q.value.trim().toLowerCase();
-    const shown = catalog.filter((w) => !f || w.name.toLowerCase().includes(f));
-    list.innerHTML = shown.map((w) => `<li><button type="button" data-ws="${esc(w.id)}" class="${w.id === current?.id ? 'on' : ''}">
-      <span>${esc(w.name)}</span><small>${w.kind === 'home' ? 'home' : ''}</small></button></li>`).join('') || '<li class="muted">No workspace matches.</li>';
-  };
-  const pick = async (id: string) => {
-    try {
-      const { workspace: w } = await gc<{ workspace: Workspace }>('workspaces/select', { id });
-      setWorkspace(w);
-      dlg.close();
-    } catch (e) { err.textContent = (e as Error).message; err.hidden = false; }
-  };
-  if (!dlg.dataset.bound) {
-    dlg.dataset.bound = '1';
-    q.oninput = render;
-    list.onclick = (e) => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-ws]'); if (b) pick(b.dataset.ws!); };
-    dlg.querySelector<HTMLButtonElement>('[data-ws-create]')!.onclick = async () => {
-      const name = dlg.querySelector<HTMLInputElement>('[data-ws-new]')!.value.trim();
-      if (!name) return;
-      try {
-        const { workspace: w } = await gc<{ workspace: Workspace }>('workspaces', { name });
-        catalog.push(w);
-        setWorkspace(w);
-        dlg.close();
-      } catch (e) { err.textContent = (e as Error).message; err.hidden = false; }
-    };
-    dlg.addEventListener('close', () => { const ws = dialogWaiters; dialogWaiters = []; ws.forEach((fn) => fn(current)); });
-  }
-  err.hidden = true;
-  q.value = '';
-  gc<{ workspaces: Workspace[] }>('workspaces').then((d) => { catalog = d.workspaces ?? catalog; render(); }).catch(() => render());
-  render();
-  if (!dlg.open) dlg.showModal();
-  return new Promise((resolve) => dialogWaiters.push(resolve));
+export async function chooseWorkspace(options: { required?: boolean } = {}): Promise<Workspace | null> {
+  const w = await (await chooser()).chooseWorkspace(options);
+  if ((w?.id ?? null) !== (current?.id ?? null)) setWorkspace(w);
+  return w;
+}
+
+/** Open the workspace manager (hide or restore Home workspaces, delete manual ones). */
+export async function manageWorkspaces(): Promise<Workspace | null> {
+  const w = await (await chooser()).manageWorkspaces();
+  if ((w?.id ?? null) !== (current?.id ?? null)) setWorkspace(w);
+  return w;
 }
 
 /** The current workspace, asking for one first if none is chosen. */
@@ -161,10 +143,11 @@ export function initChrome(navId: string) {
     },
     workspaces: () => gc<{ selected: Workspace | null; workspaces: Workspace[] }>('workspaces'),
     async selectWorkspace(id: string) {
-      const { workspace: w } = await gc<{ workspace: Workspace }>('workspaces/select', { id });
+      const w = await (await chooser()).selectWorkspace(id);
       setWorkspace(w);
       return w;
     },
+    manageWorkspaces: () => manageWorkspaces(),
     // the app's sidebar list: as the dataset page, without those shown inside a combined dataset
     async datasets(kind: string) {
       await loadWorkspace();
@@ -199,7 +182,7 @@ export function initChrome(navId: string) {
     applyTheme(theme);
   };
   document.querySelector<HTMLElement>('[data-ws-button]')!.onclick = () => chooseWorkspace();
-  loadWorkspace();
+  loadWorkspace().then(() => chooser().then((m) => m.watchWorkspace(() => current?.id, setWorkspace)).catch(() => {}));
 }
 
 // ------------------------------------------------------------------ formatting

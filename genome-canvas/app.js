@@ -6,6 +6,7 @@ import { installManhattanRenderer } from "./manhattan-style.mjs?v=20261007.2";
 import { locusCompareSVG, locusCompareTSV, snpTooltip } from "./locuscompare.mjs?v=20261103.1";
 import { DARK_CANVAS, LIGHT_CANVAS, canvasTheme, installDarkCanvasAdapter, setCanvasTheme } from "./canvas-theme.mjs?v=20261007.2";
 import { normalizeReferenceResources } from "./reference-resources.mjs?v=20261005.1";
+import { announceWorkspace, chooseWorkspace, watchWorkspace } from "./workspace-chooser.mjs?v=20261106.1";
 import {
   DEFAULT_HIGHLIGHT_COLOR,
   HIGHLIGHT_FILL_ALPHA,
@@ -1069,6 +1070,28 @@ async function loadWorkspaceCatalog() {
   return payload;
 }
 
+// Choosing a workspace: Omics Canvas's chooser (workspace-chooser.mjs, the same window in every module); the
+// workspace page below (the "gate") is the manager, opened from the chooser's "Manage workspaces…".
+async function openWorkspaceChooser({ required = false } = {}) {
+  if (state.config?.localMode) return;
+  const chosen = await chooseWorkspace({ required, manage: showWorkspaceGate });
+  if (chosen && chosen.id !== state.workspace?.id) window.location.reload();
+}
+
+function followWorkspaceElsewhere() {
+  // another page (any module) chose a workspace: this page's tracks and files belong to the old one
+  watchWorkspace(() => state.workspace?.id, (workspace) => {
+    if (!state.workspace && !workspace) return;
+    if (workspace) {
+      setStatus(`Workspace changed to ${workspace.name} in another page`, "busy");
+      window.setTimeout(() => window.location.reload(), 600);
+    } else {
+      state.workspace = null;
+      void openWorkspaceChooser({ required: true });
+    }
+  });
+}
+
 function showWorkspaceGate() {
   if (state.config?.localMode) return;
   document.body.classList.remove("workspace-active", "workspace-pending");
@@ -1097,6 +1120,7 @@ async function enterWorkspace(workspace) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: workspace.id }),
     });
+    announceWorkspace(workspace);
     window.location.reload();
   } catch (error) {
     $("#workspace-gate-status").textContent = error.message;
@@ -1109,11 +1133,12 @@ async function createWorkspace(event) {
   if (!name) return;
   $("#workspace-gate-status").textContent = `Creating ${name}...`;
   try {
-    await fetchJSON(appURL("api/workspaces"), {
+    const { workspace } = await fetchJSON(appURL("api/workspaces"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
+    announceWorkspace(workspace);
     window.location.reload();
   } catch (error) {
     $("#workspace-gate-status").textContent = error.message;
@@ -1128,6 +1153,7 @@ async function removeWorkspace(workspace) {
     await fetchJSON(appURL(`api/workspaces/${encodeURIComponent(workspace.id)}`), { method: "DELETE" });
     if (state.workspace?.id === workspace.id) {
       state.workspace = null;
+      announceWorkspace(null);
       document.body.classList.remove("workspace-active");
       document.body.classList.add("workspace-selecting");
     }
@@ -1154,7 +1180,7 @@ function bindWorkspaceEvents() {
   ui.workspaceSearch.addEventListener("input", renderWorkspaceCatalog);
   $("#workspace-create-form").addEventListener("submit", createWorkspace);
   $("#close-workspace-gate").addEventListener("click", closeWorkspaceGate);
-  $("#workspace-button").addEventListener("click", showWorkspaceGate);
+  $("#workspace-button").addEventListener("click", () => openWorkspaceChooser());
 }
 
 async function initializeApplication() {
@@ -1165,9 +1191,10 @@ async function initializeApplication() {
   const configRequest = fetchJSON(appURL("api/config"));
   configRequest.catch(() => {});
   const payload = await loadWorkspaceCatalog();
+  if (!payload.localMode) followWorkspaceElsewhere();
   if (!payload.selected) {
     state.workspace = null;
-    showWorkspaceGate();
+    void openWorkspaceChooser({ required: true });
     return;
   }
   state.workspace = payload.selected;
@@ -3282,11 +3309,12 @@ async function createDesktopWorkspace(nameValue) {
   if (!name) return false;
   setStatus(`Creating project ${name}...`, "busy");
   try {
-    await fetchJSON(appURL("api/workspaces"), {
+    const { workspace } = await fetchJSON(appURL("api/workspaces"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
+    announceWorkspace(workspace);
     window.location.reload();
     return true;
   } catch (error) {
@@ -3304,6 +3332,7 @@ async function deleteDesktopWorkspace(workspaceId) {
     await fetchJSON(appURL(`api/workspaces/${encodeURIComponent(workspace.id)}`), { method: "DELETE" });
     if (state.workspace?.id === workspace.id) {
       state.workspace = null;
+      announceWorkspace(null);
       window.location.reload();
     } else {
       await loadWorkspaceCatalog();
@@ -3651,7 +3680,8 @@ window.GenomeCanvasDesktop = Object.freeze({
   openLocusCompare() { void openLocusCompare(); return true; },
   openGREAT() { openGREAT(); return true; },
   saveTracksetFromView() { tracksetFromView(); return true; },
-  openWorkspace() { showWorkspaceGate(); return true; },
+  openWorkspace() { void openWorkspaceChooser(); return true; },
+  manageWorkspaces() { showWorkspaceGate(); return true; },
   share() { void shareCurrentView(); return true; },
   exportPNG() { void exportPNG(); return true; },
   reload() { window.location.reload(); return true; },

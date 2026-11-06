@@ -105,6 +105,7 @@ STATIC_FILES = {
     "/highlights.mjs": ("highlights.mjs", "text/javascript; charset=utf-8"),
     "/reference-resources.mjs": ("reference-resources.mjs", "text/javascript; charset=utf-8"),
     "/canvas-theme.mjs": ("canvas-theme.mjs", "text/javascript; charset=utf-8"),
+    "/workspace-chooser.mjs": ("workspace-chooser.mjs", "text/javascript; charset=utf-8"),
     "/favicon.svg": ("public/favicon.svg", "image/svg+xml"),
     "/vendor/igv.min.js": ("vendor/igv.min.js", "text/javascript; charset=utf-8"),
     "/vendor/IGV-LICENSE.txt": ("vendor/IGV-LICENSE.txt", "text/plain; charset=utf-8"),

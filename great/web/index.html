@@ -17,9 +17,9 @@
     })();
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="base.css?v=20261105.1">
+  <link rel="stylesheet" href="base.css?v=20261106.1">
   <link rel="stylesheet" href="great.css?v=20261106.2">
-  <script type="module" src="great.mjs?v=20261106.3"></script>
+  <script type="module" src="great.mjs?v=20261106.4"></script>
 </head>
 <body class="great-page">
   <svg class="icon-sprite" aria-hidden="true" focusable="false">
@@ -27,6 +27,8 @@
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M4 19.5h16"/></symbol>
     <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5M7 9l5-5 5 5M4 19.5h16"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></symbol>
     <symbol id="i-genome" viewBox="0 0 24 24"><path d="M3 17h18"/><path d="M5 17V9M9 17V5M13 17v-6M17 17V8"/></symbol>
     <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
@@ -49,6 +51,8 @@
     </a>
     </div>
     <nav class="gr-nav">
+      <button class="workspace-button" id="gr-workspace" type="button" title="Your workspace (the same in every Omics Canvas module)" hidden>
+        <span class="workspace-avatar" aria-hidden="true"><svg class="icon"><use href="#i-layers"/></svg></span><b id="gr-workspace-name">Workspace</b><svg class="icon chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
       <a class="quiet-button" href="./#new"><svg class="icon"><use href="#i-plus"/></svg>New analysis</a>
       <a class="quiet-button" href="./#api"><svg class="icon"><use href="#i-code"/></svg>API &amp; rGREAT</a>
       <a class="quiet-button" id="gr-admin-link" href="/admin/#great" hidden><svg class="icon"><use href="#i-settings"/></svg>Admin</a>

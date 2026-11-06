@@ -9,6 +9,9 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const CANVAS = document.querySelector('meta[name="genome-canvas-base"]')?.content.replace(/^@.*@$/, "/genome-canvas/") || "/genome-canvas/";
 const api = (path) => new URL(`api/${path}`, new URL(".", location.href)).toString();
 const appURL = (path) => new URL(`${CANVAS}${path}`, location.href).toString();
+// Omics Canvas's workspace chooser and manager, served by Genome Canvas (the same window in every module)
+let chooserModule = null;
+const chooser = () => (chooserModule ??= import(appURL("workspace-chooser.mjs?v=20261106.1")));
 
 const ASSEMBLY_NAMES = {
   hg38: ["Human", "GRCh38 (hg38)"], hg19: ["Human", "GRCh37 (hg19)"],
@@ -230,7 +233,7 @@ async function browseServer(container, path = null) {
       path = path ?? config.defaultFilePath ?? "";
       rootSelect.addEventListener("change", () => browseServer(container, ""));
     } catch (error) {
-      list.innerHTML = `<p class="gr-muted">${escapeHTML(error.message)}: select a workspace in <a href="${appURL("")}">Genome Canvas</a> first.</p>`;
+      list.innerHTML = `<p class="gr-muted">${escapeHTML(error.message)}: <a href="#" data-choose-workspace>choose a workspace</a> first.</p>`;
       return;
     }
   }
@@ -833,6 +836,34 @@ table = pd.read_csv(io.StringIO("\\n".join([lines[3].lstrip("# ")] + [l for l in
   $("#gr-footer").innerHTML = `GREAT ${(state.status.versions || [{ version: state.status.version }]).map((v) => v.version).join(" and ")} reimplemented in Genome Canvas from GREAT's published code and documentation (McLean CY et al., <i>Nat Biotechnol</i> 28:495, 2010; Tanigawa Y et al., <i>Hum Genet</i> 2022). Please cite GREAT when you use these results.`;
 }
 
+// ---------------------------------------------------------------- workspace
+
+function renderWorkspace(workspace) {
+  $("#gr-workspace").hidden = false;
+  $("#gr-workspace-name").textContent = workspace?.name || "Choose workspace";
+}
+
+async function useWorkspace(workspace) {
+  // chosen here or in another page: the results list, server files and the admin flag follow it
+  if ((workspace?.id || null) === state.workspaceId) return;
+  state.workspaceId = workspace?.id || null;
+  renderWorkspace(workspace);
+  try {
+    state.status = await fetchJSON(api("status"));
+    $("#gr-admin-link").hidden = !state.status.admin;
+  } catch { /* keep the previous status */ }
+  for (const container of $$(".gr-source")) sourcePicker(container);
+  if (!state.job) void renderRecent();
+}
+
+async function chooseWorkspace() {
+  try {
+    await useWorkspace(await (await chooser()).chooseWorkspace());
+  } catch (error) {
+    toast(`Workspaces are not available: ${error.message}`, "error");
+  }
+}
+
 // ---------------------------------------------------------------- start
 
 function route() {
@@ -854,14 +885,26 @@ async function start() {
     const url = params.get("track");
     state.linkedTrack = { url, name: params.get("name") || decodeURIComponent(url.split(/[?#]/)[0].split("/").pop()) };
   }
+  let canvasWorkspaces = null;
   try {
-    state.workspaceId = (await fetchJSON(appURL("api/workspaces")))?.selected?.id || null;
+    canvasWorkspaces = await fetchJSON(appURL("api/workspaces"));
+    state.workspaceId = canvasWorkspaces?.selected?.id || null;
   } catch { /* Genome Canvas unreachable: GREAT works without a workspace */ }
   try {
     state.status = await fetchJSON(api("status"));
   } catch (error) {
     $(".gr-intro").insertAdjacentHTML("beforeend", `<p class="gr-error">GREAT is not available: ${escapeHTML(error.message)}</p>`);
     return;
+  }
+  if (canvasWorkspaces && !canvasWorkspaces.localMode) {
+    renderWorkspace(canvasWorkspaces.selected);
+    $("#gr-workspace").addEventListener("click", chooseWorkspace);
+    document.addEventListener("click", (event) => {
+      if (event.target.closest("[data-choose-workspace]")) { event.preventDefault(); void chooseWorkspace(); }
+    });
+    chooser().then((m) => m.watchWorkspace(() => state.workspaceId, useWorkspace)).catch(() => {});
+    // signed in with an access password: choose a workspace at the start of each visit, as in the other modules
+    if (state.status.user?.method === "password" && !state.workspaceId) void chooseWorkspace();
   }
   renderVersions();
   for (const container of $$(".gr-source")) sourcePicker(container);

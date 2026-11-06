@@ -37,6 +37,11 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) (GREAT: [
 - **Users' conversions run inside `vizhub-hub`.** Before `./vizhubctl restart hub`, check
   `GET /hub/api/jobs` (with the user's `X-Vizhub-Workspace`) — a restart interrupts them; they resume from
   their checkpoints, but the step in progress is redone. Web-only changes need no restart (`./vizhubctl build`).
+- **Workspaces** are chosen in one window everywhere: `genome-canvas/workspace-chooser.mjs` (the hub's
+  `common.ts` and GREAT import it from `/genome-canvas/`; keep its `?v=` the same in all of them). It also opens by
+  itself (no workspace in Genome Canvas, access-password sign-ins), holds the manager (hide / restore Home, delete
+  manual) and tells the other open pages about a change (they follow: hub pages and GREAT update, Genome Canvas
+  reloads). Genome Canvas's workspace page is the manager only (the user's decision, 2026-11-06).
 - Datasets and jobs belong to a Genome Canvas workspace (`owner`); never list, rename or delete another
   workspace's datasets. Removing a dataset deletes files only in folders the hub generated (`*.vizhub/`).
   The exception by design is the shared library (`state/library.json`, the "Shared datasets" dialog in

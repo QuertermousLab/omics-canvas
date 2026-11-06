@@ -127,6 +127,8 @@ backend. A server address may be a LAN hostname or a reverse-proxy path such as
 
 Home workspaces are discovered from the immediate subdirectories of `/home`. Selecting one adds that Home as the default file root. Manual workspaces can be created in the browser and default to the shared `/nfs` root. Each workspace has independent Favorites and file-browser history. Hiding an automatically discovered Home workspace only removes it from the selector; it never deletes the directory or its files, and it can be restored from the hidden-workspace section.
 
+The workspace button opens Omics Canvas's chooser (`workspace-chooser.mjs`, served here and imported by the hub's pages and GREAT, so every module shows the same window, also when it opens by itself because no workspace is chosen). Its **Manage workspaces…** opens the workspace page (hide, restore, delete); the hub's chooser has the same manager built in. A choice made in one page reaches the other open pages (BroadcastChannel; a page that comes back to the front checks again): Genome Canvas reloads into the new workspace.
+
 The locus search accepts genomic coordinates, gene symbols, and human rsIDs. `hg38` rsIDs are verified against the configured local dbSNP 156 VCF after their assembly placement is resolved. Configure the local file with `dbSnpHg38` in `genomecanvas.config.json`.
 
 ### Run as a Persistent User Service

@@ -91,6 +91,13 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .primary-button.small, .secondary-button.small { height: 28px; padding: 0 10px; font-size: 12px; border-radius: var(--radius-sm); }
 .quiet-button { border-color: transparent; background: transparent; color: var(--text-2); padding: 0 10px; }
 .quiet-button:hover { background: var(--surface-hover); color: var(--text); }
+/* the workspace chip (Genome Canvas's) */
+.workspace-button { height: 34px; display: inline-flex; align-items: center; gap: 8px; margin-right: 6px; border: 1px solid var(--topbar-chip-border); border-radius: 99px; background: var(--topbar-chip); padding: 0 10px 0 4px; color: var(--topbar-text); font-size: 13px; transition: background-color .12s, border-color .12s; }
+.workspace-button:hover { border-color: var(--topbar-chip-border); background: var(--topbar-hover); }
+.workspace-avatar { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 99px; background: var(--accent-soft-2); color: var(--accent-text); }
+.workspace-avatar .icon { width: 14px; height: 14px; }
+.workspace-button b { max-width: 150px; overflow: hidden; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-button .chevron { width: 14px; height: 14px; color: var(--topbar-muted); }
 .icon-button { width: 34px; height: 34px; display: inline-grid; place-items: center; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text-2); padding: 0; transition: background-color .12s, color .12s; }
 .icon-button:hover { background: var(--surface-hover); color: var(--text); }
 .icon-button.ghost { border-color: transparent; background: transparent; }

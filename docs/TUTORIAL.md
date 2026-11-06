@@ -39,9 +39,11 @@ the lab shares ([section 6](#6-shared-data)).
 
 ![Home page, light and dark](images/hub.png)
 
-- **Workspace** (top right): your personal space, the same one you use in Genome Canvas (one per user; *Create* a new
-  one in the chooser). Datasets you add belong to it: only you see, rename and remove them in your lists. A dataset's
-  **link opens for anyone** you send it to.
+- **Workspace** (top right): your personal space, the same in every module (Genome Canvas, GREAT and the viewers).
+  The button opens one chooser everywhere: pick, find or *Create* a workspace. **Manage workspaces…** in it hides or
+  restores Home workspaces and deletes manual ones (files are never deleted). Choosing a workspace in one page switches
+  the other open pages too. Datasets you add belong to it: only you see, rename and remove them in your lists. A
+  dataset's **link opens for anyone** you send it to.
 - **Theme**: light / dark follows your system; the moon / sun button switches it, for all four modules.
 - The small **Omics Canvas** button at the top left of every module returns to the home page.
 
