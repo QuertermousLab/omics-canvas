@@ -17,7 +17,7 @@ own detailed guide, [genome-canvas/AGENTS.md](genome-canvas/AGENTS.md) — follo
   `hub/converters/` turn source files into the ATHENA viewer format (`convert.py` dispatches;
   `rds_export.R` reads R objects; `atac_to_viewer.py` builds accessibility tracks).
   `hub/web/` is the page source (TypeScript, esbuild): `./vizhubctl build` → `hub/static/`.
-- GREAT (`genome-canvas/great*.py`, page `/genome-canvas/great/`) lives in Genome Canvas's server; the hub home page
+- GREAT (`genome-canvas/great*.py`, page `/great/`, routed by the gateway to Genome Canvas) lives in Genome Canvas's server; the hub home page
   has a card for it (`hub/web/pages/hub.html`, status from `/genome-canvas/api/great/status`).
 - `desktop/OmicsCanvasDesktop/`: Objective-C AppKit + WKWebView app (only compiles on macOS; CI builds it).
   `desktop/Shared/OCConnection.{h,m}` (compiled into both Mac apps): server, port and optional SSH port forwarding

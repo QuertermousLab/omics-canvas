@@ -4,6 +4,8 @@ body.great-page { min-height: 100vh; background: var(--bg); }
 .great-page a { color: var(--accent-text); }
 
 .gr-top { position: sticky; top: 0; z-index: 5; height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 22px; border-bottom: 1px solid var(--topbar-border); background: var(--topbar-bg); }
+.gr-top-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.gr-top-left .hub-home-button { margin-left: 0; }
 .gr-brand { display: flex; align-items: center; gap: 11px; color: var(--text); text-decoration: none; }
 .gr-brand img { border-radius: 8px; }
 .gr-brand span { display: grid; line-height: 1.15; }

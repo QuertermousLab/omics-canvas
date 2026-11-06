@@ -4,8 +4,10 @@
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const api = (path) => new URL(`../api/great/${path}`, location.href).toString();
-const appURL = (path) => new URL(`../${path}`, location.href).toString();
+// Genome Canvas, which runs GREAT: its API (where the workspace cookie applies) and pages
+const CANVAS = document.querySelector('meta[name="genome-canvas-base"]')?.content.replace(/^@.*@$/, "../") || "../";
+const api = (path) => new URL(`${CANVAS}api/great/${path}`, location.href).toString();
+const appURL = (path) => new URL(`${CANVAS}${path}`, location.href).toString();
 
 const ASSEMBLY_NAMES = {
   hg38: ["Human", "GRCh38 (hg38)"], hg19: ["Human", "GRCh37 (hg19)"],
@@ -177,7 +179,7 @@ async function browseServer(container, path = null) {
       path = path ?? config.defaultFilePath ?? "";
       rootSelect.addEventListener("change", () => browseServer(container, ""));
     } catch (error) {
-      list.innerHTML = `<p class="gr-muted">${escapeHTML(error.message)}: select a workspace in <a href="../">Genome Canvas</a> first.</p>`;
+      list.innerHTML = `<p class="gr-muted">${escapeHTML(error.message)}: select a workspace in <a href="${appURL("")}">Genome Canvas</a> first.</p>`;
       return;
     }
   }
@@ -746,7 +748,7 @@ async function openTerm(ontology, term) {
 // ---------------------------------------------------------------- API notes
 
 function renderAPI() {
-  const base = `${state.status.base}/great`;
+  const base = state.status.greatBase;
   const limits = state.status.limits;
   $("#gr-api-r").textContent = `library(rGREAT)
 source("${base}/rgreat.R")      # points rGREAT at this server
@@ -919,7 +921,7 @@ async function start() {
   });
   for (const item of $$("[data-assoc]")) item.addEventListener("click", () => { location.href = api(`jobs/${state.job.id}/associations.tsv?table=${item.dataset.assoc}`); });
   $("#gr-copy-link").addEventListener("click", async () => {
-    const link = `${state.status.base}/great/#job=${state.job.id}`;
+    const link = `${state.status.greatBase}/#job=${state.job.id}`;
     try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch { prompt("Link to these results", link); }
   });
   window.addEventListener("hashchange", route);

@@ -3,6 +3,7 @@
 #   /                 -> /hub/ (visualization hub landing page)
 #   /hub/ /spatial/ /single-cell/ /crispr/   -> hub backend   127.0.0.1:@VIZHUB_HUB_PORT@ (hub/server.py)
 #   /genome-canvas/   -> Genome Canvas                        127.0.0.1:@VIZHUB_CANVAS_PORT@ (genome-canvas/server.py)
+#   /great/           -> GREAT, in Genome Canvas              127.0.0.1:@VIZHUB_CANVAS_PORT@/great/
 @jupyter@#   everything else   -> JupyterLab (/lab, /api, kernels...)  127.0.0.1:@VIZHUB_JUPYTER_PORT@
 # Run by vizhub-gateway.service (systemd user unit); manage with ../vizhubctl.
 ServerRoot "@VIZHUB_DIR@/gateway"
@@ -38,7 +39,7 @@ ProxyTimeout 600
 RewriteEngine On
 # Landing page and slashless entry points (mod_rewrite runs before ProxyPass)
 RewriteRule ^/$ /hub/ [R=302,L]
-RewriteRule ^/(hub|spatial|single-cell|crispr|genome-canvas)$ /$1/ [R=302,L]
+RewriteRule ^/(hub|spatial|single-cell|crispr|genome-canvas|great)$ /$1/ [R=302,L]
 
 # Visualization hub: hub page, spatial / single-cell viewers, CRISPR explorer and their API
 ProxyPass        /hub/         http://127.0.0.1:@VIZHUB_HUB_PORT@/hub/
@@ -59,6 +60,16 @@ ProxyPassReverse /genome-canvas/ http://127.0.0.1:@VIZHUB_CANVAS_PORT@/
 <Location "/genome-canvas/">
     RequestHeader unset X-Remote-User
     RequestHeader set X-Forwarded-Prefix "/genome-canvas"
+</Location>
+
+# GREAT: served by Genome Canvas (its page, assets and GREAT's .php interfaces under /great/; the page calls the
+# workspace API under /genome-canvas/api/, where the workspace cookie applies)
+ProxyPass        /great/ http://127.0.0.1:@VIZHUB_CANVAS_PORT@/great/ nocanon
+ProxyPassReverse /great/ http://127.0.0.1:@VIZHUB_CANVAS_PORT@/great/
+<Location "/great/">
+    RequestHeader unset X-Remote-User
+    RequestHeader set X-Forwarded-Prefix "/genome-canvas"
+    RequestHeader set X-Great-Prefix "/great"
 </Location>
 
 @jupyter@# Preserve Jupyter kernel and terminal WebSocket upgrades.

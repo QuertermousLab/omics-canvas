@@ -10,15 +10,13 @@ api<{ id: string; ok: boolean }[]>('/hub/api/services').then((s) => {
   el.className = `chip ${gc?.ok ? 'chip--ok' : 'chip--bad'}`;
 }).catch(() => {});
 
-// GREAT (Genome Canvas's /great/): the assemblies it has data for
-fetch('/genome-canvas/api/great/status').then((r) => (r.ok ? r.json() : Promise.reject(r))).then((s: { assemblies: { name: string }[] }) => {
-  const el = document.querySelector('[data-tool="great"] [data-state]')!;
-  el.textContent = s.assemblies.length ? s.assemblies.map((a) => a.name).join(' · ') : 'no data';
-  el.className = `chip ${s.assemblies.length ? 'chip--ok' : 'chip--bad'}`;
-}).catch(() => {
-  const el = document.querySelector('[data-tool="great"] [data-state]');
-  if (el) { el.textContent = 'offline'; el.className = 'chip chip--bad'; }
-});
+// GREAT (Genome Canvas's /great/): online when it has data for an assembly
+fetch('/genome-canvas/api/great/status').then((r) => (r.ok ? r.json() : Promise.reject(r))).then((s: { assemblies: unknown[] }) => s.assemblies.length > 0)
+  .catch(() => false).then((ok) => {
+    const el = document.querySelector('[data-tool="great"] [data-state]')!;
+    el.textContent = ok ? 'online' : 'offline';
+    el.className = `chip ${ok ? 'chip--ok' : 'chip--bad'}`;
+  });
 
 async function counts() {
   const s = await api<{ kinds: Record<string, { mine: number; all: number; shared?: number }>; running: number; workspace: { name: string } | null }>('/hub/api/summary');

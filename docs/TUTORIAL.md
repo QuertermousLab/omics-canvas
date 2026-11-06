@@ -89,7 +89,7 @@ the lab shares ([section 6](#6-shared-data)).
 
 ### GREAT: what a region set is near
 
-`/genome-canvas/great/` — GREAT (Genomic Regions Enrichment of Annotations Tool, McLean et al. 2010) as its original
+`/great/` — GREAT (Genomic Regions Enrichment of Annotations Tool, McLean et al. 2010) as its original
 server computed it; great.stanford.edu is offline. It assigns each region to the genes whose regulatory domains hold
 it and tests GO terms, mouse and human phenotypes and single genes.
 
@@ -129,13 +129,13 @@ it and tests GO terms, mouse and human phenotypes and single genes.
 
   ```r
   library(rGREAT)
-  source("http://171.65.68.140:8892/genome-canvas/great/rgreat.R")
+  source("http://171.65.68.140:8892/great/rgreat.R")
   job <- submitGreatJob(gr, genome = "hg38", request_interval = 0)
   getEnrichmentTables(job); getRegionGeneAssociations(job); plotRegionGeneAssociations(job)
   ```
 
   Scripts can use GREAT's batch interface, e.g. `curl -F outputType=batch -F requestSpecies=hg38 -F
-  requestFile=@peaks.bed.gz http://171.65.68.140:8892/genome-canvas/great/public/cgi-bin/greatStart.php`; the
+  requestFile=@peaks.bed.gz http://171.65.68.140:8892/great/public/cgi-bin/greatStart.php`; the
   **API & rGREAT** section at the bottom of the page lists these with the server's current limits.
 - **Admin** (shown to the server's administrator): request limits — the minimum interval between analyses per
   client, analyses per hour and at once, how long requests wait in the queue, region and file size limits, how long

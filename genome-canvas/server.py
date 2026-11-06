@@ -103,8 +103,6 @@ STATIC_FILES = {
     "/hic-heatmap.mjs": ("hic-heatmap.mjs", "text/javascript; charset=utf-8"),
     "/manhattan-style.mjs": ("manhattan-style.mjs", "text/javascript; charset=utf-8"),
     "/locuscompare.mjs": ("locuscompare.mjs", "text/javascript; charset=utf-8"),
-    "/great/": ("great.html", "text/html; charset=utf-8"),
-    "/great/index.html": ("great.html", "text/html; charset=utf-8"),
     "/great.mjs": ("great.mjs", "text/javascript; charset=utf-8"),
     "/great.css": ("great.css", "text/css; charset=utf-8"),
     "/public-hubs.mjs": ("public-hubs.mjs", "text/javascript; charset=utf-8"),
@@ -1576,6 +1574,9 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         query = parse_qs(parsed.query)
+        if path.startswith("/great/") and ("/" + path[7:] in STATIC_FILES and path[7:] not in ("", "index.html")
+                                           or path.startswith("/great/vendor/fonts/")):
+            path = path[6:]  # the GREAT page's assets (styles, fonts, modules) next to it at /great/
 
         try:
             if path == "/api/health":
@@ -2080,8 +2081,29 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
         scheme = self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower()
         return "{}://{}{}".format(scheme if scheme in ("http", "https") else "http", host, self.cookie_path().rstrip("/"))
 
+    def great_public_base(self):
+        """Where GREAT is reached, no trailing slash: /great at the gateway's root (beside /genome-canvas/), else
+        <Genome Canvas>/great when Genome Canvas runs on its own."""
+        base = self.public_base()
+        prefix = self.cookie_path().rstrip("/")
+        great_prefix = self.headers.get("X-Great-Prefix", "").strip()
+        if not re.fullmatch(r"/[A-Za-z0-9._~/-]+", great_prefix):
+            great_prefix = "/great" if prefix else ""
+        if not great_prefix:
+            return base + "/great"
+        return (base[:-len(prefix)] if prefix and base.endswith(prefix) else base) + great_prefix.rstrip("/")
+
     def great_ui_url(self, job_id, extra=""):
-        return "{}/great/#job={}{}".format(self.public_base(), job_id, extra)
+        return "{}/#job={}{}".format(self.great_public_base(), job_id, extra)
+
+    def handle_great_page(self):
+        """great.html with the Genome Canvas base its API calls use; behind the gateway the page lives at /great/."""
+        if self.headers.get("X-Forwarded-Prefix") and not self.headers.get("X-Great-Prefix"):
+            query = urlparse(self.path).query
+            self.send_redirect(self.great_public_base() + "/" + ("?" + query if query else ""), 301)
+            return
+        page = (APP_DIR / "great.html").read_text(encoding="utf-8").replace("@CANVAS_BASE@", self.cookie_path())
+        self.send_text(page, "text/html; charset=utf-8")
 
     def read_great_body(self):
         if self.headers.get("Transfer-Encoding"):
@@ -2199,8 +2221,10 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
                 self.handle_great_compat(method, match.group(1), query)
             elif path == "/great":
                 self.send_redirect("great/", 301)
+            elif path in ("/great/", "/great/index.html") and method == "GET":
+                self.handle_great_page()
             elif path == "/great/rgreat.R":
-                self.send_text(RGREAT_HELPER.replace("@SERVER@", self.public_base() + "/great"), "text/plain; charset=utf-8")
+                self.send_text(RGREAT_HELPER.replace("@SERVER@", self.great_public_base()), "text/plain; charset=utf-8")
             elif path.startswith("/api/great/"):
                 self.handle_great_api(method, path[len("/api/great/"):], query)
             else:
@@ -2231,6 +2255,7 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
             self.send_json({
                 "version": great_tools.GREAT_VERSION, "assemblies": GREAT.assemblies(),
                 "defaults": great_tools.DEFAULT_PARAMS, "admin": admin, "base": self.public_base(),
+                "greatBase": self.great_public_base(),
                 "workspace": self.public_workspace(workspace), "localMode": LOCAL_MODE,
                 "limits": {k: settings[k] for k in ("minIntervalSeconds", "maxJobsPerHour", "maxRegions",
                                                     "maxBackgroundRegions", "maxUploadMB", "jobRetentionDays",
@@ -2319,7 +2344,7 @@ class GenomeCanvasHandler(BaseHTTPRequestHandler):
         agent = self.headers.get("User-Agent", "")
         if name == "greatWeb":
             if method == "GET" and not fields:
-                self.send_redirect(self.public_base() + "/great/")
+                self.send_redirect(self.great_public_base() + "/")
                 return
             try:
                 fg, label = self.great_input(fields, "fg")

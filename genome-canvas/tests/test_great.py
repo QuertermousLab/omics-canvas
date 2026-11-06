@@ -371,6 +371,24 @@ class InterfaceTests(unittest.TestCase):
                                            "&requestURL=http%3A%2F%2F127.0.0.1%3A1%2Fx.bed")
         self.assertEqual(status, 400)  # private addresses are never fetched
 
+    def test_page_and_its_address(self):
+        status, content_type, page = self.request("GET", "/great/")
+        self.assertIn('<meta name="genome-canvas-base" content="/">', page)
+        status, content_type, _ = self.request("GET", "/great/styles.css")
+        self.assertEqual((status, content_type.split(";")[0]), (200, "text/css"))
+        gateway = {"X-Forwarded-Prefix": "/genome-canvas", "X-Great-Prefix": "/great", "Host": "lab:8892"}
+        status, _, page = self.request("GET", "/great/", headers=gateway)
+        self.assertIn('content="/genome-canvas/"', page)
+        status, _, script = self.request("GET", "/great/rgreat.R", headers=gateway)
+        self.assertIn('server <- "http://lab:8892/great"', script)
+        connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=10)
+        connection.request("GET", "/great/?track=x", headers={"X-Forwarded-Prefix": "/genome-canvas", "Host": "lab:8892"})
+        response = connection.getresponse()
+        self.assertEqual((response.status, response.getheader("Location")), (301, "http://lab:8892/great/?track=x"))
+        connection.close()
+        status, _, text = self.request("GET", "/api/great/status", headers={"X-Forwarded-Prefix": "/genome-canvas", "Host": "lab:8892"})
+        self.assertEqual(json.loads(text)["greatBase"], "http://lab:8892/great")
+
     def test_page_api(self):
         status, _, text = self.request("GET", "/api/great/status")
         status_payload = json.loads(text)

@@ -4,7 +4,7 @@ Self-hosted viewers for a lab's genomics data, in one place:
 
 - **Genome Canvas** (`genome-canvas/`) — IGV.js-based genome and epigenome browser with a Python
   backend and a native macOS app (unchanged history; see [genome-canvas/README.md](genome-canvas/README.md)).
-- **GREAT** (`genome-canvas/great*`, at `/genome-canvas/great/`) — region set enrichment as GREAT 4.0.4 computed it
+- **GREAT** (`genome-canvas/great*`, at `/great/`) — region set enrichment as GREAT 4.0.4 computed it
   (great.stanford.edu is offline): its web interface, flexible region input, and its interfaces for rGREAT and
   scripts, with request limits set live by an administrator ([details](genome-canvas/README.md#great)).
 - **Omics Canvas hub** (`hub/`) — spatial viewer, single-cell viewer and CRISPR screen explorer
@@ -36,7 +36,7 @@ One address for everything: **http://171.65.68.140:8892/** (redirects to `/hub/`
 | `/single-cell/` · `/single-cell/<dataset>/` | Your single-cell datasets · the single-cell viewer | hub |
 | `/crispr/` · `/crispr/<screen>/` | Your CRISPR screens · the CRISPR screen explorer | hub |
 | `/genome-canvas/` | Genome Canvas | `genome-canvas/server.py` (127.0.0.1:8000) |
-| `/genome-canvas/great/` | GREAT (page, `/api/great/`, rGREAT's `public/cgi-bin/*.php`, `rgreat.R`) | Genome Canvas (GREAT worker processes) |
+| `/great/` | GREAT (page, rGREAT's `public/cgi-bin/*.php`, `rgreat.R`; its page calls `/genome-canvas/api/great/`) | Genome Canvas (GREAT worker processes) |
 | `/lab` and everything else | JupyterLab | `jupyter-lab.service` (127.0.0.1:8891) |
 
 Viewer links take `?s=<slide>&assay=<assay>&gene=<gene>`; the explorer takes `?t=<target>&g=<gene>`.

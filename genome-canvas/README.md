@@ -279,7 +279,10 @@ files become GWAS tracks with `tools/gwas_catalog_to_track.py` (with `hg19_locus
 
 ### GREAT
 
-`/great/` (`great.py` computes, `great_service.py` runs jobs; standard library only) reproduces GREAT 4.0.4. Its
+`/great/` (`great.py` computes, `great_service.py` runs jobs; standard library only) reproduces GREAT 4.0.4. Genome
+Canvas serves it at `/great/` of its own address; the lab server's gateway puts it at its root, beside
+`/genome-canvas/` (http://171.65.68.140:8892/great/; the page then calls `/genome-canvas/api/great/`, where the
+workspace cookie applies, and `/genome-canvas/great/` redirects there). Its
 original server no longer answers, so it follows GREAT's published core code (greatTools:
 `createRegulatoryDomains.c`, `calculateBinomialP.c`, ported line by line) and documentation:
 
@@ -314,7 +317,7 @@ original server no longer answers, so it follows GREAT's published core code (gr
   `greatWeb.php` (rGREAT's `submitGreatJob`), `readJsFromFile.php`, `downloadAllTSV.php`, `downloadAssociations.php`
   and `showTermDetails.php` (rGREAT's result functions) and `greatStart.php`, GREAT's batch Programming Interface
   (`requestURL` or, added here, a posted `requestFile`; `outputType=batch` returns every ontology as a table).
-  `source("http://<server>/genome-canvas/great/rgreat.R")` points rGREAT at this server for the R session (it rewrites
+  `source("http://<server>/great/rgreat.R")` points rGREAT at this server for the R session (it rewrites
   rGREAT's `BASE_URL_LIST`); then `submitGreatJob(gr, genome = "hg38", request_interval = 0)`,
   `getEnrichmentTables`, `getRegionGeneAssociations` and `plotRegionGeneAssociations` work as with the original.
 - **Limits** (`<state>/great/settings.json`, edited in the page's **Admin** panel by an administrator workspace and
