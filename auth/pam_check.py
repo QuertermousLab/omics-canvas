@@ -2,7 +2,7 @@
 """Check one THOR account's password with PAM (service "omics-canvas": the same check as console and SSH logins).
 
 Installed root-owned as /usr/local/lib/omics-canvas/pam_check by install-pam-helper.sh, and run by the auth server
-as `sudo -n /usr/local/lib/omics-canvas/pam_check` (the only command its sudoers rule allows). Reads
+as `sudo -n /usr/local/lib/omics-canvas/pam_check` with no arguments (the only command its sudoers rule allows). Reads
 {"user": ..., "password": ...} as JSON on stdin. Exit 0: the password is right and the account may log in;
 1: it is not; 2: usage or PAM error. Prints nothing else. Standard library only (ctypes and libpam).
 """

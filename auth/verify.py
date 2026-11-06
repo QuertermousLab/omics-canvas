@@ -22,7 +22,8 @@ def method():
     """How passwords are checked now: "pam" (the helper is installed and sudo allows it) or "ssh"."""
     if not os.path.isfile(HELPER):
         return "ssh"
-    result = subprocess.run(["sudo", "-n", "-l", HELPER, ""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # the sudoers rule allows exactly `sudo -n <helper>` with no arguments (its trailing "")
+    result = subprocess.run(["sudo", "-n", "-l", HELPER], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return "pam" if result.returncode == 0 else "ssh"
 
 
@@ -47,7 +48,7 @@ def check_password(user, password, state_dir, how=None):
     if how == "pam":
         import json
         try:
-            result = subprocess.run(["sudo", "-n", HELPER, ""], input=json.dumps({"user": user, "password": password}),
+            result = subprocess.run(["sudo", "-n", HELPER], input=json.dumps({"user": user, "password": password}),
                                     universal_newlines=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
         except subprocess.TimeoutExpired:
             return False
