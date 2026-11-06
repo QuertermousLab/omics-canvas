@@ -29,7 +29,7 @@ jobs:
       - name: Test server (Genome Canvas, hub, gateway on 127.0.0.1:8892)
         shell: bash
         run: |
-          pip install --quiet fastapi uvicorn
+          pip install --quiet fastapi uvicorn numpy  # hub/server.py needs numpy (module scores)
           (cd hub/web && npm ci --no-audit --no-fund && node build.mjs)
           mkdir -p "${RUNNER_TEMP}/data"
           cat > hub/config.json <<EOF
